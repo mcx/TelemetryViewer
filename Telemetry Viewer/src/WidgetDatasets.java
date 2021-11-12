@@ -146,7 +146,7 @@ public class WidgetDatasets extends Widget {
 				
 				for(ConnectionTelemetry connection : ConnectionsController.telemetryConnections) {
 					
-					if(!connection.dataStructureDefined)
+					if(!connection.isDataStructureDefined())
 						continue;
 					
 					int rowCount = 0;
@@ -175,7 +175,7 @@ public class WidgetDatasets extends Widget {
 				
 				for(ConnectionTelemetry connection : ConnectionsController.telemetryConnections) {
 					
-					if(!connection.dataStructureDefined)
+					if(!connection.isDataStructureDefined())
 						continue;
 					
 					int rowCount = 0;
@@ -265,7 +265,7 @@ public class WidgetDatasets extends Widget {
 				selectedDatasets.clear();
 				Dataset firstDataset = null;
 				for(ConnectionTelemetry connection : ConnectionsController.telemetryConnections) {
-					if(!connection.dataStructureDefined)
+					if(!connection.isDataStructureDefined())
 						continue;
 					firstDataset = connection.datasets.getList().get(0);
 					break;
@@ -278,7 +278,7 @@ public class WidgetDatasets extends Widget {
 			for(int i = 0; i < comboboxLabels.length; i++) {
 				JComboBox<Dataset> combobox = new JComboBox<Dataset>();
 				for(ConnectionTelemetry connection : ConnectionsController.telemetryConnections) {
-					if(!connection.dataStructureDefined)
+					if(!connection.isDataStructureDefined())
 						continue;
 					for(Dataset dataset : connection.datasets.getList()) {
 						if(dataset.isBitfield)
@@ -288,7 +288,7 @@ public class WidgetDatasets extends Widget {
 				}
 				int connectionCount = 0;
 				for(ConnectionTelemetry connection : ConnectionsController.telemetryConnections)
-					if(connection.dataStructureDefined)
+					if(connection.isDataStructureDefined())
 						connectionCount++;
 				if(connectionCount > 1)
 					combobox.setRenderer(new DefaultListCellRenderer() {

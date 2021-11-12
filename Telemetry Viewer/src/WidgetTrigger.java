@@ -30,15 +30,15 @@ public class WidgetTrigger extends Widget {
 	};
 	
 	// "model"
-	private Mode    triggerMode = Mode.DISABLED;
-	private boolean triggerAffectsEveryChart = false;
-	private Type    triggerType = Type.RISING_EDGE;
-	private Dataset triggerChannel = null;
-	private StorageFloats.Cache samplesCache = null;
-	private float   triggerLevel = 0;
-	private float   triggerHysteresis = 0;
-	private int     triggerPrePostRatio = 20;
-	private boolean userSpecifiedTheChannel = false;
+	private Mode              triggerMode = Mode.DISABLED;
+	private boolean           triggerAffectsEveryChart = false;
+	private Type              triggerType = Type.RISING_EDGE;
+	private Dataset           triggerChannel = null;
+	private DatasetsInterface datasets = new DatasetsInterface();
+	private float             triggerLevel = 0;
+	private float             triggerHysteresis = 0;
+	private int               triggerPrePostRatio = 20;
+	private boolean           userSpecifiedTheChannel = false;
 	
 	// "view"
 	private JToggleButton modeDisabledButton;
@@ -109,9 +109,10 @@ public class WidgetTrigger extends Widget {
 			return;
 		
 		// update the model
+		List<Dataset> list = new ArrayList<Dataset>();
+		list.add(newChannel);
+		datasets.setNormals(list);
 		triggerChannel = newChannel;
-		if(triggerChannel != null)
-			samplesCache = triggerChannel.createCache();
 		resetTrigger(true);
 		if(userSpecified)
 			userSpecifiedTheChannel = true;
@@ -230,8 +231,12 @@ public class WidgetTrigger extends Widget {
 					channelCombobox.addItem(dataset);
 			});
 		});
-		if(channelCombobox.getItemCount() > 0)
+		if(channelCombobox.getItemCount() > 0) {
 			triggerChannel = (Dataset) channelCombobox.getSelectedItem();
+			List<Dataset> list = new ArrayList<Dataset>();
+			list.add(triggerChannel);
+			datasets.setNormals(list);
+		}
 		channelCombobox.addActionListener(event -> setChannel((Dataset) channelCombobox.getSelectedItem(), true));
 		
 		String defaultUnit = channelCombobox.getItemCount() == 0 ? "" : " " + ((Dataset) channelCombobox.getSelectedItem()).unit;
@@ -460,9 +465,9 @@ public class WidgetTrigger extends Widget {
 		long chartDomain = (long) Math.ceil(chart.duration * zoomLevel);
 		double preTriggerPercent = triggerPrePostRatio / 100.0;
 		double postTriggerPercent = 1.0 - preTriggerPercent;
-		int maxSampleNumber = triggerChannel.controller.getClosestSampleNumberAtOrBefore(endTimestamp, triggerChannel.connection.getSampleCount() - 1);
-		long startTimestamp = triggerChannel.connection.getTimestamp(maxSampleNumber) - chartDomain;
-		int minSampleNumber = triggerChannel.controller.getClosestSampleNumberAtOrBefore(startTimestamp, maxSampleNumber);
+		int maxSampleNumber = datasets.getClosestSampleNumberAtOrBefore(endTimestamp, triggerChannel.connection.getSampleCount() - 1);
+		long startTimestamp = datasets.getTimestamp(maxSampleNumber) - chartDomain;
+		int minSampleNumber = datasets.getClosestSampleNumberAtOrBefore(startTimestamp, maxSampleNumber);
 		if(minSampleNumber > previousMaxSampleNumber && previousMaxSampleNumber != -1)
 			minSampleNumber = previousMaxSampleNumber;
 		if(recalcTrigger && triggeredMinSampleNumber != -1)
@@ -483,12 +488,12 @@ public class WidgetTrigger extends Widget {
 		}
 		
 		// check for a new trigger
-		minSampleNumber = Integer.max(minSampleNumber, triggerChannel.controller.getClosestSampleNumberAfter(nextTriggerableTimestamp));
+		minSampleNumber = Integer.max(minSampleNumber, datasets.getClosestSampleNumberAfter(nextTriggerableTimestamp));
 		boolean triggerOnRisingEdge  = (triggerType == Type.RISING_EDGE)  || (triggerType == Type.RISING_FALLING_EDGES);
 		boolean triggerOnFallingEdge = (triggerType == Type.FALLING_EDGE) || (triggerType == Type.RISING_FALLING_EDGES);
 		boolean risingEdgeArmed = false;
 		boolean fallingEdgeArmed = false;
-		FloatBuffer buffer = triggerChannel.getSamplesBuffer(minSampleNumber, maxSampleNumber, samplesCache);
+		FloatBuffer buffer = datasets.getSamplesBuffer(triggerChannel, minSampleNumber, maxSampleNumber);
 		for(int sampleNumber = minSampleNumber; sampleNumber <= maxSampleNumber; sampleNumber++) {
 			float value = buffer.get(sampleNumber - minSampleNumber);
 			if(triggerOnRisingEdge && value < triggerLevel - triggerHysteresis)
@@ -497,7 +502,7 @@ public class WidgetTrigger extends Widget {
 				fallingEdgeArmed = true;
 			if((risingEdgeArmed && triggerOnRisingEdge && value >= triggerLevel) || (fallingEdgeArmed && triggerOnFallingEdge && value <= triggerLevel)) {
 				triggeredSampleNumber = sampleNumber;
-				triggeredTimestamp = triggerChannel.connection.getTimestamp(sampleNumber);
+				triggeredTimestamp = datasets.getTimestamp(sampleNumber);
 				triggered = true;
 				nextTriggerableTimestamp = triggeredTimestamp + (long) Math.round(chartDomain * postTriggerPercent);
 				long millisecondsAfterTrigger = (long) Math.round(chartDomain * postTriggerPercent);
@@ -512,7 +517,7 @@ public class WidgetTrigger extends Widget {
 		// done
 		return triggered ? triggeredEndTimestamp :
 		       triggerMode == Mode.AUTO ? endTimestamp :
-		       triggerChannel.controller.getFirstTimestamp() - 1;
+		       datasets.connection.getFirstTimestamp() - 1;
 		
 	}
 	
@@ -573,7 +578,7 @@ public class WidgetTrigger extends Widget {
 		boolean triggerOnFallingEdge = (triggerType == Type.FALLING_EDGE) || (triggerType == Type.RISING_FALLING_EDGES);
 		boolean risingEdgeArmed = false;
 		boolean fallingEdgeArmed = false;
-		FloatBuffer buffer = triggerChannel.getSamplesBuffer(minSampleNumber, maxSampleNumber, samplesCache);
+		FloatBuffer buffer = datasets.getSamplesBuffer(triggerChannel, minSampleNumber, maxSampleNumber);
 		for(int sampleNumber = minSampleNumber; sampleNumber <= maxSampleNumber; sampleNumber++) {
 			float value = buffer.get(sampleNumber - minSampleNumber);
 			if(triggerOnRisingEdge && value < triggerLevel - triggerHysteresis)
@@ -584,7 +589,7 @@ public class WidgetTrigger extends Widget {
 				triggeredSampleNumber = sampleNumber;
 				triggered = true;
 				nextTriggerableSampleNumber = triggeredSampleNumber + (int) Math.round(chartDomain * postTriggerPercent);
-				long triggeredTimestamp = triggerChannel.connection.getTimestamp(triggeredSampleNumber);
+				long triggeredTimestamp = datasets.getTimestamp(triggeredSampleNumber);
 				long millisecondsAfterTrigger = (long) ((chartDomain / triggerChannel.connection.sampleRate * 1000) * postTriggerPercent);
 				long triggeredEndTimestamp = triggeredTimestamp + millisecondsAfterTrigger;
 				triggeredMinSampleNumber = minSampleNumber;

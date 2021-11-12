@@ -81,7 +81,6 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 	Plot plot;
 	boolean cachedMode;
 	List<Dataset> allDatasets; // normal and bitfields
-	StorageTimestamps.Cache timestampsCache;
 
 	static final float yAxisMinimumDefault = -1.0f;
 	static final float yAxisMaximumDefault =  1.0f;
@@ -129,8 +128,6 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 				allDatasets.add(state.dataset);
 		});
 		
-		timestampsCache = allDatasets.isEmpty() ? null : allDatasets.get(0).controller.createTimestampsCache();
-		
 	}
 	
 	public OpenGLTimeDomainChart(int x1, int y1, int x2, int y2) {
@@ -141,10 +138,9 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		
 		// create the control widgets and event handlers
 		datasetsAndDurationWidget = new WidgetDatasets(newDatasets -> {
-		                                                   boolean previouslyNoDatasets = !datasets.hasNormals();
 		                                                   datasets.setNormals(newDatasets);
 		                                                   updateAllDatasetsList();
-		                                                   if(previouslyNoDatasets && triggerWidget != null)
+		                                                   if(newDatasets.size() == 1 && triggerWidget != null)
 		                                                	   triggerWidget.setDefaultChannel(datasets.getNormal(0));
 		                                               },
 		                                               newBitfieldEdges -> {
@@ -244,7 +240,7 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 				endTimestamp = triggerWidget.checkForTriggerMillisecondsMode(earlierEndTimestamp, zoomLevel, true);
 			} else {
 				if(!OpenGLChartsView.instance.isPausedView())
-					endTimestamp = datasets.connection.getTimestamp(datasets.connection.getSampleCount() - 1);
+					endTimestamp = datasets.getTimestamp(datasets.connection.getSampleCount() - 1);
 				endTimestamp = triggerWidget.checkForTriggerMillisecondsMode(endTimestamp, zoomLevel, false);
 				earlierEndTimestamp = endTimestamp;
 			}
@@ -253,7 +249,7 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		boolean haveDatasets = allDatasets != null && !allDatasets.isEmpty();
 		int datasetsCount = haveDatasets ? allDatasets.size() : 0;
 		
-		plot.initialize(endTimestamp, endSampleNumber, zoomLevel, datasets, timestampsCache, duration, cachedMode, isTimestampsMode);
+		plot.initialize(endTimestamp, endSampleNumber, zoomLevel, datasets, duration, cachedMode, isTimestampsMode);
 		
 		// calculate the plot range
 		StorageFloats.MinMax requiredRange = plot.getRange();

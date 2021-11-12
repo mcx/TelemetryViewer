@@ -59,9 +59,20 @@ public abstract class Connection {
 	 * Reads the timestamp for a specific sample number or frame number.
 	 * 
 	 * @param sampleNumber    The sample or frame number.
+	 * @param cache           Places to cache timestamps.
 	 * @return                Corresponding timestamp.
 	 */
-	public abstract long getTimestamp(int sampleNumber);
+	public abstract long getTimestamp(int sampleNumber, StorageTimestamps.Cache cache);
+	
+	/**
+	 * @return    Timestamp of the first sample or frame, or 0 if none exist.
+	 */
+	public abstract long getFirstTimestamp();
+	
+	/**
+	 * @return    Timestamp of the last sample or frame, or 0 if none exist.
+	 */
+	public abstract long getLastTimestamp();
 	
 	/**
 	 * @return    The number of samples or frames available.

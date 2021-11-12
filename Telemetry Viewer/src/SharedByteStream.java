@@ -1,3 +1,5 @@
+import java.util.List;
+
 /**
  * Inspired by PipedOutputStream/PipedInputStream, but optimized for my use cases.
  * This is a thread-safe way to share a buffer of telemetry packets between two threads (one reader and one writer.)
@@ -10,6 +12,8 @@ public class SharedByteStream {
 	
 	private boolean ready;
 	private int packetByteCount;
+	private int syncWordByteCount;
+	private byte syncWord;
 	
 	private byte[][] buffer;    // [0 or 1][byteN]
 	private int   bufferSize;
@@ -36,7 +40,7 @@ public class SharedByteStream {
 	 * 
 	 * @param byteCount    Number of bytes per packet (binary mode), or 0 for CSV mode.
 	 */
-	public synchronized void setPacketSize(int byteCount) {
+	public synchronized void setPacketSize(int byteCount, List<Dataset> list, int syncWordByteCount, byte syncWord) {
 			
 		if(byteCount == 0) {
 			
@@ -61,6 +65,8 @@ public class SharedByteStream {
 			
 			writeIntoA = true;
 			packetByteCount = byteCount;
+			this.syncWordByteCount = syncWordByteCount;
+			this.syncWord = syncWord;
 			
 		}
 		
@@ -156,6 +162,63 @@ public class SharedByteStream {
 		}
 		
 		return readBuffer;
+		
+	}
+	
+	public static class DataBuffer {
+		byte[] buffer;
+		int offset;
+		int end;
+		private int readBuffer;
+		private int originalOffset;
+		public DataBuffer(int readBuffer, byte[] buffer, int offset, int end) { this.readBuffer = readBuffer; this.buffer = buffer; this.offset = offset; this.end = end; this.originalOffset = offset; }
+	}
+	
+	public DataBuffer getBytes() throws InterruptedException {
+		
+		int readBuffer = awaitPacket();
+		
+		// ensure the buffer starts with at least one valid packet (in sync if using a sync word, and valid checksum if using a checksum)
+		while(true) {
+
+			// align with the sync word if enabled
+			boolean lostSync = false;
+			if(syncWordByteCount > 0)
+				while(buffer[readBuffer][readIndex[readBuffer]] != syncWord) {
+					lostSync = true;
+					readIndex[readBuffer] = (readIndex[readBuffer] + 1) % bufferSize;
+					occupiedSize[readBuffer]--;
+					readBuffer = awaitPacket();
+				}
+			
+			// show an error message if sync was lost, unless this is the first packet (because we may have connected in the middle of a packet)
+			if(lostSync && connection.getSampleCount() > 0)
+				NotificationsController.showFailureForMilliseconds("Lost sync with the telemetry packet stream.", 5000, true);
+			
+			// test checksum if enabled
+			if(!connection.datasets.checksumPassed(buffer[readBuffer], readIndex[readBuffer], packetByteCount)) {
+				StringBuilder message = new StringBuilder(1024);
+				message.append("A corrupt telemetry packet was received:\n");
+				for(int i = 0; i < packetByteCount; i++)
+					message.append(String.format("%02X ", buffer[readBuffer][readIndex[readBuffer] + i]));
+				NotificationsController.showFailureForMilliseconds(message.toString(), 5000, false);
+				readIndex[readBuffer] = (readIndex[readBuffer] + packetByteCount) % bufferSize;
+				occupiedSize[readBuffer] -= packetByteCount;
+			} else {
+				byte[] array = buffer[readBuffer];
+				int start = readIndex[readBuffer]; // inclusive
+				int end = start + occupiedSize[readBuffer] - 1; // inclusive
+				return new DataBuffer(readBuffer, array, start, end);
+			}
+			
+		}
+		
+	}
+	
+	public void releaseBytes(DataBuffer data) {
+		
+		readIndex[data.readBuffer] = (data.offset) % bufferSize;
+		occupiedSize[data.readBuffer] -= (data.offset - data.originalOffset);
 		
 	}
 	

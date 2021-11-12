@@ -181,7 +181,7 @@ public class DataStructureCsvView extends JPanel {
 			if(datasets.getCount() == 0) {
 				JOptionPane.showMessageDialog(DataStructureCsvView.this, "Error: Define at least one field, or disconnect.", "Error", JOptionPane.ERROR_MESSAGE);
 			} else {
-				connection.dataStructureDefined = true;
+				connection.setDataStructureDefined(true);
 				CommunicationView.instance.redraw();
 				if(ChartsController.getCharts().isEmpty())
 					NotificationsController.showHintUntil("Add a chart by clicking on a tile, or by clicking-and-dragging across multiple tiles.", () -> !ChartsController.getCharts().isEmpty(), true);
@@ -237,7 +237,7 @@ public class DataStructureCsvView extends JPanel {
 				Dataset dataset = datasets.getByIndex(dataStructureTable.getSelectedRow());
 				String title = "Remove " + dataset.name + "?";
 				String message = "<html>Remove the " + dataset.name + " dataset?";
-				if(datasets.getSampleCount() > 0)
+				if(connection.getSampleCount() > 0)
 					message += "<br>WARNING: This will also remove all acquired samples from EVERY dataset!</html>";
 				boolean remove = JOptionPane.showConfirmDialog(DataStructureCsvView.this, message, title, JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION;
 				if(remove) {

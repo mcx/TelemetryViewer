@@ -9,10 +9,7 @@ import java.awt.event.MouseWheelEvent;
 import java.awt.event.MouseWheelListener;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.swing.JFrame;
@@ -68,7 +65,7 @@ public class OpenGLChartsView extends JPanel {
 	long pausedTimestamp;
 	ConnectionTelemetry pausedPrimaryConnection; // if the mouse was over a chart while timeshifting, or if there was only one connection, we also track the corresponding connection and its sample number, to allow sub-millisecond time shifting.
 	int pausedPrimaryConnectionSampleNumber;
-	Map<ConnectionTelemetry, Integer> endSampleNumbers = new HashMap<ConnectionTelemetry, Integer>();
+	List<ConnectionsController.SampleDetails> endSamples = new ArrayList<>();
 	
 	// mouse pointer's current location (pixels, origin at bottom-left)
 	int mouseX;
@@ -411,56 +408,58 @@ public class OpenGLChartsView extends JPanel {
 					
 					// get the timestamp and sample numbers corresponding with the right-edge of a time domain plot
 					long endTimestamp = 0;
-					synchronized(instance) {
-						if(liveView) {
-							// get the most recent sample numbers and corresponding timestamp
-							endTimestamp = Long.MIN_VALUE;
-							endSampleNumbers.clear();
-							for(ConnectionTelemetry connection : ConnectionsController.telemetryConnections) {
-								int sampleCount = connection.getSampleCount();
-								endSampleNumbers.put(connection, sampleCount - 1);
-								if(sampleCount > 0) {
-									long lastTimestamp = connection.getTimestamp(sampleCount - 1);
-									if(endTimestamp < lastTimestamp)
-										endTimestamp = lastTimestamp;
-								}
-							}
-							for(ConnectionCamera connection : ConnectionsController.cameraConnections) {
-								int sampleCount = connection.getSampleCount();
-								if(sampleCount > 0) {
-									long lastTimestamp = connection.getTimestamp(sampleCount - 1);
-									if(endTimestamp < lastTimestamp)
-										endTimestamp = lastTimestamp;
-								}
-							}
-						} else {
-							// get the sample numbers corresponding with the paused timestamp
-							endTimestamp = pausedTimestamp;
-							endSampleNumbers.clear();
-							for(ConnectionTelemetry connection : ConnectionsController.telemetryConnections) {
-								if(connection == pausedPrimaryConnection) {
-									endSampleNumbers.put(connection, pausedPrimaryConnectionSampleNumber);
-								} else {
-									int lastSampleNumber = connection.getSampleCount() - 1;
-									endSampleNumbers.put(connection, connection.datasets.getClosestSampleNumberAtOrBefore(pausedTimestamp, lastSampleNumber));
-								}
+					if(liveView) {
+						// get the most recent sample numbers and corresponding timestamp
+						endTimestamp = Long.MIN_VALUE;
+						endSamples.clear();
+						for(ConnectionTelemetry connection : ConnectionsController.telemetryConnections) {
+							int lastSampleNumber = connection.getSampleCount() - 1;
+							long lastTimestamp = connection.getLastTimestamp();
+							endSamples.add(new ConnectionsController.SampleDetails(connection, lastSampleNumber, lastTimestamp));
+							if(lastSampleNumber >= 0)
+								if(endTimestamp < lastTimestamp)
+									endTimestamp = lastTimestamp;
+						}
+						for(ConnectionCamera connection : ConnectionsController.cameraConnections) {
+							int sampleCount = connection.getSampleCount();
+							if(sampleCount > 0) {
+								long lastTimestamp = connection.getLastTimestamp();
+								if(endTimestamp < lastTimestamp)
+									endTimestamp = lastTimestamp;
 							}
 						}
-						// if the sample numbers don't correspond within 10ms of the timestamp, fake them forward or backward
-						// this helps charts to line up if multiple connections exist, but one connection has samples before or after another connection
-						if(endTimestamp != Long.MIN_VALUE)
-							for(Entry<ConnectionTelemetry, Integer> entry : endSampleNumbers.entrySet()) {
-								ConnectionTelemetry connection = entry.getKey();
-								if(triggeredView && connection == pausedPrimaryConnection)
-									continue;
-								int endSampleNumber = entry.getValue();
-								long connectionEndTimestamp = connection.getTimestamp(endSampleNumber);
-								long errorMilliseconds = endTimestamp - connectionEndTimestamp;
-								if(errorMilliseconds > 10 || errorMilliseconds < -10) {
-									int errorSampleCount = (int) Math.round((double) errorMilliseconds * (double) connection.sampleRate / 1000.0);
-									endSampleNumbers.put(connection, endSampleNumber + errorSampleCount);
-								}
+					} else {
+						// get the sample numbers corresponding with the paused timestamp
+						endTimestamp = pausedTimestamp;
+						endSamples.clear();
+						ConnectionsController.interfaces.entrySet().forEach(entry -> {
+							ConnectionTelemetry connection = entry.getKey();
+							DatasetsInterface datasets = entry.getValue();
+							if(connection == pausedPrimaryConnection) {
+								endSamples.add(new ConnectionsController.SampleDetails(connection, pausedPrimaryConnectionSampleNumber, pausedTimestamp));
+							} else {
+								int sampleNumber = datasets.getClosestSampleNumberAtOrBefore(pausedTimestamp, connection.getSampleCount() - 1);
+								long timestamp = datasets.getTimestamp(sampleNumber);
+								endSamples.add(new ConnectionsController.SampleDetails(connection, sampleNumber, timestamp));
 							}
+						});
+					}
+					// if the sample numbers don't correspond within 10ms of the timestamp, fake them forward or backward
+					// this helps charts to line up if multiple connections exist, but one connection has samples before or after another connection
+					if(endTimestamp != Long.MIN_VALUE) {
+						for(ConnectionsController.SampleDetails details : endSamples) {
+							ConnectionTelemetry connection = details.connection;
+							int connectionSampleNumber = details.sampleNumber;
+							long connectionTimestamp = details.timestamp;
+							
+							if(triggeredView && connection == pausedPrimaryConnection)
+								continue;
+							long errorMilliseconds = endTimestamp - connectionTimestamp;
+							if(errorMilliseconds > 10 || errorMilliseconds < -10) {
+								int errorSampleCount = (int) Math.round((double) errorMilliseconds * (double) connection.sampleRate / 1000.0);
+								details.sampleNumber = connectionSampleNumber + errorSampleCount;
+							}
+						}
 					}
 					
 					// draw the charts
@@ -472,10 +471,10 @@ public class OpenGLChartsView extends JPanel {
 					for(PositionedChart chart : charts) {
 						
 						int lastSampleNumber = -1;
-						synchronized(instance) {
-							if(chart.datasets.connection != null)
-								lastSampleNumber = endSampleNumbers.get(chart.datasets.connection);
-						}
+						if(chart.datasets.connection != null)
+							for(ConnectionsController.SampleDetails details : endSamples)
+								if(details.connection == chart.datasets.connection)
+									lastSampleNumber = details.sampleNumber;
 						
 						// if there is a maximized chart, only draw that chart
 						if(maximizedChart != null && maximizedChart != removingChart && chart != maximizedChart && !maximizing && !demaximizing) {
@@ -884,17 +883,17 @@ public class OpenGLChartsView extends JPanel {
 						int trueLastSampleNumber = connection.getSampleCount() - 1;
 						int oldSampleNumber = liveView ? trueLastSampleNumber :
 						                      !liveView && pausedPrimaryConnection == connection ? pausedPrimaryConnectionSampleNumber :
-						                      connection.datasets.getClosestSampleNumberAtOrBefore(pausedTimestamp, trueLastSampleNumber);
+						                      ConnectionsController.interfaces.get(connection).getClosestSampleNumberAtOrBefore(pausedTimestamp, trueLastSampleNumber);
 						int newSampleNumber = oldSampleNumber + (int) delta;
 						if(newSampleNumber < 0)
 							newSampleNumber = 0;
 						if(newSampleNumber >= trueLastSampleNumber)
 							newSampleNumber = trueLastSampleNumber;
 
-						long newTimestamp = connection.datasets.getTimestamp(newSampleNumber);
+						long newTimestamp = ConnectionsController.interfaces.get(connection).getTimestamp(newSampleNumber);
 						
-						boolean beforeStartOfData = !liveView && pausedTimestamp < connection.datasets.getTimestamp(0);
-						boolean afterEndOfData    = !liveView && pausedTimestamp > connection.datasets.getTimestamp(connection.getSampleCount() - 1);
+						boolean beforeStartOfData = !liveView && pausedTimestamp < connection.getFirstTimestamp();
+						boolean afterEndOfData    = !liveView && pausedTimestamp > connection.getLastTimestamp();
 						boolean reachedStartOrEnd = oldSampleNumber + (int) delta < 0 || oldSampleNumber + (int) delta >= trueLastSampleNumber;
 						if(beforeStartOfData || afterEndOfData || (reachedStartOrEnd && activeConnections > 1)) {
 							newTimestamp = pausedTimestamp + (long) (delta / connection.sampleRate * 1000.0);
@@ -1144,16 +1143,6 @@ public class OpenGLChartsView extends JPanel {
 		pausedTimestamp = timestamp;
 		pausedPrimaryConnection = connection;
 		pausedPrimaryConnectionSampleNumber = sampleNumber;
-		
-	}
-	
-	public int getLastSampleNumber(ConnectionTelemetry connection) {
-		
-		synchronized(instance) {
-			
-			return endSampleNumbers.get(connection);
-			
-		}
 		
 	}
 	

@@ -37,12 +37,11 @@ public class PlotSampleCount extends Plot {
 	 * @param endSampleNumber   Sample number corresponding with the right edge of a time-domain plot. NOTE: this sample might not exist yet!
 	 * @param zoomLevel         Current zoom level. 1.0 = no zoom.
 	 * @param datasets          Normal/edge/level datasets to acquire from.
-	 * @param timestampCache    Place to cache timestamps.
 	 * @param duration          The sample count, before applying the zoom factor.
 	 * @param cachedMode        True to enable the cache.
 	 * @param showTimestamps    Ignored. This is only used by PlotMilliseconds.
 	 */
-	@Override void initialize(long endTimestamp, long endSampleNumber, double zoomLevel, DatasetsInterface datasets, StorageTimestamps.Cache timestampsCache, long duration, boolean cachedMode, boolean showTimestamps) {
+	@Override void initialize(long endTimestamp, long endSampleNumber, double zoomLevel, DatasetsInterface datasets, long duration, boolean cachedMode, boolean showTimestamps) {
 		
 		this.datasets = datasets;
 		this.cachedMode = cachedMode;
@@ -326,9 +325,9 @@ public class PlotSampleCount extends Plot {
 		
 		// draw any bitfield changes
 		if(plotSampleCount >= 2) {
-			List<BitfieldEvents.EdgeMarker>  edgeMarkers  = events.getEdgeMarkers ((connection, sampleNumber) -> (sampleNumber - plotMinX) / (float) plotDomain * plotWidth);
-			List<BitfieldEvents.LevelMarker> levelMarkers = events.getLevelMarkers((connection, sampleNumber) -> (sampleNumber - plotMinX) / (float) plotDomain * plotWidth);
-			ChartUtils.drawMarkers(gl, edgeMarkers, levelMarkers, xPlotLeft, yPlotBottom + plotHeight, xPlotLeft + plotWidth, yPlotBottom, -1, -1);
+			List<BitfieldEvents.EdgeMarker>  edgeMarkers  = events.getEdgeMarkersSampleCountMode((int) plotMinX, (int) plotDomain, plotWidth);
+			List<BitfieldEvents.LevelMarker> levelMarkers = events.getLevelMarkersSampleCountMode((int) plotMinX, (int) plotDomain, plotWidth);
+			ChartUtils.drawMarkers(gl, datasets, edgeMarkers, levelMarkers, xPlotLeft, yPlotBottom + plotHeight, xPlotLeft + plotWidth, yPlotBottom, -1, -1);
 		}
 
 		// stop clipping to the plot region
@@ -468,9 +467,9 @@ public class PlotSampleCount extends Plot {
 		
 		// draw any bitfield changes
 		if(plotSampleCount >= 2) {
-			List<BitfieldEvents.EdgeMarker>  edgeMarkers  = events.getEdgeMarkers ((connection, sampleNumber) -> (sampleNumber - plotMinX) / (float) plotDomain * plotWidth);
-			List<BitfieldEvents.LevelMarker> levelMarkers = events.getLevelMarkers((connection, sampleNumber) -> (sampleNumber - plotMinX) / (float) plotDomain * plotWidth);
-			ChartUtils.drawMarkers(gl, edgeMarkers, levelMarkers, xPlotLeft, yPlotBottom + plotHeight, xPlotLeft + plotWidth, yPlotBottom, -1, -1);
+			List<BitfieldEvents.EdgeMarker>  edgeMarkers  = events.getEdgeMarkersSampleCountMode((int) plotMinX, (int) plotDomain, plotWidth);
+			List<BitfieldEvents.LevelMarker> levelMarkers = events.getLevelMarkersSampleCountMode((int) plotMinX, (int) plotDomain, plotWidth);
+			ChartUtils.drawMarkers(gl, datasets, edgeMarkers, levelMarkers, xPlotLeft, yPlotBottom + plotHeight, xPlotLeft + plotWidth, yPlotBottom, -1, -1);
 		}
 
 		// stop clipping to the plot region

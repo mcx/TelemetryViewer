@@ -24,12 +24,11 @@ public abstract class Plot {
 	 * @param endSampleNumber    Sample number corresponding with the right edge of a time-domain plot. NOTE: this sample might not exist yet!
 	 * @param zoomLevel          Current zoom level. 1.0 = no zoom.
 	 * @param datasets           Normal/edge/level datasets to acquire from.
-	 * @param timestampCache     Place to cache timestamps.
 	 * @param duration           The sample count, before applying the zoom factor.
 	 * @param cachedMode         True to enable the cache.
 	 * @param showTimestamps     True if the x-axis shows timestamps, false if the x-axis shows sample count or elapsed time.
 	 */
-	abstract void initialize(long endTimestamp, long endSampleNumber, double zoomLevel, DatasetsInterface datasets, StorageTimestamps.Cache timestampsCache, long duration, boolean cachedMode, boolean showTimestamps);
+	abstract void initialize(long endTimestamp, long endSampleNumber, double zoomLevel, DatasetsInterface datasets, long duration, boolean cachedMode, boolean showTimestamps);
 	
 	/**
 	 * Step 2: Get the required range, assuming you want to see all samples on screen.

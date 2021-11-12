@@ -24,13 +24,14 @@ import java.util.Enumeration;
 import java.util.List;
 import java.util.Queue;
 import java.util.Scanner;
-import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.Phaser;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiFunction;
 
@@ -47,6 +48,7 @@ import javax.swing.JPanel;
 import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
+
 import com.fazecast.jSerialComm.SerialPort;
 import net.miginfocom.swing.MigLayout;
 
@@ -75,7 +77,37 @@ public class ConnectionTelemetry extends Connection {
 	public volatile int baudRate = 9600; // for UART mode
 	public volatile int portNumber = 8080; // for TCP/UDP modes
 	
-	public volatile boolean dataStructureDefined = false;
+	private volatile int packetByteCount = 0; // INCLUDING the optional sync word and checksum
+	
+	public void setDataStructureDefined(boolean isDefined) {
+		
+		if(!isDefined) {
+			packetByteCount = 0;
+			return;
+		}
+		
+		if(packetType != PacketType.BINARY) {
+			packetByteCount = 1; // not used outside of binary mode, so using 1 to indicate it's defined
+			return;
+		}
+		
+		int packetLength = 0; 
+		if(datasets.getChecksumProcessor() != null)
+			packetLength = datasets.getChecksumProcessorOffset() + datasets.getChecksumProcessor().getByteCount();
+		else
+			for(Dataset dataset : datasets.getList()) {
+				if(dataset.location + dataset.processor.getByteCount() - 1 > packetLength)
+					packetLength = dataset.location + dataset.processor.getByteCount();
+			}
+		packetByteCount = packetLength;
+		
+	}
+	
+	public boolean isDataStructureDefined() {
+		
+		return packetByteCount > 0;
+		
+	}
 	
 	private final int MAX_UDP_PACKET_SIZE = 65507; // 65535 - (8byte UDP header) - (20byte IP header)
 	private final int MAX_TCP_IDLE_MILLISECONDS = 10000; // if connected but no new samples after than much time, disconnect and wait for a new connection
@@ -147,6 +179,8 @@ public class ConnectionTelemetry extends Connection {
 			previousRepititionTimestamp = 0;
 		}
 		
+		timestamps = new StorageTimestamps(this);
+		
 	}
 	
 	/**
@@ -187,6 +221,8 @@ public class ConnectionTelemetry extends Connection {
 			transmitQueue = new ConcurrentLinkedQueue<byte[]>();
 			previousRepititionTimestamp = 0;
 		}
+		
+		timestamps = new StorageTimestamps(this);
 		
 	}
 	
@@ -495,7 +531,7 @@ public class ConnectionTelemetry extends Connection {
 		}
 		
 		if(showGui) {
-			dataStructureDefined = false;
+			setDataStructureDefined(false);
 			CommunicationView.instance.redraw();	
 		}
 		
@@ -688,7 +724,7 @@ public class ConnectionTelemetry extends Connection {
 			transmit.savePacket(new TransmitController.SavedPacket("lastp".getBytes(), "Previous Screen"));
 			transmit.savePacket(new TransmitController.SavedPacket("nextp".getBytes(), "Next Screen"));
 			
-			dataStructureDefined = true;
+			setDataStructureDefined(true);
 			
 		}
 		
@@ -918,7 +954,7 @@ public class ConnectionTelemetry extends Connection {
 					datasets.getByIndex(3).setSample(sampleNumber, (float) Math.sin(2 * Math.PI * 1000 * sampleNumber / 10000.0));
 					
 					sampleNumber++;
-					datasets.incrementSampleCount();
+					incrementSampleCount(1);
 
 					currentFrequencySampleCount++;
 					if(currentFrequencySampleCount == samplesForCurrentFrequency) {
@@ -991,7 +1027,7 @@ public class ConnectionTelemetry extends Connection {
 				checksumProcessor = p;
 		datasets.insertChecksum(9, checksumProcessor);
 		
-		dataStructureDefined = true;
+		setDataStructureDefined(true);
 		CommunicationView.instance.redraw();
 		
 		PositionedChart chart = ChartsController.createAndAddChart("Time Domain", 0, 0, 5, 5);
@@ -1023,6 +1059,27 @@ public class ConnectionTelemetry extends Connection {
 		
 		Main.window.setExtendedState(JFrame.NORMAL);
 		
+		// prepare the TX buffer
+		byte[] array = new byte[11 * 65536]; // 11 bytes per packet, 2^16 packets
+		ByteBuffer buffer = ByteBuffer.wrap(array);
+		buffer.order(ByteOrder.LITTLE_ENDIAN);
+		short a = 0;
+		short b = 1;
+		short c = 2;
+		short d = 3;
+		for(int i = 0; i < 65536; i++) {
+			buffer.put((byte) 0xAA);
+			buffer.putShort(a);
+			buffer.putShort(b);
+			buffer.putShort(c);
+			buffer.putShort(d);
+			buffer.putShort((short) (a+b+c+d));
+			a++;
+			b++;
+			c++;
+			d++;
+		}
+		
 		transmitterThread = new Thread(() -> {
 
 			SharedByteStream stream = new SharedByteStream(ConnectionTelemetry.this);
@@ -1031,14 +1088,6 @@ public class ConnectionTelemetry extends Connection {
 			startProcessingTelemetry(stream);
 
 			long bytesSent = 0;
-			final int repeat = 300;
-			byte[] buffer = new byte[11*repeat]; // sync + 4 int16s + checksum
-			ByteBuffer bb = ByteBuffer.wrap(buffer);
-			bb.order(ByteOrder.LITTLE_ENDIAN);
-			short a = 0;
-			short b = 1;
-			short c = 2;
-			short d = 3;
 			long start = System.currentTimeMillis();
 
 			while(true) {
@@ -1048,22 +1097,8 @@ public class ConnectionTelemetry extends Connection {
 					if(Thread.interrupted() || !connected)
 						throw new InterruptedException();
 					
-					bb.rewind();
-					for(int n = 0; n < repeat; n++) {
-						bb.put((byte) 0xAA);
-						bb.putShort(a);
-						bb.putShort(b);
-						bb.putShort(c);
-						bb.putShort(d);
-						bb.putShort((short) (a+b+c+d));
-						a++;
-						b++;
-						c++;
-						d++;
-					}
-					
-					stream.write(buffer, buffer.length);
-					bytesSent += buffer.length;
+					stream.write(array, array.length);
+					bytesSent += array.length;
 					long end = System.currentTimeMillis();
 					if(end - start > 3000) {
 						String text = String.format("%1.1f Mbps (%1.1f Mpackets/sec)", (bytesSent / (double)(end-start) * 1000.0 * 8.0 / 1000000), (bytesSent / 11 / (double)(end-start) * 1000.0) / 1000000.0);
@@ -1278,7 +1313,7 @@ public class ConnectionTelemetry extends Connection {
 			datasets.insertChecksum(checksumOffset, processor);
 		}
 		
-		dataStructureDefined = true;
+		setDataStructureDefined(true);
 		CommunicationView.instance.redraw();
 
 	}
@@ -1378,18 +1413,6 @@ public class ConnectionTelemetry extends Connection {
 		
 	}
 	
-	@Override public long getTimestamp(int sampleNumber) {
-		
-		return datasets.getTimestamp(sampleNumber);
-		
-	}
-	
-	@Override public int getSampleCount() {
-		
-		return datasets.getSampleCount();
-		
-	}
-	
 	@Override public void removeAllData() {
 		
 		datasets.removeAllData();
@@ -1483,7 +1506,7 @@ public class ConnectionTelemetry extends Connection {
 					for(int columnN = 2; columnN < columnCount; columnN++)
 						datasets.getByIndex(columnN - 2).setConvertedSample(sampleNumber, Float.parseFloat(tokens[columnN]));
 					sampleNumber++;
-					datasets.incrementSampleCountWithTimestamp(Long.parseLong(tokens[1]));
+					incrementSampleCountWithTimestamp(1, Long.parseLong(tokens[1]));
 					
 					if(file.hasNextLine()) {
 						line = file.nextLine();
@@ -1623,8 +1646,9 @@ public class ConnectionTelemetry extends Connection {
 					text[i] = Integer.toString(firstSampleNumber + i);
 			} else if(csvColumnNumber == 1) {
 				// second column is the UNIX timestamp
+				StorageTimestamps.Cache cache = createTimestampsCache();
 				for(int i = 0; i < sampleCount; i++)
-					text[i] = Long.toString(datasets.getTimestamp(firstSampleNumber + i));
+					text[i] = Long.toString(getTimestamp(firstSampleNumber + i, cache));
 			} else {
 				// other columns are the datasets
 				Dataset dataset = datasets.getByIndex(csvColumnNumber - 2);
@@ -1646,6 +1670,7 @@ public class ConnectionTelemetry extends Connection {
 			disconnect(null);
 		
 		datasets.dispose();
+		timestamps.dispose();
 		
 		// if this is the only connection, remove all charts, because there may be a timeline chart
 		if(ConnectionsController.allConnections.size() == 1)
@@ -1663,7 +1688,7 @@ public class ConnectionTelemetry extends Connection {
 		processorThread = new Thread(() -> {
 			
 			// wait for the data structure to be defined
-			while(!dataStructureDefined) {
+			while(!isDataStructureDefined()) {
 				try {
 					Thread.sleep(1);
 				} catch (InterruptedException e) {
@@ -1703,7 +1728,7 @@ public class ConnectionTelemetry extends Connection {
 			if(packetType == PacketType.CSV) {
 				
 				// prepare for CSV mode
-				stream.setPacketSize(0);
+				stream.setPacketSize(0, list, 0, (byte) 0);
 				int maxLocation = 0;
 				for(Dataset d : list)
 					if(d.location > maxLocation)
@@ -1732,7 +1757,7 @@ public class ConnectionTelemetry extends Connection {
 						
 						for(Dataset d : list)
 							d.setSample(sampleNumber, numberForLocation[d.location]);
-						datasets.incrementSampleCount();
+						incrementSampleCount(1);
 						
 					} catch(NumberFormatException | NullPointerException | ArrayIndexOutOfBoundsException e1) {
 						
@@ -1749,22 +1774,19 @@ public class ConnectionTelemetry extends Connection {
 			} else if(packetType == PacketType.BINARY) {
 				
 				// prepare for binary mode 
-				int packetLength = 0; // INCLUDING the sync word and optional checksum
-				if(datasets.getChecksumProcessor() != null)
-					packetLength = datasets.getChecksumProcessorOffset() + datasets.getChecksumProcessor().getByteCount();
-				else
-					for(Dataset d : list)
-						if(d.location + d.processor.getByteCount() - 1 > packetLength)
-							packetLength = d.location + d.processor.getByteCount();
-				stream.setPacketSize(packetLength);
+				final int syncWordByteCount = datasets.syncWordByteCount;
+				final byte syncWord = datasets.syncWord;
+				stream.setPacketSize(packetByteCount, list, syncWordByteCount, syncWord);
 				
 				// use multiple threads to process incoming data in parallel, with each thread parsing up to 8 blocks at a time
+				Phaser phaser = new Phaser(1);
+				int phase = -1;
 				final int THREAD_COUNT = Runtime.getRuntime().availableProcessors();
 				final int MAX_BLOCK_COUNT_PER_THREAD = 8;
-				CyclicBarrier allThreadsDone = new CyclicBarrier(THREAD_COUNT + 1);
-				Parser[] parsingThreads = new Parser[THREAD_COUNT];
+				ExecutorService pool = Executors.newFixedThreadPool(THREAD_COUNT);
+				Parser[] parsers = new Parser[THREAD_COUNT];
 				for(int i = 0; i < THREAD_COUNT; i++)
-					parsingThreads[i] = new Parser(list, packetLength, MAX_BLOCK_COUNT_PER_THREAD, allThreadsDone);
+					parsers[i] = new Parser(list, packetByteCount, MAX_BLOCK_COUNT_PER_THREAD, phaser, syncWordByteCount, syncWord);
 				
 				while(true) {
 					
@@ -1773,56 +1795,109 @@ public class ConnectionTelemetry extends Connection {
 						if(Thread.interrupted())
 							throw new InterruptedException();
 						
-						// get all received telemetry packets, stopping early if there is a loss of sync or bad checksum
-						SharedByteStream.PacketsBuffer packets = stream.readPackets(datasets.syncWord, datasets.syncWordByteCount);
+						SharedByteStream.DataBuffer data = stream.getBytes();
 						
-						// process the received telemetry packets
-						while(packets.count > 0) {
-							
-							int sampleNumber = getSampleCount();
-							if(sampleNumber + packets.count < 0) { // <0 because of overflow
-								SwingUtilities.invokeLater(() -> disconnect("Reached maximum sample count. Disconnected.")); // invokeLater to prevent deadlock
-								throw new InterruptedException();
-							}
-							
-							boolean blockAligned = sampleNumber % StorageFloats.BLOCK_SIZE == 0;
-							int blocksRemaining = packets.count / StorageFloats.BLOCK_SIZE;
-							
-							if(blockAligned && blocksRemaining >= THREAD_COUNT) {
-								
-								// use the Parser threads to parse packets in parallel
-								int blocksPerThread = Integer.min(blocksRemaining / THREAD_COUNT, MAX_BLOCK_COUNT_PER_THREAD);
-								int packetsPerThread = StorageFloats.BLOCK_SIZE * blocksPerThread;
-								for(Parser thread : parsingThreads) {
-									thread.process(packets.buffer, packets.offset, blocksPerThread, sampleNumber);
-									packets.offset += packetLength * packetsPerThread;
-									packets.count  -= packetsPerThread;
-									sampleNumber   += packetsPerThread;
-								}
-								allThreadsDone.await();
-								allThreadsDone.reset();
-								for(int i = 0; i < blocksPerThread * THREAD_COUNT; i++)
-									datasets.incrementSampleCountBlock();
-								
-							} else {
-								
-								// process packets individually
-								for(Dataset dataset : list) {
-									float rawNumber = dataset.processor.extractValue(packets.buffer, packets.offset + dataset.location);
-									dataset.setSample(sampleNumber, rawNumber);
-								}
-								datasets.incrementSampleCount();
-								packets.count--;
-								packets.offset += packetLength;
-								
-							}
-
+						// ensure room exists for the new samples
+						int sampleNumber = getSampleCount();
+						int packetCount = (data.end - data.offset + 1) / packetByteCount;
+						if(sampleNumber + packetCount < 0) { // <0 because of overflow
+							SwingUtilities.invokeLater(() -> disconnect("Reached maximum sample count. Disconnected.")); // invokeLater to prevent deadlock
+							throw new InterruptedException();
 						}
-					
-					} catch(InterruptedException | BrokenBarrierException e) {
 						
-						for(Parser thread : parsingThreads)
-							thread.dispose();
+						boolean abort = false;
+						
+						// part 1 of 3: process packets individually if not block aligned
+						int samplesBeforeNextBlock = Integer.min(packetCount, (StorageFloats.BLOCK_SIZE - (sampleNumber % StorageFloats.BLOCK_SIZE)) % StorageFloats.BLOCK_SIZE);
+						while(samplesBeforeNextBlock > 0) {
+							
+							if(syncWordByteCount > 0 && data.buffer[data.offset] != syncWord) {
+								abort = true;
+								break;
+							}
+							if(!datasets.checksumPassed(data.buffer, data.offset, packetByteCount)) {
+								data.offset += packetByteCount;
+								abort = true;
+								break;
+							}
+							
+							for(Dataset dataset : list) {
+								float rawNumber = dataset.processor.extractValue(data.buffer, data.offset + dataset.location);
+								dataset.setSample(sampleNumber, rawNumber);
+							}
+							data.offset += packetByteCount;
+							incrementSampleCount(1);
+							sampleNumber++;
+							samplesBeforeNextBlock--;
+							
+						}
+						
+						if(abort) {
+							stream.releaseBytes(data);
+							continue;
+						}
+						
+						// part 2 of 3: process blocks of packets in parallel if block aligned and more than one full block remaining
+						packetCount = (data.end - data.offset + 1) / packetByteCount;
+						int blocksRemaining = packetCount / StorageFloats.BLOCK_SIZE;
+						if(blocksRemaining > 0) {
+							int threadN = 0;
+							int threadOffset = data.offset;
+							while(blocksRemaining > 0) {
+								
+								int blockCount = Integer.min(blocksRemaining, MAX_BLOCK_COUNT_PER_THREAD);
+								pool.execute(parsers[threadN].configure(data, threadOffset, blockCount, sampleNumber, phase++));
+								int threadPacketCount = blockCount * StorageFloats.BLOCK_SIZE;
+								sampleNumber += threadPacketCount;
+								threadOffset += threadPacketCount * packetByteCount;
+								blocksRemaining -= blockCount;
+								threadN = (threadN + 1) % THREAD_COUNT;
+								
+							}
+							
+							int currentPhase = phaser.awaitAdvance(phase);
+							while(currentPhase != phase + 1)
+								currentPhase = phaser.awaitAdvance(currentPhase);
+							
+							abort = getSampleCount() != sampleNumber;
+							if(abort) {
+								stream.releaseBytes(data);
+								continue;
+							}
+						}
+						
+						// part 3 of 3: process the rest of the packets individually if any remain after the blocks
+						packetCount = (data.end - data.offset + 1) / packetByteCount;
+						while(packetCount > 0) {
+						
+							if(syncWordByteCount > 0 && data.buffer[data.offset] != syncWord) {
+								abort = true;
+								break;
+							}
+							if(!datasets.checksumPassed(data.buffer, data.offset, packetByteCount)) {
+								data.offset += packetByteCount;
+								abort = true;
+								break;
+							}
+							
+							for(Dataset dataset : list) {
+								float rawNumber = dataset.processor.extractValue(data.buffer, data.offset + dataset.location);
+								dataset.setSample(sampleNumber, rawNumber);
+							}
+							data.offset += packetByteCount;
+							incrementSampleCount(1);
+							sampleNumber++;
+							packetCount--;
+							
+						}
+						
+						// done
+						stream.releaseBytes(data);
+					
+					} catch(InterruptedException e) {
+						
+						pool.shutdown();
+						try { pool.awaitTermination(5, TimeUnit.SECONDS); } catch (Exception e2) {}
 						return;
 						
 					}
@@ -1832,7 +1907,7 @@ public class ConnectionTelemetry extends Connection {
 			} else if(packetType == PacketType.TC66) {
 				
 				int packetLength = 64;
-				stream.setPacketSize(packetLength);
+				stream.setPacketSize(packetLength, list, 0, (byte) 0);
 				
 				// for some reason the TC66/TC66C uses AES encryption when sending measurements to the PC
 				// this key is NOT a secret and IS intentionally in this publicly accessible source code
@@ -1947,7 +2022,7 @@ public class ConnectionTelemetry extends Connection {
 								list.get(8).setConvertedSample (sampleNumber, (float) temperature);
 								list.get(9).setConvertedSample (sampleNumber, dPlusVoltage);
 								list.get(10).setConvertedSample(sampleNumber, dMinusVoltage);
-								datasets.incrementSampleCount();
+								incrementSampleCount(1);
 							} else {
 								// got a sub packet that is out of order, so skip over it so we can re-align
 								packets.count--;
@@ -1979,129 +2054,144 @@ public class ConnectionTelemetry extends Connection {
 		
 	}
 	
-	private static class Parser {
+	public class Parser implements Runnable {
 		
-		private final Thread thread;
-		private final CyclicBarrier newData;    // used to indicate when new data is ready to be parsed
+		private SharedByteStream.DataBuffer data; // buffer of telemetry packets
+		private int offset;                       // where in the buffer this object should start parsing
+		private int blockCount;                   // how many blocks this thread should parse
+		private int firstSampleNumber;            // which sample number the first packet corresponds to
+		private int phase = -2;                   // which phase to wait for
 		
-		private volatile byte[] buffer;         // stream of telemetry packets
-		private volatile int offset;            // where in the buffer this object should start parsing
-		private volatile int blockCount;        // how many blocks this thread should parse
-		private volatile int firstSampleNumber; // which sample number the first packet corresponds to
-		
+		private final List<Dataset> datasets;
+		private final int datasetsCount;
+		private final int packetByteCount;
 		private final float[][] minimumValue;   // [blockN][datasetN]
 		private final float[][] maximumValue;   // [blockN][datasetN]
+		private final Phaser phaser;
+		
+		private final int syncWordByteCount;
+		private final byte syncWord;
 		
 		/**
-		 * Configures this object, but does not start to parse any data.
+		 * Initializes this object, but does not start to parse any data.
+		 * Before calling run(), you must call configure().
 		 * 
 		 * @param datasets           List of Datasets that receive the parsed data.
 		 * @param packetByteCount    Number of bytes in each packet INCLUDING the sync word and optional checksum.
 		 * @param maxBlockCount      Maximum number of blocks that should be parsed by this object.
-		 * @param allThreadsDone     Barrier to await on after the data has been parsed.
+		 * @param phaser             Phaser to await on before incrementing the sample count.
 		 */
-		public Parser(List<Dataset> datasets, int packetByteCount, int maxBlockCount, CyclicBarrier allThreadsDone) {
+		public Parser(List<Dataset> datasets, int packetByteCount, int maxBlockCount, Phaser phaser, int syncWordByteCount, byte syncWord) {
 			
-			int datasetsCount = datasets.size();
-			minimumValue = new float[maxBlockCount][datasetsCount];
-			maximumValue = new float[maxBlockCount][datasetsCount];
+			this.datasets = datasets;
+			this.datasetsCount = datasets.size();
+			this.packetByteCount = packetByteCount;
+			this.minimumValue = new float[maxBlockCount][datasetsCount];
+			this.maximumValue = new float[maxBlockCount][datasetsCount];
+			this.phaser = phaser;
 			
-			newData = new CyclicBarrier(2);
-			thread = new Thread(() -> {
-				
-				while(true) {
-					
-					try {
-						
-						// wait for data to parse
-						newData.await();
-						
-						float[][] slots = new float[datasetsCount][];
-							
-						// parse each packet of each block
-						for(int blockN = 0; blockN < blockCount; blockN++) {
-							
-							for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
-								slots[datasetN] = datasets.get(datasetN).getSlot(firstSampleNumber + (blockN * StorageFloats.BLOCK_SIZE));
-							
-							int slotOffset = (firstSampleNumber + (blockN * StorageFloats.BLOCK_SIZE)) % StorageFloats.SLOT_SIZE;
-							float[] minVal = minimumValue[blockN];
-							float[] maxVal = maximumValue[blockN];
-							for(int packetN = 0; packetN < StorageFloats.BLOCK_SIZE; packetN++) {
-								
-								for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
-									Dataset d = datasets.get(datasetN);
-									float f = d.processor.extractValue(buffer, offset + d.location) * d.conversionFactor;
-									slots[datasetN][slotOffset] = f;
-									if(packetN == 0) {
-										minVal[datasetN] = f;
-										maxVal[datasetN] = f;
-									}
-									if(f < minVal[datasetN])
-										minVal[datasetN] = f;
-									if (f > maxVal[datasetN])
-										maxVal[datasetN] = f;
-								}
-								
-								offset += packetByteCount;
-								slotOffset++;
-								
-							}
-						}
-						
-						// update datasets
-						for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
-							for(int blockN = 0; blockN < blockCount; blockN++)
-								datasets.get(datasetN).setRangeOfBlock(firstSampleNumber + (blockN * StorageFloats.BLOCK_SIZE), minimumValue[blockN][datasetN], maximumValue[blockN][datasetN]);
-						
-						// done
-						allThreadsDone.await();
-							
-					} catch(InterruptedException | BrokenBarrierException e) {
-						return;
-					}
-				}
-				
-			});
-			
-			thread.setPriority(Thread.MAX_PRIORITY);
-			thread.setName("Parser Thread");
-			thread.start();
+			this.syncWordByteCount = syncWordByteCount;
+			this.syncWord = syncWord;
 			
 		}
 		
-		/**
-		 * Instructs this thread to start processing one or more blocks of packets.
-		 * Sync words and checksums are NOT tested here, they must be tested prior to this.
-		 * 
-		 * @param buffer               The byte[] containing telemetry packets.
-		 * @param offset               Index into the byte[] where this thread should start processing.
-		 * @param blockCount           Number of blocks to parse.
-		 * @param firstSampleNumber    Which sample number the first packet corresponds to.
-		 */
-		public void process(byte[] buffer, int offset, int blockCount, int firstSampleNumber) throws InterruptedException {
+		public Parser configure(SharedByteStream.DataBuffer data, int offset, int blockCount, int firstSampleNumber, int phase) {
 			
-			this.buffer            = buffer;
+			// wait for this thread to finish processing it's previous configuration
+			if(this.phase != -2) {
+				int currentPhase = phaser.awaitAdvance(this.phase + 1);
+				while(currentPhase < this.phase + 2)
+					currentPhase = phaser.awaitAdvance(currentPhase);
+			}
+
+			this.data              = data;
 			this.offset            = offset;
 			this.blockCount        = blockCount;
 			this.firstSampleNumber = firstSampleNumber;
+			this.phase             = phase;
 			
-			try {
-				newData.await();
-				newData.reset();
-			} catch (BrokenBarrierException e) {
-				e.printStackTrace();
-			}
+			return this;
 			
 		}
-		
-		/**
-		 * Forces this thread to end. Blocks until done.
-		 */
-		public void dispose() {
+
+		@Override public void run() {
+				
+			float[][] slots = new float[datasetsCount][];
+			boolean problem = false;
+			int goodPacketsBeforeProblem = 0;
+				
+			// parse each packet of each block
+			for(int blockN = 0; blockN < blockCount; blockN++) {
+				
+				if(problem)
+					break;
+				
+				for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
+					slots[datasetN] = datasets.get(datasetN).getSlot(firstSampleNumber + (blockN * StorageFloats.BLOCK_SIZE));
+				
+				int slotOffset = (firstSampleNumber + (blockN * StorageFloats.BLOCK_SIZE)) % StorageFloats.SLOT_SIZE;
+				float[] minVal = minimumValue[blockN];
+				float[] maxVal = maximumValue[blockN];
+				for(int packetN = 0; packetN < StorageFloats.BLOCK_SIZE; packetN++) {
+					
+					if(syncWordByteCount > 0 && data.buffer[offset] != syncWord) {
+						problem = true;
+						goodPacketsBeforeProblem = (blockN * StorageFloats.BLOCK_SIZE) + packetN;
+						break;
+					}
+					if(!ConnectionTelemetry.this.datasets.checksumPassed(data.buffer, offset, packetByteCount)) {
+						problem = true;
+						goodPacketsBeforeProblem = (blockN * StorageFloats.BLOCK_SIZE) + packetN;
+						break;
+					}
+					
+					for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
+						Dataset d = datasets.get(datasetN);
+						float f = d.processor.extractValue(data.buffer, offset + d.location) * d.conversionFactor;
+						slots[datasetN][slotOffset] = f;
+						if(packetN == 0) {
+							minVal[datasetN] = f;
+							maxVal[datasetN] = f;
+						}
+						if(f < minVal[datasetN])
+							minVal[datasetN] = f;
+						if (f > maxVal[datasetN])
+							maxVal[datasetN] = f;
+					}
+					
+					offset += packetByteCount;
+					slotOffset++;
+					
+				}
+			}
 			
-			thread.interrupt();
-			while(thread.isAlive()); // wait
+			// update datasets
+			for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
+				for(int blockN = 0; blockN < blockCount; blockN++)
+					datasets.get(datasetN).setRangeOfBlock(firstSampleNumber + (blockN * StorageFloats.BLOCK_SIZE), minimumValue[blockN][datasetN], maximumValue[blockN][datasetN]);
+			
+			// wait for previous thread to finish
+			if(phase >= 0) {
+				int currentPhase = phaser.awaitAdvance(phase);
+				while(currentPhase != phase + 1)
+					currentPhase = phaser.awaitAdvance(currentPhase);
+			}
+			
+			// update the offset and sample count
+			if(!problem && getSampleCount() == firstSampleNumber) {
+				// this thread and all previous threads were successful
+				data.offset += packetByteCount * blockCount * StorageFloats.BLOCK_SIZE;
+				incrementSampleCount(StorageFloats.BLOCK_SIZE * blockCount);
+			} else if(problem && getSampleCount() == firstSampleNumber) {
+				// this thread was the first to have a problem
+				data.offset += goodPacketsBeforeProblem * packetByteCount;
+				incrementSampleCount(goodPacketsBeforeProblem);
+			} else {
+				// a previous thread had a problem, so do nothing
+			}
+			
+			// indicate that this thread has finished
+			phaser.arrive();
 			
 		}
 		
@@ -2139,6 +2229,126 @@ public class ConnectionTelemetry extends Connection {
 			return null;
 		else
 			return transmit.getGui();
+		
+	}
+	
+	private AtomicInteger sampleCount = new AtomicInteger(0);
+	private StorageTimestamps timestamps;
+	private long firstTimestamp = 0;
+	private long lastTimestamp = 0;
+	
+	public StorageTimestamps.Cache createTimestampsCache() {
+		
+		return timestamps.createCache();
+		
+	}
+	
+	public void clearTimestamps() {
+		
+		timestamps.clear();
+		sampleCount.set(0);
+		firstTimestamp = 0;
+		lastTimestamp = 0;
+		
+	}
+	
+	/**
+	 * Increments the sample count and sets the timestamp(s) to the current time.
+	 * Call this function after all datasets have received new values from a *live* connection.
+	 * 
+	 * @param amount    How many new samples were added.
+	 */
+	public void incrementSampleCount(int amount) {
+		
+		long timestamp = System.currentTimeMillis();
+		timestamps.appendTimestamps(timestamp, amount);
+		
+		int oldSampleCount = sampleCount.getAndAdd(amount);
+		if(oldSampleCount == 0) {
+			firstTimestamp = timestamp;
+			CommunicationView.instance.redraw();
+		}
+		lastTimestamp = timestamp;
+		
+	}
+	
+	/**
+	 * Increments the sample count and sets the timestamp(s) to a specific value.
+	 * Call this function after all datasets have received new values from an *imported* connection.
+	 * 
+	 * @param amount       How many new samples were added.
+	 * @param timestamp    The timestamp to use for those samples.
+	 */
+	public void incrementSampleCountWithTimestamp(int amount, long timestamp) {
+		
+		timestamps.appendTimestamps(timestamp, amount);
+		
+		int oldSampleCount = sampleCount.getAndAdd(amount);
+		if(oldSampleCount == 0) {
+			firstTimestamp = timestamp;
+			CommunicationView.instance.redraw();
+		}
+		lastTimestamp = timestamp;
+		
+	}
+	
+	public int getClosestSampleNumberAtOrBefore(long timestamp, int maxSampleNumber, StorageTimestamps.Cache cache) {
+		
+		return timestamps.getClosestSampleNumberAtOrBefore(timestamp, maxSampleNumber, cache);
+		
+	}
+	
+	public int getClosestSampleNumberAfter(long timestamp, StorageTimestamps.Cache cache) {
+		
+		return timestamps.getClosestSampleNumberAfter(timestamp, cache);
+		
+	}
+	
+	/**
+	 * @return    The timestamp for sample number 0, or 0 if there are no samples.
+	 */
+	@Override public long getFirstTimestamp() {
+		
+		return firstTimestamp;
+		
+	}
+	
+	/**
+	 * @return    The timestamp for the most recent sample, or 0 if there are no samples.
+	 */
+	@Override public long getLastTimestamp() {
+		
+		return lastTimestamp;
+		
+	}
+	
+	/**
+	 * Gets the timestamp for one specific sample.
+	 * 
+	 * @param sampleNumber    Which sample to check.
+	 * @return                The corresponding UNIX timestamp.
+	 */
+	@Override public long getTimestamp(int sampleNumber, StorageTimestamps.Cache cache) {
+		
+		if(sampleNumber < 0)
+			return firstTimestamp;
+		
+		return timestamps.getTimestamp(sampleNumber, cache);
+		
+	}
+	
+	public FloatBuffer getTimestampsBuffer(int firstSampleNumber, int lastSampleNumber, long plotMinX, StorageTimestamps.Cache cache) {
+		
+		return timestamps.getTampstamps(firstSampleNumber, lastSampleNumber, plotMinX, cache);
+		
+	}
+	
+	/**
+	 * @return    The current number of samples stored in the Datasets.
+	 */
+	@Override public int getSampleCount() {
+		
+		return sampleCount.get();
 		
 	}
 

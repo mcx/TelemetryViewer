@@ -270,7 +270,7 @@ public class DataStructureBinaryView extends JPanel {
 			if(connection.datasets.getCount() == 0) {
 				JOptionPane.showMessageDialog(this, "Error: Define at least one field, or disconnect.", "Error", JOptionPane.ERROR_MESSAGE);
 			} else {
-				connection.dataStructureDefined = true;
+				connection.setDataStructureDefined(true);
 				CommunicationView.instance.redraw();
 				if(ChartsController.getCharts().isEmpty())
 					NotificationsController.showHintUntil("Add a chart by clicking on a tile, or by clicking-and-dragging across multiple tiles.", () -> !ChartsController.getCharts().isEmpty(), true);

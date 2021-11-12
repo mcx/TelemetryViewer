@@ -715,6 +715,7 @@ public class ChartUtils {
 	 * Draws a collection of markers over the plot. If the mouse is over a marker, the marker will be drawn like a clickable element.
 	 * 
 	 * @param gl              The OpenGL context.
+	 * @param datasets        Datasets.
 	 * @param edgeMarkers     List of edge markers to draw.
 	 * @param levelMarkers    List of level markers to draw.
 	 * @param topLeftX        Allowed bounding box's top-left x coordinate.
@@ -725,7 +726,7 @@ public class ChartUtils {
 	 * @param mouseY          Current location of the mouse, in pixels.
 	 * @return                An EventHandler that will jump to a corresponding sample number if the user clicks on a marker, or null if the mouse is not over any marker.
 	 */
-	public static EventHandler drawMarkers(GL2ES3 gl, List<BitfieldEvents.EdgeMarker> edgeMarkers, List<BitfieldEvents.LevelMarker> levelMarkers, float topLeftX, float topLeftY, float bottomRightX, float bottomRightY, int mouseX, int mouseY) {
+	public static EventHandler drawMarkers(GL2ES3 gl, DatasetsInterface datasets, List<BitfieldEvents.EdgeMarker> edgeMarkers, List<BitfieldEvents.LevelMarker> levelMarkers, float topLeftX, float topLeftY, float bottomRightX, float bottomRightY, int mouseX, int mouseY) {
 			
 		final int NORTH      = 0;
 		final int NORTH_WEST = 1;
@@ -792,7 +793,7 @@ public class ChartUtils {
 				occupiedRegions.add(new float[] {xBoxLeft, xBoxRight, yAnchor, yBoxTop});
 				boolean mouseOverMarker = mouseX > xBoxLeft && mouseX < xBoxRight && mouseY > yAnchor && mouseY < yBoxTop;
 				if(mouseOverMarker)
-					handler = EventHandler.onPress(press -> OpenGLChartsView.instance.setPausedView(marker.connection.datasets.getTimestamp(marker.sampleNumber), marker.connection, marker.sampleNumber, true));
+					handler = EventHandler.onPress(press -> OpenGLChartsView.instance.setPausedView(marker.timestamp, marker.connection, marker.sampleNumber, true));
 				
 				OpenGL.drawQuad2D(gl, Theme.tooltipBackgroundColor, xBoxLeft, yBoxBottom, xBoxRight, yBoxTop);
 				OpenGL.drawTriangle2D(gl, Theme.tooltipBackgroundColor, xAnchor, yAnchor, xAnchorRight, yBoxBottom, xAnchorLeft, yBoxBottom);
@@ -835,7 +836,7 @@ public class ChartUtils {
 				occupiedRegions.add(new float[] {xBoxLeft, xBoxRight, yAnchor, yBoxTop});
 				boolean mouseOverMarker = mouseX > xBoxLeft && mouseX < xBoxRight && mouseY > yAnchor && mouseY < yBoxTop;
 				if(mouseOverMarker)
-					handler = EventHandler.onPress(press -> OpenGLChartsView.instance.setPausedView(marker.connection.datasets.getTimestamp(marker.sampleNumber), marker.connection, marker.sampleNumber, true));
+					handler = EventHandler.onPress(press -> OpenGLChartsView.instance.setPausedView(marker.timestamp, marker.connection, marker.sampleNumber, true));
 				
 				OpenGL.drawQuad2D(gl, Theme.tooltipBackgroundColor, xBoxLeft, yBoxBottom, xBoxRight, yBoxTop);
 				OpenGL.drawTriangle2D(gl, Theme.tooltipBackgroundColor, xAnchor, yAnchor, xAnchor, yBoxBottom, xAnchorLeft, yBoxBottom);
@@ -879,7 +880,7 @@ public class ChartUtils {
 				occupiedRegions.add(new float[] {xBoxLeft, xBoxRight, yAnchor, yBoxTop});
 				boolean mouseOverMarker = mouseX > xBoxLeft && mouseX < xBoxRight && mouseY > yAnchor && mouseY < yBoxTop;
 				if(mouseOverMarker)
-					handler = EventHandler.onPress(press -> OpenGLChartsView.instance.setPausedView(marker.connection.datasets.getTimestamp(marker.sampleNumber), marker.connection, marker.sampleNumber, true));
+					handler = EventHandler.onPress(press -> OpenGLChartsView.instance.setPausedView(marker.timestamp, marker.connection, marker.sampleNumber, true));
 				
 				OpenGL.buffer.rewind();
 				OpenGL.buffer.put(xBoxLeft);     OpenGL.buffer.put(yBoxTop);
@@ -957,7 +958,7 @@ public class ChartUtils {
 					
 					if(mouseOverMarker) {
 						int r = rangeN;
-						handler = EventHandler.onPress(event -> OpenGLChartsView.instance.setPausedView(marker.bitfield.dataset.connection.datasets.getTimestamp(marker.ranges.get(r)[0]), marker.bitfield.dataset.connection, marker.ranges.get(r)[0], true));
+						handler = EventHandler.onPress(event -> OpenGLChartsView.instance.setPausedView(marker.timestampRanges.get(r)[0], marker.bitfield.dataset.connection, marker.sampleNumberRanges.get(r)[0], true));
 					}
 					
 				} else {

@@ -69,6 +69,8 @@ public class OpenGLTimelineChart extends PositionedChart {
 	float xTimeRight;
 	float timeWidth;
 	
+	BitfieldEvents events;
+	
 	// control widgets
 	WidgetCheckbox showControlsWidget;
 	WidgetCheckbox showTimeWidget;
@@ -86,8 +88,8 @@ public class OpenGLTimelineChart extends PositionedChart {
 		super(x1, y1, x2, y2);
 		
 		datasetsWidget = new WidgetDatasets(null,
-		                                    newBitfieldEdges  -> datasets.setEdges(newBitfieldEdges),
-		                                    newBitfieldLevels -> datasets.setLevels(newBitfieldLevels),
+		                                    newBitfieldEdges  -> { datasets.setEdges(newBitfieldEdges);   events = null; },
+		                                    newBitfieldLevels -> { datasets.setLevels(newBitfieldLevels); events = null; },
 		                                    null,
 		                                    false,
 		                                    null);
@@ -405,12 +407,15 @@ public class OpenGLTimelineChart extends PositionedChart {
 				gl.glGetIntegerv(GL3.GL_SCISSOR_BOX, originalScissorArgs, 0);
 				gl.glScissor(originalScissorArgs[0] + (int) xTimelineLeft, originalScissorArgs[1] + (int) (y + 2*markerWidth), (int) timelineWidth, (int) (height - yTimelineBottom));
 				int trueLastSampleNumber = datasets.connection.getSampleCount() - 1;
-				BitfieldEvents events = new BitfieldEvents(false, false, datasets, 0, trueLastSampleNumber);
+				if(events == null)
+					events = new BitfieldEvents(false, false, datasets, 0, trueLastSampleNumber);
+				else
+					events.update(0, trueLastSampleNumber);
 				long min = minTimestamp;
 				long max = maxTimestamp;
-				List<BitfieldEvents.EdgeMarker>  edgeMarkers  = events.getEdgeMarkers ((connection, sampleNumber) -> (float) (connection.datasets.getTimestamp(sampleNumber) - min) / (float) (max - min) * timelineWidth);
-				List<BitfieldEvents.LevelMarker> levelMarkers = events.getLevelMarkers((connection, sampleNumber) -> (float) (connection.datasets.getTimestamp(sampleNumber) - min) / (float) (max - min) * timelineWidth);
-				EventHandler h = ChartUtils.drawMarkers(gl, edgeMarkers, levelMarkers, xTimelineLeft, showTime ? yTimeBaseline2 - Theme.tickTextPadding - Theme.lineWidth : height - Theme.lineWidth, xTimelineRight, y + 2*markerWidth, mouseX, mouseY);
+				List<BitfieldEvents.EdgeMarker>  edgeMarkers  = events.getEdgeMarkersMillisecondsMode(min, max - min, (int) timelineWidth);
+				List<BitfieldEvents.LevelMarker> levelMarkers = events.getLevelMarkersMillisecondsMode(min, max - min, (int) timelineWidth);
+				EventHandler h = ChartUtils.drawMarkers(gl, datasets, edgeMarkers, levelMarkers, xTimelineLeft, showTime ? yTimeBaseline2 - Theme.tickTextPadding - Theme.lineWidth : height - Theme.lineWidth, xTimelineRight, y + 2*markerWidth, mouseX, mouseY);
 				if(handler == null)
 					handler = h;
 				gl.glScissor(originalScissorArgs[0], originalScissorArgs[1], originalScissorArgs[2], originalScissorArgs[3]);
@@ -423,38 +428,13 @@ public class OpenGLTimelineChart extends PositionedChart {
 				long mouseTimestamp = minTimestamp + (long) (mousePercentage * (double) (maxTimestamp - minTimestamp));
 				
 				if(!ConnectionsController.telemetryConnections.isEmpty() && ConnectionsController.cameraConnections.isEmpty()) {
-					
-					// only telemetry connections exist, so find the closest sample number
-					long[] connectionErrors       = new long[ConnectionsController.telemetryConnections.size()];
-					int[] connectionSampleNumbers = new  int[ConnectionsController.telemetryConnections.size()];
-					for(int i = 0; i < ConnectionsController.telemetryConnections.size(); i++) {
-						ConnectionTelemetry connection = ConnectionsController.telemetryConnections.get(i);
-						int trueLastSampleNumber = connection.getSampleCount() - 1;
-						int closestSampleNumberBefore = connection.datasets.getClosestSampleNumberAtOrBefore(mouseTimestamp, trueLastSampleNumber);
-						int closestSampleNumberAfter = closestSampleNumberBefore + 1;
-						if(closestSampleNumberAfter > trueLastSampleNumber)
-							closestSampleNumberAfter = trueLastSampleNumber;
-						
-						long beforeError = mouseTimestamp - connection.datasets.getTimestamp(closestSampleNumberBefore);
-						long afterError  = connection.datasets.getTimestamp(closestSampleNumberAfter) - mouseTimestamp;
-						beforeError = Math.abs(beforeError);
-						afterError = Math.abs(afterError);
-						
-						connectionErrors[i] = Long.min(beforeError, afterError);
-						connectionSampleNumbers[i] = beforeError < afterError ? closestSampleNumberBefore : closestSampleNumberAfter;
-					}
-					
-					int n = 0;
-					for(int i = 1; i < connectionErrors.length; i++)
-						if(connectionErrors[i] < connectionErrors[n])
-							n = i;
-					ConnectionTelemetry connection = ConnectionsController.telemetryConnections.get(n);
-					int sampleNumber = connectionSampleNumbers[n];
 
-					mouseTimestamp = connection.datasets.getTimestamp(sampleNumber);
-					float tooltipX = (float) (mouseTimestamp - minTimestamp) / (float) (maxTimestamp - minTimestamp) * timelineWidth + xTimelineLeft;
+					// only telemetry connections exist, so find the closest sample number
+					ConnectionsController.SampleDetails details = ConnectionsController.getClosestSampleDetailsFor(mouseTimestamp);
+					
 					String[] text = new String[twoLineTimestamps ? 3 : 2];
-					text[0] = "Sample " + sampleNumber;
+					mouseTimestamp = details.timestamp;
+					text[0] = "Sample " + details.sampleNumber;
 					if(twoLineTimestamps) {
 						String[] timestampLine = SettingsController.formatTimestampToMilliseconds(mouseTimestamp).split("\n");
 						text[1] = timestampLine[0];
@@ -462,6 +442,7 @@ public class OpenGLTimelineChart extends PositionedChart {
 					} else {
 						text[1] = SettingsController.formatTimestampToMilliseconds(mouseTimestamp);
 					}
+					float tooltipX = (float) (mouseTimestamp - minTimestamp) / (float) (maxTimestamp - minTimestamp) * timelineWidth + xTimelineLeft;
 					ChartUtils.drawTooltip(gl, text, null, tooltipX, (yTimelineTop + yTimelineBottom)/2, 0, height, width, 0);
 					
 				} else {
@@ -508,33 +489,8 @@ public class OpenGLTimelineChart extends PositionedChart {
 		if(!ConnectionsController.telemetryConnections.isEmpty() && ConnectionsController.cameraConnections.isEmpty()) {
 			
 			// only telemetry connections exist, so find the closest sample number
-			long[] connectionErrors       = new long[ConnectionsController.telemetryConnections.size()];
-			int[] connectionSampleNumbers = new  int[ConnectionsController.telemetryConnections.size()];
-			for(int i = 0; i < ConnectionsController.telemetryConnections.size(); i++) {
-				ConnectionTelemetry connection = ConnectionsController.telemetryConnections.get(i);
-				int trueLastSampleNumber = connection.getSampleCount() - 1;
-				int closestSampleNumberBefore = connection.datasets.getClosestSampleNumberAtOrBefore(mouseTimestamp, trueLastSampleNumber);
-				int closestSampleNumberAfter = closestSampleNumberBefore + 1;
-				if(closestSampleNumberAfter > trueLastSampleNumber)
-					closestSampleNumberAfter = trueLastSampleNumber;
-				
-				long beforeError = mouseTimestamp - connection.datasets.getTimestamp(closestSampleNumberBefore);
-				long afterError  = connection.datasets.getTimestamp(closestSampleNumberAfter) - mouseTimestamp;
-				beforeError = Math.abs(beforeError);
-				afterError = Math.abs(afterError);
-				
-				connectionErrors[i] = Long.min(beforeError, afterError);
-				connectionSampleNumbers[i] = beforeError < afterError ? closestSampleNumberBefore : closestSampleNumberAfter;
-			}
-			
-			int n = 0;
-			for(int i = 1; i < connectionErrors.length; i++)
-				if(connectionErrors[i] < connectionErrors[n])
-					n = i;
-			ConnectionTelemetry connection = ConnectionsController.telemetryConnections.get(n);
-			int sampleNumber = connectionSampleNumbers[n];
-
-			OpenGLChartsView.instance.setPausedView(connection.datasets.getTimestamp(sampleNumber), connection, sampleNumber, true);
+			ConnectionsController.SampleDetails details = ConnectionsController.getClosestSampleDetailsFor(mouseTimestamp);
+			OpenGLChartsView.instance.setPausedView(details.timestamp, details.connection, details.sampleNumber, true);
 			
 		} else {
 			

@@ -113,15 +113,14 @@ public class OpenGLStatisticsChart extends PositionedChart {
 		
 		// get the samples
 		int trueLastSampleNumber = datasets.connection.getSampleCount() - 1;
-		DatasetsController controller = datasets.getNormal(0).controller;
 		int lastSampleNumber = -1;
 		int firstSampleNumber = -1;
 		if(sampleCountMode) {
 			lastSampleNumber = Integer.min(endSampleNumber, trueLastSampleNumber);
 			firstSampleNumber = endSampleNumber - (int) Math.round(durationSampleCount * zoomLevel) + 1;
 		} else {
-			lastSampleNumber = controller.getClosestSampleNumberAtOrBefore(endTimestamp, trueLastSampleNumber);
-			firstSampleNumber = controller.getClosestSampleNumberAfter(endTimestamp - Math.round(durationMilliseconds * zoomLevel));
+			lastSampleNumber = datasets.getClosestSampleNumberAtOrBefore(endTimestamp, trueLastSampleNumber);
+			firstSampleNumber = datasets.getClosestSampleNumberAfter(endTimestamp - Math.round(durationMilliseconds * zoomLevel));
 		}
 		
 		// done if no telemetry
@@ -142,8 +141,8 @@ public class OpenGLStatisticsChart extends PositionedChart {
 		if(lastSampleNumber < 0)
 			sampleCount = 0;
 		String durationLabel = sampleCountMode             ? "(" + sampleCount + " Samples)" :
-		                       showAs.equals("Timestamps") ? "(" + SettingsController.formatTimestampToMilliseconds(controller.getTimestamp(firstSampleNumber)).replace('\n', ' ') + " to " + SettingsController.formatTimestampToMilliseconds(controller.getTimestamp(lastSampleNumber)).replace('\n', ' ') + ")" :
-		                                                     "(" + (controller.getTimestamp(lastSampleNumber) - controller.getTimestamp(firstSampleNumber)) + " ms)";
+		                       showAs.equals("Timestamps") ? "(" + SettingsController.formatTimestampToMilliseconds(datasets.getTimestamp(firstSampleNumber)).replace('\n', ' ') + " to " + SettingsController.formatTimestampToMilliseconds(datasets.getTimestamp(lastSampleNumber)).replace('\n', ' ') + ")" :
+		                                                     "(" + (datasets.getTimestamp(lastSampleNumber) - datasets.getTimestamp(firstSampleNumber)) + " ms)";
 		
 		// determine the text to display
 		int lineCount = 1; // always show the dataset labels

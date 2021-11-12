@@ -201,7 +201,7 @@ public class CommunicationView extends JPanel {
 			
 			boolean connectionsDefined = false;
 			for(ConnectionTelemetry connection : ConnectionsController.telemetryConnections)
-				if(connection.dataStructureDefined)
+				if(connection.isDataStructureDefined())
 					connectionsDefined = true;
 			for(ConnectionCamera connection : ConnectionsController.cameraConnections)
 				if(connection.connected || connection.getSampleCount() > 0)

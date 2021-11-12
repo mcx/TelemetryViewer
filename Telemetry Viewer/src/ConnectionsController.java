@@ -25,35 +25,42 @@ public class ConnectionsController {
 	public static volatile boolean previouslyImported = false; // true = the Connections contain imported data
 	private static Thread exportThread;
 	
-	public static List<Connection>                allConnections = new ArrayList<Connection>();
-	public static List<ConnectionTelemetry> telemetryConnections = new ArrayList<ConnectionTelemetry>();
-	public static List<ConnectionCamera>       cameraConnections = new ArrayList<ConnectionCamera>();
+	public static List<Connection>                        allConnections = new ArrayList<Connection>();
+	public static List<ConnectionTelemetry>         telemetryConnections = new ArrayList<ConnectionTelemetry>();
+	public static List<ConnectionCamera>               cameraConnections = new ArrayList<ConnectionCamera>();
+	public static Map<ConnectionTelemetry, DatasetsInterface> interfaces = new HashMap<ConnectionTelemetry, DatasetsInterface>();
 	static {
 		addConnection(new ConnectionTelemetry());
 	}
 	
 	private static final String filenameSanitizer = "[^a-zA-Z0-9_\\.\\- ]"; // only allow letters, numbers, underscores, periods, hyphens and spaces.
 	
-	public static void addConnection(Connection connection) {
+	public static void addConnection(Connection newConnection) {
 		
-		allConnections.add(connection);
-		if(connection instanceof ConnectionTelemetry)
-			telemetryConnections.add((ConnectionTelemetry) connection);
-		else if(connection instanceof ConnectionCamera)
-			cameraConnections.add((ConnectionCamera) connection);
+		allConnections.add(newConnection);
+		if(newConnection instanceof ConnectionTelemetry)
+			telemetryConnections.add((ConnectionTelemetry) newConnection);
+		else if(newConnection instanceof ConnectionCamera)
+			cameraConnections.add((ConnectionCamera) newConnection);
+		
+		interfaces.clear();
+		telemetryConnections.forEach(connection -> interfaces.put(connection, new DatasetsInterface(connection)));
 		
 		CommunicationView.instance.redraw();
 		
 	}
 	
-	public static void removeConnection(Connection connection) {
+	public static void removeConnection(Connection oldConnection) {
 		
-		connection.dispose();
-		allConnections.remove(connection);
-		if(connection instanceof ConnectionTelemetry)
-			telemetryConnections.remove((ConnectionTelemetry) connection);
-		else if(connection instanceof ConnectionCamera)
-			cameraConnections.remove((ConnectionCamera) connection);
+		oldConnection.dispose();
+		allConnections.remove(oldConnection);
+		if(oldConnection instanceof ConnectionTelemetry)
+			telemetryConnections.remove((ConnectionTelemetry) oldConnection);
+		else if(oldConnection instanceof ConnectionCamera)
+			cameraConnections.remove((ConnectionCamera) oldConnection);
+		
+		interfaces.clear();
+		telemetryConnections.forEach(connection -> interfaces.put(connection, new DatasetsInterface(connection)));
 		
 		CommunicationView.instance.redraw();
 		
@@ -78,6 +85,9 @@ public class ConnectionsController {
 			telemetryConnections.add((ConnectionTelemetry) newConnection);
 		}
 		
+		interfaces.clear();
+		telemetryConnections.forEach(connection -> interfaces.put(connection, new DatasetsInterface(connection)));
+		
 		CommunicationView.instance.redraw();
 		
 	}
@@ -90,8 +100,57 @@ public class ConnectionsController {
 		telemetryConnections.clear();
 		cameraConnections.clear();
 		
+		interfaces.clear();
+		telemetryConnections.forEach(connection -> interfaces.put(connection, new DatasetsInterface(connection)));
+		
 		CommunicationView.instance.redraw();
 		OpenGLChartsView.instance.setLiveView();
+		
+	}
+	
+	public static class SampleDetails {
+		public ConnectionTelemetry connection;
+		public int sampleNumber;
+		public long timestamp;
+		public SampleDetails(ConnectionTelemetry connection, int sampleNumber, long timestamp) {
+			this.connection = connection;
+			this.sampleNumber = sampleNumber;
+			this.timestamp = timestamp;
+		}
+	}
+	
+	public static SampleDetails getClosestSampleDetailsFor(long timestamp) {
+		
+		long smallestError = Long.MAX_VALUE;
+		
+		ConnectionTelemetry closestConnection = null;
+		int closestSampleNumber = 0;
+		long closestTimestamp = 0;
+		
+		for(Map.Entry<ConnectionTelemetry, DatasetsInterface> entry : interfaces.entrySet()) {
+			
+			ConnectionTelemetry connection = entry.getKey();
+			DatasetsInterface datasets = entry.getValue();
+			
+			int trueLastSampleNumber = connection.getSampleCount() - 1;
+			int closestSampleNumberBefore = datasets.getClosestSampleNumberAtOrBefore(timestamp, trueLastSampleNumber);
+			int closestSampleNumberAfter = closestSampleNumberBefore + 1;
+			if(closestSampleNumberAfter > trueLastSampleNumber)
+				closestSampleNumberAfter = trueLastSampleNumber;
+			
+			long beforeError = timestamp - datasets.getTimestamp(closestSampleNumberBefore);
+			long afterError  = datasets.getTimestamp(closestSampleNumberAfter) - timestamp;
+			long error = Long.min(Math.abs(beforeError), Math.abs(afterError));
+			
+			if(error < smallestError) {
+				closestConnection = connection;
+				closestSampleNumber = beforeError < afterError ? closestSampleNumberBefore : closestSampleNumberAfter;
+				closestTimestamp = datasets.getTimestamp(closestSampleNumber);
+			}
+			
+		}
+		
+		return new SampleDetails(closestConnection, closestSampleNumber, closestTimestamp);
 		
 	}
 	
@@ -101,7 +160,7 @@ public class ConnectionsController {
 	public static boolean telemetryPossible() {
 		
 		for(ConnectionTelemetry connection : telemetryConnections)
-			if(connection.connected && connection.dataStructureDefined)
+			if(connection.connected && connection.isDataStructureDefined())
 				return true;
 		
 		for(ConnectionCamera connection : cameraConnections)
@@ -133,7 +192,7 @@ public class ConnectionsController {
 		
 		for(Connection connection : ConnectionsController.allConnections)
 			if(connection.getSampleCount() > 0) {
-				long firstTimestamp = connection.getTimestamp(0);
+				long firstTimestamp = connection.getFirstTimestamp();
 				if(firstTimestamp < timestamp)
 					timestamp = firstTimestamp;
 			}
@@ -151,8 +210,7 @@ public class ConnectionsController {
 		
 		for(Connection connection : ConnectionsController.allConnections)
 			if(connection.getSampleCount() > 0) {
-				int lastSampleNumber = connection.getSampleCount() - 1;
-				long lastTimestamp = connection.getTimestamp(lastSampleNumber);
+				long lastTimestamp = connection.getLastTimestamp();
 				if(lastTimestamp > timestamp)
 					timestamp = lastTimestamp;
 			}

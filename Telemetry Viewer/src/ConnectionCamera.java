@@ -766,9 +766,21 @@ public class ConnectionCamera extends Connection {
 		
 	}
 
-	@Override public long getTimestamp(int sampleNumber) {
+	@Override public long getTimestamp(int sampleNumber, StorageTimestamps.Cache cache) {
 
 		return framesIndex.get(sampleNumber).timestamp;
+		
+	}
+	
+	@Override public long getFirstTimestamp() {
+		
+		return framesIndex.isEmpty() ? 0 : framesIndex.get(0).timestamp;
+		
+	}
+	
+	@Override public long getLastTimestamp() {
+		
+		return framesIndex.isEmpty() ? 0 : framesIndex.get(framesIndex.size() - 1).timestamp;
 		
 	}
 	

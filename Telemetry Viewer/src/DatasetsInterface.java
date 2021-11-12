@@ -17,7 +17,17 @@ public class DatasetsInterface {
 	public List<Dataset.Bitfield.State> edgeStates = new ArrayList<>();
 	public List<Dataset.Bitfield.State> levelStates = new ArrayList<>();
 	public ConnectionTelemetry connection = null;
-	private Map<Dataset, StorageFloats.Cache> caches = new HashMap<>();
+	private Map<Dataset, StorageFloats.Cache> sampleCaches = new HashMap<>();
+	private StorageTimestamps.Cache timestampsCache = null;
+	
+	public DatasetsInterface() { }
+	
+	public DatasetsInterface(ConnectionTelemetry connection) {
+		
+		this.connection = connection;
+		timestampsCache = connection.createTimestampsCache();
+		
+	}
 	
 	/**
 	 * Sets the normal (non-bitfield) datasets that can be subsequently accessed, replacing any existing ones.
@@ -30,17 +40,20 @@ public class DatasetsInterface {
 		normalDatasets.clear();
 		normalDatasets.addAll(newDatasets);
 		
-		// update caches
-		caches.clear();
-		normalDatasets.forEach(dataset -> caches.put(dataset, dataset.createCache()));
-		edgeStates.forEach(state -> caches.put(state.dataset, state.dataset.createCache()));
-		levelStates.forEach(state -> caches.put(state.dataset, state.dataset.createCache()));
+		// update sample caches
+		sampleCaches.clear();
+		normalDatasets.forEach(dataset -> sampleCaches.put(dataset, dataset.createCache()));
+		edgeStates.forEach(state -> sampleCaches.put(state.dataset, state.dataset.createCache()));
+		levelStates.forEach(state -> sampleCaches.put(state.dataset, state.dataset.createCache()));
 		
 		// update the connection
 		connection = !normalDatasets.isEmpty() ? normalDatasets.get(0).connection :
 		             !edgeStates.isEmpty()     ? edgeStates.get(0).connection :
 		             !levelStates.isEmpty()    ? levelStates.get(0).connection :
 		                                         null;
+		
+		// update timestamps cache
+		timestampsCache = (connection == null) ? null : connection.createTimestampsCache();
 		
 	}
 	
@@ -56,16 +69,19 @@ public class DatasetsInterface {
 		edgeStates.addAll(newEdges);
 		
 		// update caches
-		caches.clear();
-		normalDatasets.forEach(dataset -> caches.put(dataset, dataset.createCache()));
-		edgeStates.forEach(state -> caches.put(state.dataset, state.dataset.createCache()));
-		levelStates.forEach(state -> caches.put(state.dataset, state.dataset.createCache()));
+		sampleCaches.clear();
+		normalDatasets.forEach(dataset -> sampleCaches.put(dataset, dataset.createCache()));
+		edgeStates.forEach(state -> sampleCaches.put(state.dataset, state.dataset.createCache()));
+		levelStates.forEach(state -> sampleCaches.put(state.dataset, state.dataset.createCache()));
 		
 		// update the connection
 		connection = !normalDatasets.isEmpty() ? normalDatasets.get(0).connection :
 		             !edgeStates.isEmpty()     ? edgeStates.get(0).connection :
 		             !levelStates.isEmpty()    ? levelStates.get(0).connection :
 		                                         null;
+		
+		// update timestamps cache
+		timestampsCache = (connection == null) ? null : connection.createTimestampsCache();
 		
 	}
 	
@@ -81,16 +97,19 @@ public class DatasetsInterface {
 		levelStates.addAll(newLevels);
 		
 		// update caches
-		caches.clear();
-		normalDatasets.forEach(dataset -> caches.put(dataset, dataset.createCache()));
-		edgeStates.forEach(state -> caches.put(state.dataset, state.dataset.createCache()));
-		levelStates.forEach(state -> caches.put(state.dataset, state.dataset.createCache()));
+		sampleCaches.clear();
+		normalDatasets.forEach(dataset -> sampleCaches.put(dataset, dataset.createCache()));
+		edgeStates.forEach(state -> sampleCaches.put(state.dataset, state.dataset.createCache()));
+		levelStates.forEach(state -> sampleCaches.put(state.dataset, state.dataset.createCache()));
 		
 		// update the connection
 		connection = !normalDatasets.isEmpty() ? normalDatasets.get(0).connection :
 		             !edgeStates.isEmpty()     ? edgeStates.get(0).connection :
 		             !levelStates.isEmpty()    ? levelStates.get(0).connection :
 		                                         null;
+		
+		// update timestamps cache
+		timestampsCache = (connection == null) ? null : connection.createTimestampsCache();
 		
 	}
 	
@@ -107,7 +126,7 @@ public class DatasetsInterface {
 	 * @return           True if this object references the Dataset (as a normal/edge/level.)
 	 */
 	public boolean contains(Dataset dataset) {
-		return caches.keySet().contains(dataset);
+		return sampleCaches.keySet().contains(dataset);
 	}
 	
 	/**
@@ -203,6 +222,30 @@ public class DatasetsInterface {
 		
 	}
 	
+	public int getClosestSampleNumberAtOrBefore(long timestamp, int maxSampleNumber) {
+		
+		return connection.getClosestSampleNumberAtOrBefore(timestamp, maxSampleNumber, timestampsCache);
+		
+	}
+	
+	public int getClosestSampleNumberAfter(long timestamp) {
+		
+		return connection.getClosestSampleNumberAfter(timestamp, timestampsCache);
+		
+	}
+	
+	public long getTimestamp(int sampleNumber) {
+		
+		return connection.getTimestamp(sampleNumber, timestampsCache);
+		
+	}
+	
+	public FloatBuffer getTimestampsBuffer(int firstSampleNumber, int lastSampleNumber, long plotMinX) {
+		
+		return connection.getTimestampsBuffer(firstSampleNumber, lastSampleNumber, plotMinX, timestampsCache);
+		
+	}
+	
 	/**
 	 * Gets the range (y-axis region) occupied by all of the normal datasets.
 	 *  
@@ -282,7 +325,7 @@ public class DatasetsInterface {
 	public void forEachNormal(BiConsumer<Dataset, StorageFloats.Cache> consumer) {
 		for(int i = 0; i < normalDatasets.size(); i++) {
 			Dataset dataset = normalDatasets.get(i);
-			StorageFloats.Cache cache = caches.get(dataset);
+			StorageFloats.Cache cache = sampleCaches.get(dataset);
 			consumer.accept(dataset, cache);
 		}
 	}
@@ -327,7 +370,7 @@ public class DatasetsInterface {
 	 */
 	private StorageFloats.Cache cacheFor(Dataset dataset) {
 		
-		return caches.get(dataset);
+		return sampleCaches.get(dataset);
 		
 	}
 	

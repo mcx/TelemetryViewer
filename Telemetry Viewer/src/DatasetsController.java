@@ -1,21 +1,16 @@
 import java.awt.Color;
-import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class DatasetsController {
 
 	public ConnectionTelemetry connection;
 	private Map<Integer, Dataset> datasets = new TreeMap<Integer, Dataset>();
-	private AtomicInteger sampleCount = new AtomicInteger(0);
-	private StorageTimestamps timestamps;
-	private long firstTimestamp = 0;
 	
-	public byte syncWord = (byte) 0xAA;
-	public int  syncWordByteCount = 1;
+	public volatile byte syncWord = (byte) 0xAA;
+	public volatile int  syncWordByteCount = 1;
 	
 	private BinaryChecksumProcessor checksumProcessor = null;
 	private int checksumProcessorOffset = -1;
@@ -176,13 +171,6 @@ public class DatasetsController {
 	public DatasetsController(ConnectionTelemetry connection) {
 		
 		this.connection = connection;
-		this.timestamps = new StorageTimestamps(connection);
-		
-	}
-	
-	public StorageTimestamps.Cache createTimestampsCache() {
-		
-		return timestamps.createCache();
 		
 	}
 	
@@ -304,9 +292,8 @@ public class DatasetsController {
 		
 		// remove timestamps if nothing is left
 		if(datasets.isEmpty()) {
-			timestamps.clear();
-			sampleCount.set(0);
-			firstTimestamp = 0;
+
+			connection.clearTimestamps();
 			
 			CommunicationView.instance.redraw();
 			OpenGLChartsView.instance.switchToLiveView();
@@ -336,7 +323,6 @@ public class DatasetsController {
 	public void dispose() {
 		
 		removeAll();
-		timestamps.dispose();
 		
 	}
 	
@@ -348,9 +334,7 @@ public class DatasetsController {
 		for(Dataset dataset : getList())
 			dataset.floats.clear();
 		
-		timestamps.clear();
-		sampleCount.set(0);
-		firstTimestamp = 0;
+		connection.clearTimestamps();
 		
 		CommunicationView.instance.redraw();
 		OpenGLChartsView.instance.switchToLiveView();
@@ -487,8 +471,8 @@ public class DatasetsController {
 	/**
 	 * Tests if a telemetry packet contains a valid checksum.
 	 * 
-	 * @param packet          The packet, WITHOUT the sync word.
-	 * @param packetLength    Length of the packet, WITHOUT the sync word.
+	 * @param packet          The packet.
+	 * @param packetLength    Length of the packet.
 	 * @return                True if the checksum is good or not used, false if the checksum failed.
 	 */
 	public boolean checksumPassed(byte[] packet, int offset, int packetLength) {
@@ -500,11 +484,6 @@ public class DatasetsController {
 			return true;
 		
 		// checksum failed
-		StringBuilder message = new StringBuilder(1024);
-		message.append("A corrupt telemetry packet was received:\n");
-		for(int i = 0; i < packetLength; i++)
-			message.append(String.format("%02X ", packet[offset + i]));
-		NotificationsController.showFailureForMilliseconds(message.toString(), 5000, false);
 		return false;
 		
 	}
@@ -572,107 +551,7 @@ public class DatasetsController {
 		
 	}
 	
-	/**
-	 * Increments the sample count and saves the current timestamp.
-	 * Call this function after all datasets have received a new value from a live connection.
-	 */
-	public void incrementSampleCount() {
-		
-		long timestamp = System.currentTimeMillis();
-		timestamps.appendTimestamp(timestamp);
-		
-		int newSampleCount = sampleCount.incrementAndGet();
-		if(newSampleCount == 1) {
-			firstTimestamp = timestamp;
-			CommunicationView.instance.redraw();
-		}
-		
-	}
-	
-	/**
-	 * Increments the sample count by an entire block.
-	 * Call this function after all datasets have received a block of values from a live connection.
-	 */
-	public void incrementSampleCountBlock() {
-		
-		long timestamp = System.currentTimeMillis();
-		timestamps.fillBlock(timestamp);
-		
-		boolean wasZero = sampleCount.get() == 0;
-		sampleCount.addAndGet(StorageFloats.BLOCK_SIZE);
-		if(wasZero) {
-			firstTimestamp = timestamp;
-			CommunicationView.instance.redraw();
-		}
-		
-	}
-	
-	/**
-	 * Increments the sample count and sets the timestamp to a specific value.
-	 * Call this function when importing a file, after all datasets have received a new value.
-	 */
-	public void incrementSampleCountWithTimestamp(long timestamp) {
-		
-		timestamps.appendTimestamp(timestamp);
-		
-		int newSampleCount = sampleCount.incrementAndGet();
-		if(newSampleCount == 1) {
-			firstTimestamp = timestamp;
-			CommunicationView.instance.redraw();
-		}
-		
-	}
-	
-	public int getClosestSampleNumberAtOrBefore(long timestamp, int maxSampleNumber) {
-		
-		return timestamps.getClosestSampleNumberAtOrBefore(timestamp, maxSampleNumber);
-		
-	}
-	
-	public int getClosestSampleNumberAfter(long timestamp) {
-		
-		return timestamps.getClosestSampleNumberAfter(timestamp);
-		
-	}
-	
-	/**
-	 * @return    The timestamp for sample number 0, or 0 if there are no samples.
-	 */
-	public long getFirstTimestamp() {
-		
-		return firstTimestamp;
-		
-	}
-	
-	/**
-	 * Gets the timestamp for one specific sample.
-	 * 
-	 * @param sampleNumber    Which sample to check.
-	 * @return                The corresponding UNIX timestamp.
-	 */
-	public long getTimestamp(int sampleNumber) {
-		
-		if(sampleNumber < 0)
-			return firstTimestamp;
-		
-		return timestamps.getTimestamp(sampleNumber);
-		
-	}
-	
-	public FloatBuffer getTimestampsBuffer(int firstSampleNumber, int lastSampleNumber, StorageTimestamps.Cache cache, long plotMinX) {
-		
-		return timestamps.getTampstamps(firstSampleNumber, lastSampleNumber, cache, plotMinX);
-		
-	}
-	
-	/**
-	 * @return    The current number of samples stored in the Datasets.
-	 */
-	public int getSampleCount() {
-		
-		return sampleCount.get();
-		
-	}
+
 	
 	public interface BinaryFieldProcessor {
 		
