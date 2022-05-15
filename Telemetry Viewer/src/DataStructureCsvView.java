@@ -685,7 +685,7 @@ public class DataStructureCsvView extends JPanel {
 				code.append("\t\t\t\t\toutput.println(String.format(\"" + printfFormatString.replace('d', 'f') + "\", " + intPrintfVariables + "));\n");
 				code.append("\t\t\t\t\tif(output.checkError())\n");
 				code.append("\t\t\t\t\t\tthrow new Exception();\n");
-				code.append("\t\t\t\t\tThread.sleep(" + Math.round(1000.0 / connection.sampleRate) + ");\n");
+				code.append("\t\t\t\t\tThread.sleep(" + Math.round(1000.0 / connection.getSampleRate()) + ");\n");
 				code.append("\t\t\t\t}\n");
 				code.append("\n");
 				code.append("\t\t\t} catch(Exception e) {\n");
@@ -745,7 +745,7 @@ public class DataStructureCsvView extends JPanel {
 				code.append("\t\t\t\t\tbyte[] buffer = String.format(\"" + printfFormatString.replace('d', 'f') + "\\n\", " + intPrintfVariables + ").getBytes();\n");
 				code.append("\t\t\t\t\tDatagramPacket packet = new DatagramPacket(buffer, 0, buffer.length, InetAddress.getByName(\"" + ConnectionTelemetry.localIp + "\"), " + connection.portNumber + "); // EDIT THIS LINE\n");
 				code.append("\t\t\t\t\tsocket.send(packet);\n");
-				code.append("\t\t\t\t\tThread.sleep(" + Math.round(1000.0 / connection.sampleRate) + ");\n");
+				code.append("\t\t\t\t\tThread.sleep(" + Math.round(1000.0 / connection.getSampleRate()) + ");\n");
 				code.append("\t\t\t\t}\n");
 				code.append("\n");
 				code.append("\t\t\t} catch(Exception e) {\n");

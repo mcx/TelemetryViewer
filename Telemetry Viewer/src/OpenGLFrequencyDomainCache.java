@@ -118,7 +118,7 @@ public class OpenGLFrequencyDomainCache {
 				DFT.binSizeHz = 0;
 				DFT.binCount = 0;
 				DFT.minHz = 0;
-				DFT.maxHz = !datasets.hasNormals() ? 1 : datasets.connection.sampleRate / 2;
+				DFT.maxHz = !datasets.hasNormals() ? 1 : datasets.connection.getSampleRate() / 2;
 				DFT.minPower = 0;
 				DFT.maxPower = 1;
 				DFT.windowLength = 0;
@@ -128,7 +128,7 @@ public class OpenGLFrequencyDomainCache {
 			}
 			
 			// calculate the DFT for each dataset
-			int sampleRate = datasets.connection.sampleRate;
+			int sampleRate = datasets.connection.getSampleRate();
 			final int first = firstSampleNumber;
 			final int last = lastSampleNumber;
 			theDft.forDataset.clear();
@@ -167,7 +167,7 @@ public class OpenGLFrequencyDomainCache {
 				return;
 
 			// calculate the DFTs for each dataset
-			int sampleRate = datasets.connection.sampleRate;
+			int sampleRate = datasets.connection.getSampleRate();
 			int trueLastSampleNumber = datasets.connection.getSampleCount() - 1;
 			for(int dftN = DFT.firstDft; dftN <= DFT.lastDft; dftN++) {
 				int firstSampleNumber = dftN * windowLength;
@@ -622,10 +622,11 @@ public class OpenGLFrequencyDomainCache {
 		int sampleCount = samples.length;
 		DFT.binSizeHz = 1.0 / ((double) sampleCount / samplesPerSecond);
 		
+		// bin count is the sample count, divided by 2, plus 1
+		DFT.binCount = (int) Math.floor((double) sampleCount / 2.0) + 1;
+		
 		// maximum frequency range (in Hertz) is from 0 to the sample rate (in Hertz), divided by 2
-		// example: sampling at 1kHz -> 0 Hz to 1000/2 = 500 Hz
-		double maxFrequencyHz = samplesPerSecond / 2.0;
-		DFT.binCount = (int) (maxFrequencyHz / DFT.binSizeHz) + 1;
+		// example: sampling at 1kHz -> 0 Hz to 500 Hz
 		
 		// generate the sine and cosine LUTs
 		if(sinLUT == null || cosLUT == null || sinLUT[0].length != sampleCount || cosLUT[0].length != sampleCount) {
@@ -689,10 +690,11 @@ public class OpenGLFrequencyDomainCache {
 		int sampleCount = samples.length;
 		DFT.binSizeHz = 1.0 / ((double) sampleCount / samplesPerSecond);
 		
+		// bin count is the sample count, divided by 2, plus 1
+		DFT.binCount = (int) Math.floor((double) sampleCount / 2.0) + 1;
+		
 		// maximum frequency range (in Hertz) is from 0 to the sample rate (in Hertz), divided by 2
-		// example: sampling at 1kHz -> 0 Hz to 1000/2 = 500 Hz
-		double maxFrequencyHz = samplesPerSecond / 2.0;
-		DFT.binCount = (int) (maxFrequencyHz / DFT.binSizeHz) + 1;
+		// example: sampling at 1kHz -> 0 Hz to 500 Hz
 		
 		// generate the sine and cosine LUTs
 		if(sinLUT == null || cosLUT == null || sinLUT[0].length != sampleCount || cosLUT[0].length != sampleCount) {

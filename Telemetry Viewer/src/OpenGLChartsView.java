@@ -456,7 +456,7 @@ public class OpenGLChartsView extends JPanel {
 								continue;
 							long errorMilliseconds = endTimestamp - connectionTimestamp;
 							if(errorMilliseconds > 10 || errorMilliseconds < -10) {
-								int errorSampleCount = (int) Math.round((double) errorMilliseconds * (double) connection.sampleRate / 1000.0);
+								int errorSampleCount = (int) Math.round((double) errorMilliseconds * (double) connection.getSampleRate() / 1000.0);
 								details.sampleNumber = connectionSampleNumber + errorSampleCount;
 							}
 						}
@@ -896,7 +896,7 @@ public class OpenGLChartsView extends JPanel {
 						boolean afterEndOfData    = !liveView && pausedTimestamp > connection.getLastTimestamp();
 						boolean reachedStartOrEnd = oldSampleNumber + (int) delta < 0 || oldSampleNumber + (int) delta >= trueLastSampleNumber;
 						if(beforeStartOfData || afterEndOfData || (reachedStartOrEnd && activeConnections > 1)) {
-							newTimestamp = pausedTimestamp + (long) (delta / connection.sampleRate * 1000.0);
+							newTimestamp = pausedTimestamp + (long) (delta / connection.getSampleRate() * 1000.0);
 							long firstTimestamp = ConnectionsController.getFirstTimestamp();
 							if(newTimestamp < firstTimestamp)
 								newTimestamp = firstTimestamp;

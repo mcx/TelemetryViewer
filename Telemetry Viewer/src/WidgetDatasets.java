@@ -86,8 +86,8 @@ public class WidgetDatasets extends Widget {
 		
 		durationSampleCount = 10_000;
 		durationMilliseconds = 10_000;
-		if(!ConnectionsController.telemetryConnections.isEmpty() && ConnectionsController.telemetryConnections.get(0).sampleRate < Integer.MAX_VALUE / 10)
-			durationSampleCount = ConnectionsController.telemetryConnections.get(0).sampleRate * 10L;
+		if(!ConnectionsController.telemetryConnections.isEmpty() && ConnectionsController.telemetryConnections.get(0).getSampleRate() < Integer.MAX_VALUE / 10)
+			durationSampleCount = ConnectionsController.telemetryConnections.get(0).getSampleRate() * 10L;
 		durationTextfield.setText(Long.toString(durationSampleCount));
 		
 		durationTextfield.addFocusListener(new FocusListener() {
@@ -581,7 +581,7 @@ public class WidgetDatasets extends Widget {
 		
 		// reset the duration if appropriate
 		if(selectedDatasets.size() == 1 && !userSpecifiedTheDuration)
-			setDuration(durationUnit == DurationUnit.SAMPLES ? Integer.toString(dataset.connection.sampleRate * 10) :
+			setDuration(durationUnit == DurationUnit.SAMPLES ? Integer.toString(dataset.connection.getSampleRate() * 10) :
 			            durationUnit == DurationUnit.SECONDS ? Double.toString(10.0) :
 			            durationUnit == DurationUnit.MINUTES ? Double.toString(10.0 / 60.0) :
 			            durationUnit == DurationUnit.HOURS   ? Double.toString(10.0 / 60.0 / 60.0) :
@@ -655,7 +655,7 @@ public class WidgetDatasets extends Widget {
 		
 		// reset the duration if appropriate
 		if(selectedDatasets.size() == 1 && !userSpecifiedTheDuration)
-			setDuration(durationUnit == DurationUnit.SAMPLES ? Integer.toString(edge.connection.sampleRate * 10) :
+			setDuration(durationUnit == DurationUnit.SAMPLES ? Integer.toString(edge.connection.getSampleRate() * 10) :
 			            durationUnit == DurationUnit.SECONDS ? Double.toString(10.0) :
 			            durationUnit == DurationUnit.MINUTES ? Double.toString(10.0 / 60.0) :
 			            durationUnit == DurationUnit.HOURS   ? Double.toString(10.0 / 60.0 / 60.0) :
@@ -699,7 +699,7 @@ public class WidgetDatasets extends Widget {
 		
 		// reset the duration if appropriate
 		if(selectedDatasets.size() == 1 && !userSpecifiedTheDuration)
-			setDuration(durationUnit == DurationUnit.SAMPLES ? Integer.toString(level.connection.sampleRate * 10) :
+			setDuration(durationUnit == DurationUnit.SAMPLES ? Integer.toString(level.connection.getSampleRate() * 10) :
 			            durationUnit == DurationUnit.SECONDS ? Double.toString(10.0) :
 			            durationUnit == DurationUnit.MINUTES ? Double.toString(10.0 / 60.0) :
 			            durationUnit == DurationUnit.HOURS   ? Double.toString(10.0 / 60.0 / 60.0) :
@@ -806,10 +806,10 @@ public class WidgetDatasets extends Widget {
 		// update the model
 		if(durationUnit == DurationUnit.SAMPLES && newUnit != DurationUnit.SAMPLES) {
 			// convert from sample count to milliseconds
-			int sampleRateHz = !selectedDatasets.isEmpty()                           ?       selectedDatasets.get(0).connection.sampleRate :
-			                   !selectedBitfieldEdges.isEmpty()                      ?  selectedBitfieldEdges.get(0).connection.sampleRate :
-			                   !selectedBitfieldLevels.isEmpty()                     ? selectedBitfieldLevels.get(0).connection.sampleRate :
-			                   !ConnectionsController.telemetryConnections.isEmpty() ? ConnectionsController.telemetryConnections.get(0).sampleRate : 1000;
+			int sampleRateHz = !selectedDatasets.isEmpty()                           ?       selectedDatasets.get(0).connection.getSampleRate() :
+			                   !selectedBitfieldEdges.isEmpty()                      ?  selectedBitfieldEdges.get(0).connection.getSampleRate() :
+			                   !selectedBitfieldLevels.isEmpty()                     ? selectedBitfieldLevels.get(0).connection.getSampleRate() :
+			                   !ConnectionsController.telemetryConnections.isEmpty() ? ConnectionsController.telemetryConnections.get(0).getSampleRate() : 1000;
 			if(sampleRateHz == Integer.MAX_VALUE)
 				sampleRateHz = 1000;
 			durationMilliseconds = Math.round((double) durationSampleCount / (double) sampleRateHz * 1000.0);
@@ -817,10 +817,10 @@ public class WidgetDatasets extends Widget {
 				axisType = AxisType.TIMESTAMPS;
 		} else if(durationUnit != DurationUnit.SAMPLES && newUnit == DurationUnit.SAMPLES) {
 			// convert from milliseconds to sample count
-			int sampleRateHz = !selectedDatasets.isEmpty()                           ?       selectedDatasets.get(0).connection.sampleRate :
-			                   !selectedBitfieldEdges.isEmpty()                      ?  selectedBitfieldEdges.get(0).connection.sampleRate :
-			                   !selectedBitfieldLevels.isEmpty()                     ? selectedBitfieldLevels.get(0).connection.sampleRate :
-			                   !ConnectionsController.telemetryConnections.isEmpty() ? ConnectionsController.telemetryConnections.get(0).sampleRate : 1000;
+			int sampleRateHz = !selectedDatasets.isEmpty()                           ?       selectedDatasets.get(0).connection.getSampleRate() :
+			                   !selectedBitfieldEdges.isEmpty()                      ?  selectedBitfieldEdges.get(0).connection.getSampleRate() :
+			                   !selectedBitfieldLevels.isEmpty()                     ? selectedBitfieldLevels.get(0).connection.getSampleRate() :
+			                   !ConnectionsController.telemetryConnections.isEmpty() ? ConnectionsController.telemetryConnections.get(0).getSampleRate() : 1000;
 			if(sampleRateHz == Integer.MAX_VALUE)
 				sampleRateHz = 1000;
 			durationSampleCount = Math.round((double) durationMilliseconds / 1000.0 * (double) sampleRateHz);

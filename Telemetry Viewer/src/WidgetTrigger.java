@@ -590,7 +590,7 @@ public class WidgetTrigger extends Widget {
 				triggered = true;
 				nextTriggerableSampleNumber = triggeredSampleNumber + (int) Math.round(chartDomain * postTriggerPercent);
 				long triggeredTimestamp = datasets.getTimestamp(triggeredSampleNumber);
-				long millisecondsAfterTrigger = (long) ((chartDomain / triggerChannel.connection.sampleRate * 1000) * postTriggerPercent);
+				long millisecondsAfterTrigger = (long) ((chartDomain / triggerChannel.connection.getSampleRate() * 1000) * postTriggerPercent);
 				long triggeredEndTimestamp = triggeredTimestamp + millisecondsAfterTrigger;
 				triggeredMinSampleNumber = minSampleNumber;
 				triggeredEndSampleNumber = triggeredSampleNumber + (int) Math.round(chartDomain * postTriggerPercent);

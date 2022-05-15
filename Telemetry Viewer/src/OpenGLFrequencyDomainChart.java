@@ -234,7 +234,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		// calculate the range and ensure it's >0
 		// for "Waterfall View" the y-axis is time
 		// for "Live View" and "Waveform View" the y-axis is power
-		float sampleRate = haveDatasets ? datasets.connection.sampleRate : 1;
+		float sampleRate = haveDatasets ? datasets.connection.getSampleRate() : 1;
 		float plotMinTime = 0;
 		float plotMaxTime = (float) (duration * dftCount) / sampleRate;
 

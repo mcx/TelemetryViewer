@@ -45,7 +45,6 @@ import javax.swing.JComboBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
-import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 
@@ -71,13 +70,43 @@ public class ConnectionTelemetry extends Connection {
 	
 	public enum Mode {UART, TCP, UDP, DEMO, STRESS_TEST};
 	public volatile Mode mode = Mode.UART;
-	public enum PacketType {CSV, BINARY, TC66};
+	
+	private volatile int sampleRate = 0;
+	private volatile boolean automaticSampleRate = true;
+	private final int sampleRateMinimum = 1;
+	private final int sampleRateMaximum = Integer.MAX_VALUE;
+	
+	public enum PacketType {
+		CSV    { @Override public String toString() { return "CSV Mode";    } },
+		BINARY { @Override public String toString() { return "Binary Mode"; } },
+		TC66   { @Override public String toString() { return "TC66 Mode";   } }
+	};
 	public volatile PacketType packetType = PacketType.CSV;
-	public volatile int sampleRate = 1000;
+	
 	public volatile int baudRate = 9600; // for UART mode
 	public volatile int portNumber = 8080; // for TCP/UDP modes
 	
 	private volatile int packetByteCount = 0; // INCLUDING the optional sync word and checksum
+	
+	private long previousSampleCountTimestamp = 0; // for automatic sample rate calculation if enabled
+	private int  previousSampleCount = 0;
+	
+	public int getSampleRate() {
+		if(sampleRate == 0)
+			return 1; // placeholder, because charts expect >0
+		else
+			return sampleRate;
+	}
+	
+	private void setSampleRate(int newRate) {
+		if(newRate == sampleRate)
+			return;
+		sampleRate = newRate;
+	}
+	
+	private void setSampleRateAutomatic(boolean isAutomatic) {
+		automaticSampleRate = isAutomatic;
+	}
 	
 	public void setDataStructureDefined(boolean isDefined) {
 		
@@ -162,13 +191,16 @@ public class ConnectionTelemetry extends Connection {
 		
 		// determine the sample rate and CSV/binary mode
 		if(mode == Mode.UART || mode == Mode.TCP || mode == Mode.UDP) {
-			sampleRate = 1000;
+			setSampleRate(0);
+			setSampleRateAutomatic(true);
 			packetType = PacketType.CSV;
 		} else if(mode == Mode.DEMO) {
-			sampleRate = 10000;
+			setSampleRate(10000);
+			setSampleRateAutomatic(false);
 			packetType = PacketType.CSV;
 		} else {
-			sampleRate = Integer.MAX_VALUE;
+			setSampleRate(Integer.MAX_VALUE);
+			setSampleRateAutomatic(false);
 			packetType = PacketType.BINARY;
 		}
 		
@@ -205,13 +237,16 @@ public class ConnectionTelemetry extends Connection {
 		
 		// determine the sample rate and CSV/binary mode
 		if(mode == Mode.UART || mode == Mode.TCP || mode == Mode.UDP) {
-			sampleRate = 1000;
+			setSampleRate(0);
+			setSampleRateAutomatic(true);
 			packetType = PacketType.CSV;
 		} else if(mode == Mode.DEMO) {
-			sampleRate = 10000;
+			setSampleRate(10000);
+			setSampleRateAutomatic(false);
 			packetType = PacketType.CSV;
 		} else {
-			sampleRate = Integer.MAX_VALUE;
+			setSampleRate(Integer.MAX_VALUE);
+			setSampleRateAutomatic(false);
 			packetType = PacketType.BINARY;
 		}
 
@@ -253,30 +288,52 @@ public class ConnectionTelemetry extends Connection {
 		panel.setLayout(new MigLayout("hidemode 3, gap " + Theme.padding  + ", insets 0 " + Theme.padding + " 0 0"));
 			
 		// sample rate
-		JTextField sampleRateTextfield = new JTextField(sampleRate == Integer.MAX_VALUE ? "maximum Hz" : Integer.toString(sampleRate) + " Hz", 10);
-		sampleRateTextfield.setToolTipText("<html>Sample rate, in Hertz.<br>(The number of telemetry packets that will be sent to the PC each second.)<br>If this number is inaccurate, things like the frequency domain chart will be inaccurate.</html>");
-		sampleRateTextfield.setMinimumSize(sampleRateTextfield.getPreferredSize());
-		sampleRateTextfield.addFocusListener(new FocusListener() {
-			@Override public void focusLost(FocusEvent fe) {
-				try {
-					String text = sampleRateTextfield.getText().trim();
-					if(text.endsWith("Hz"))
-						text = text.substring(0, text.length() - 2).trim();
-					int rate = Integer.parseInt(text);
-					if(rate > 0 && rate != sampleRate) {
-						sampleRate = rate;
-						sampleRateTextfield.setText(rate + " Hz");
-					} else if (rate <= 0)
-						throw new Exception();
-				} catch(Exception e) {
-					sampleRateTextfield.setText(sampleRate + " Hz");
-				}
-				CommunicationView.instance.redraw();
+		TextfieldInteger sampleRateTextfield = new TextfieldInteger("Sample Rate",
+		                                                            "Hz",
+		                                                            sampleRateMinimum,
+		                                                            sampleRateMaximum,
+		                                                            automaticSampleRate ? 0 : sampleRate,
+		                                                            true,
+		                                                            0,
+		                                                            "Automatic",
+		                                                            newRate -> {
+		                                                            	setSampleRate(newRate);
+		                                                            	setSampleRateAutomatic(newRate == 0);
+		                                                            });
+		sampleRateTextfield.setToolTipText("Number of telemetry packets sent to the PC each second. Use 0 to have it automatically calculated. If this number is inaccurate, things like the frequency domain chart will be inaccurate.");
+		
+		// automatically calculate the sample rate if needed
+		Timer sampleRateCalculator = new Timer(1000, null);
+		sampleRateCalculator.addActionListener(event -> {
+			
+			if(panel.getParent() == null) {
+				// cancel timer if this GUI is no longer on screen
+				sampleRateCalculator.stop();
+				return;
+			} else if(!automaticSampleRate || !connected || !isDataStructureDefined()) {
+				// skip this iteration if not ready/applicable
+				return;
+			} else if(previousSampleCountTimestamp == 0) {
+				// initialize automatic sample rate mode
+				previousSampleCountTimestamp = ConnectionsController.importing ? ConnectionsController.getFirstTimestamp() :
+				                                                                 System.currentTimeMillis();
+				previousSampleCount = getSampleCount();
+			} else {
+				// calculate the sample rate
+				long currentTimestamp = ConnectionsController.importing ? ConnectionsController.getLastTimestamp() :
+				                                                          System.currentTimeMillis();
+				int  currentSampleCount = getSampleCount();
+				long millisecondsDelta = currentTimestamp - previousSampleCountTimestamp;
+				int sampleCountDelta = currentSampleCount - previousSampleCount;
+				int samplesPerSecond = (int) Math.round((double) sampleCountDelta / ((double) millisecondsDelta / 1000.0));
+				setSampleRate(samplesPerSecond);
+				sampleRateTextfield.disableWithNumber(samplesPerSecond);
+				previousSampleCountTimestamp = currentTimestamp;
+				previousSampleCount = currentSampleCount;
 			}
-			@Override public void focusGained(FocusEvent fe) {
-				sampleRateTextfield.selectAll();
-			}
+			
 		});
+		sampleRateCalculator.start();
 		
 		// packet type
 		JComboBox<String> packetTypeCombobox = new JComboBox<String>(new String[] {"CSV Mode", "Binary Mode", "TC66 Mode"});
@@ -356,7 +413,8 @@ public class ConnectionTelemetry extends Connection {
 					datasets.removeAll();
 				transmit = new TransmitController(this);
 				if(oldMode == Mode.DEMO || oldMode == Mode.STRESS_TEST) {
-					sampleRate = 1000;
+					setSampleRate(0);
+					setSampleRateAutomatic(true);
 					packetType = PacketType.CSV;
 				}
 			} else if(name.equals("TCP")) {
@@ -365,7 +423,8 @@ public class ConnectionTelemetry extends Connection {
 					datasets.removeAll();
 				transmit = null;
 				if(oldMode == Mode.DEMO || oldMode == Mode.STRESS_TEST) {
-					sampleRate = 1000;
+					setSampleRate(0);
+					setSampleRateAutomatic(true);
 					packetType = PacketType.CSV;
 				}
 			} else if(name.equals("UDP")) {
@@ -374,7 +433,8 @@ public class ConnectionTelemetry extends Connection {
 					datasets.removeAll();
 				transmit = null;
 				if(oldMode == Mode.DEMO || oldMode == Mode.STRESS_TEST) {
-					sampleRate = 1000;
+					setSampleRate(0);
+					setSampleRateAutomatic(true);
 					packetType = PacketType.CSV;
 				}
 			} else if(name.equals("Demo Mode")) {
@@ -382,14 +442,16 @@ public class ConnectionTelemetry extends Connection {
 				if(mode != oldMode)
 					datasets.removeAll();
 				transmit = null;
-				sampleRate = 10000;
+				setSampleRate(10000);
+				setSampleRateAutomatic(false);
 				packetType = PacketType.CSV;
 			} else {
 				mode = Mode.STRESS_TEST;
 				if(mode != oldMode)
 					datasets.removeAll();
 				transmit = null;
-				sampleRate = Integer.MAX_VALUE;
+				setSampleRate(Integer.MAX_VALUE);
+				setSampleRateAutomatic(false);
 				packetType = PacketType.BINARY;
 			}
 
@@ -529,6 +591,9 @@ public class ConnectionTelemetry extends Connection {
 				connection.removeAllData();
 			ConnectionsController.previouslyImported = false;
 		}
+		
+		previousSampleCountTimestamp = 0;
+		previousSampleCount = 0;
 		
 		if(showGui) {
 			setDataStructureDefined(false);
@@ -683,7 +748,8 @@ public class ConnectionTelemetry extends Connection {
 		// for the TC66/TC66C: populate the datasets and configure the transmit GUI to poll the device periodically
 		if(packetType == PacketType.TC66) {
 			
-			sampleRate = 2;
+			setSampleRate(2);
+			setSampleRateAutomatic(false);
 			boolean datasetsAlreadyExist = datasets.getCount() == 11 &&
 			                               datasets.getByIndex(0) .name.equals("Voltage") &&
 			                               datasets.getByIndex(1) .name.equals("Current") &&
@@ -1007,7 +1073,8 @@ public class ConnectionTelemetry extends Connection {
 		SettingsController.setAntialiasingLevel(1);
 		
 		packetType = PacketType.BINARY;
-		sampleRate = Integer.MAX_VALUE;
+		setSampleRate(Integer.MAX_VALUE);
+		setSampleRateAutomatic(false);
 		
 		DatasetsController.BinaryFieldProcessor processor = null;
 		for(DatasetsController.BinaryFieldProcessor p : DatasetsController.binaryFieldProcessors)
@@ -1149,7 +1216,7 @@ public class ConnectionTelemetry extends Connection {
 				throw new AssertionError("Invalid packet type.");
 			
 			int hz = ChartUtils.parseInteger(lines.remove(), "sample rate hz = %d");
-			if(hz < 1)
+			if(hz < 0)
 				throw new AssertionError("Invalid sample rate.");
 			
 			String transmitType = ChartUtils.parseString(lines.remove(), "transmit type = %s");
@@ -1173,7 +1240,8 @@ public class ConnectionTelemetry extends Connection {
 			packetType = packetTypeString.equals("CSV")    ? PacketType.CSV :
 			             packetTypeString.equals("Binary") ? PacketType.BINARY :
 			                                                 PacketType.TC66;
-			sampleRate = hz;
+			setSampleRate(hz);
+			setSampleRateAutomatic(hz == 0);
 			
 			transmit = new TransmitController(this);
 			transmitQueue = new ConcurrentLinkedQueue<byte[]>();
@@ -1217,21 +1285,24 @@ public class ConnectionTelemetry extends Connection {
 			portNumber = port;
 			packetType = packetTypeString.equals("CSV") ? PacketType.CSV :
 			                                              PacketType.BINARY;
-			sampleRate = hz;
+			setSampleRate(hz);
+			setSampleRateAutomatic(hz == 0);
 			
 		} else if(type.equals("Demo Mode")) {
 			
 			mode = Mode.DEMO;
 			name = "Demo Mode";
 			packetType = PacketType.CSV;
-			sampleRate = 10000;
+			setSampleRate(10000);
+			setSampleRateAutomatic(false);
 			
 		} else {
 			
 			mode = Mode.STRESS_TEST;
 			name = "Stress Test Mode";
 			packetType = PacketType.BINARY;
-			sampleRate = Integer.MAX_VALUE;
+			setSampleRate(Integer.MAX_VALUE);
+			setSampleRateAutomatic(false);
 			
 		}
 		
@@ -1328,7 +1399,7 @@ public class ConnectionTelemetry extends Connection {
 			file.println("\tpacket type = "    + (packetType == PacketType.CSV    ? "CSV" :
 			                                      packetType == PacketType.BINARY ? "Binary" :
 			                                                                        "TC66"));
-			file.println("\tsample rate hz = " + sampleRate);
+			file.println("\tsample rate hz = " + (automaticSampleRate ? 0 : sampleRate));
 			
 			file.println("\ttransmit type = "                             + transmit.getTransmitType());
 			file.println("\ttransmit data = "                             + transmit.getTransmitText());
@@ -1347,7 +1418,7 @@ public class ConnectionTelemetry extends Connection {
 			file.println("\tconnection type = " + ((mode == Mode.TCP) ? "TCP" : "UDP"));
 			file.println("\tserver port = "     + portNumber);
 			file.println("\tpacket type = "     + (packetType == PacketType.CSV ? "CSV" : "Binary"));
-			file.println("\tsample rate hz = "  + sampleRate);
+			file.println("\tsample rate hz = "  + (automaticSampleRate ? 0 : sampleRate));
 			
 		} else if(mode == Mode.DEMO) {
 			
@@ -1440,6 +1511,8 @@ public class ConnectionTelemetry extends Connection {
 				Scanner file = new Scanner(new FileInputStream(path), "UTF-8");
 				
 				connected = true;
+				previousSampleCountTimestamp = 0;
+				previousSampleCount = 0;
 				CommunicationView.instance.redraw();
 				
 				// sanity checks
