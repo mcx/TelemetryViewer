@@ -2,6 +2,7 @@ import java.awt.Color;
 import java.nio.FloatBuffer;
 import java.util.Map;
 
+import com.jogamp.common.nio.Buffers;
 import com.jogamp.opengl.GL2ES3;
 import com.jogamp.opengl.GL3;
 
@@ -30,6 +31,7 @@ public class OpenGLHistogramChart extends PositionedChart {
 	FloatBuffer[] samples; // [datasetN]
 	int[][] bins; // [datasetN][binN]
 	int binCount;
+	FloatBuffer[] binsAsTriangles; // [datasetN], filled with binN's, for drawing
 	
 	// plot region
 	float xPlotLeft;
@@ -157,6 +159,9 @@ public class OpenGLHistogramChart extends PositionedChart {
 		                                                   int datasetsCount = datasets.normalsCount();
 		                                                   samples = new FloatBuffer[datasetsCount];
 		                                                   bins = new int[datasetsCount][binCount];
+		                                                   binsAsTriangles = new FloatBuffer[datasetsCount];
+		                                                   for(int i = 0; i < datasetsCount; i++)
+		                                                	   binsAsTriangles[i] = Buffers.newDirectFloatBuffer(binCount * 12);
 		                                               },
 		                                               null,
 		                                               null,
@@ -174,6 +179,8 @@ public class OpenGLHistogramChart extends PositionedChart {
 		                                            newBinCount -> {
 		                                                binCount = newBinCount;
 		                                                bins = new int[datasets.normalsCount()][binCount];
+		                                                for(int i = 0; i < datasets.normalsCount(); i++)
+		                                                	binsAsTriangles[i] = Buffers.newDirectFloatBuffer(binCount * 12);
 		                                            });
 		
 		xAxisTypeWidget = new WidgetHistogramXaxisType(xAxisMinimumDefault,
@@ -625,7 +632,7 @@ public class OpenGLHistogramChart extends PositionedChart {
 		// draw the bins
 		if(sampleCount > 0) {
 			for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
-				
+				binsAsTriangles[datasetN].rewind();
 				for(int binN = 0; binN < binCount; binN++) {
 					
 					float min = minX + (binSize *  binN);      // inclusive
@@ -636,10 +643,20 @@ public class OpenGLHistogramChart extends PositionedChart {
 					float yBarTop = ((float) bins[datasetN][binN] - minYfreq) / yFreqRange * plotHeight + yPlotBottom;
 					float halfBarWidth = plotWidth / binCount / 2f;
 					
-					OpenGL.drawQuad2D(gl, datasets.getNormal(datasetN).glColor, xBarCenter - halfBarWidth, yPlotBottom, xBarCenter + halfBarWidth, yBarTop);
+					float x1 = xBarCenter - halfBarWidth; // top-left
+					float y1 = yBarTop;
+					float x2 = xBarCenter - halfBarWidth; // bottom-left
+					float y2 = yPlotBottom;
+					float x3 = xBarCenter + halfBarWidth; // bottom-right
+					float y3 = yPlotBottom;
+					float x4 = xBarCenter + halfBarWidth; // top-right
+					float y4 = yBarTop;
+					binsAsTriangles[datasetN].put(x1).put(y1).put(x2).put(y2).put(x3).put(y3);
+					binsAsTriangles[datasetN].put(x3).put(y3).put(x4).put(y4).put(x1).put(y1);
 					
 				}
-			
+				binsAsTriangles[datasetN].rewind();
+				OpenGL.drawTrianglesXY(gl, GL3.GL_TRIANGLES, datasets.getNormal(datasetN).glColor, binsAsTriangles[datasetN], 6 * binCount);
 			}
 		}
 
