@@ -35,7 +35,6 @@
 	<classpathentry kind="lib" path="lib/jetty-io-9.4.28.v20200408.jar"/>
 	<classpathentry kind="lib" path="lib/jetty-util-9.4.28.v20200408.jar"/>
 	<classpathentry kind="con" path="org.eclipse.jdt.junit.JUNIT_CONTAINER/5"/>
-	<classpathentry kind="lib" path="lib/jSerialComm-2.6.2.jar"/>
 	<classpathentry kind="lib" path="lib/gluegen-rt.jar"/>
 	<classpathentry kind="lib" path="lib/gluegen-rt-natives-linux-aarch64.jar"/>
 	<classpathentry kind="lib" path="lib/gluegen-rt-natives-linux-amd64.jar"/>
@@ -56,5 +55,11 @@
 	<classpathentry kind="lib" path="lib/jogl-all-natives-macosx-universal.jar"/>
 	<classpathentry kind="lib" path="lib/jogl-all-natives-windows-amd64.jar"/>
 	<classpathentry kind="lib" path="lib/jogl-all-natives-windows-i586.jar"/>
+	<classpathentry kind="lib" path="lib/jSerialComm-2.6.2.jar"/>
+	<classpathentry kind="lib" path="lib/JTransforms-3.1-with-dependencies.jar" sourcepath="lib/JTransforms-3.1-sources.jar">
+		<attributes>
+			<attribute name="javadoc_location" value="jar:platform:/resource/Telemetry%20Viewer/lib/JTransforms-3.1-javadoc.jar!/"/>
+		</attributes>
+	</classpathentry>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

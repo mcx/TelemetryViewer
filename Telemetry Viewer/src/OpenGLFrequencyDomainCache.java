@@ -2,6 +2,8 @@ import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
+
+import org.jtransforms.fft.DoubleFFT_1D;
 import com.jogamp.common.nio.Buffers;
 import com.jogamp.opengl.GL2ES3;
 import com.jogamp.opengl.GL3;
@@ -603,8 +605,10 @@ public class OpenGLFrequencyDomainCache {
 		
 	}
 	
-	private double[][] sinLUT;
-	private double[][] cosLUT;
+//	private double[][] sinLUT;
+//	private double[][] cosLUT;
+	private DoubleFFT_1D fft = null;
+	private int fftSampleCount = 0;
 	
 	/**
 	 * Calculates a DFT, using look-up tables for sine and cosine.
@@ -615,6 +619,16 @@ public class OpenGLFrequencyDomainCache {
 	 * @returns             The DFT. If the samples have units of Volts, these numbers will have units of log10(Watts).
 	 */
 	private float[] calculateDFT(float[] samples, int sampleRate) {
+			
+		if(fft == null || fftSampleCount != samples.length) {
+			fft = new DoubleFFT_1D(samples.length);
+			fftSampleCount = samples.length;
+		}
+		
+		double[] samplesD = new double[samples.length];
+		for(int i = 0; i < samples.length; i++)
+			samplesD[i] = samples[i];
+		fft.realForward(samplesD);
 		
 		// bin size (in Hertz) is the reciprocal of the window size (in seconds)
 		// example: 500ms window -> 1/0.5 = 2 Hz bin size
@@ -623,40 +637,25 @@ public class OpenGLFrequencyDomainCache {
 		DFT.binSizeHz = 1.0 / ((double) sampleCount / samplesPerSecond);
 		
 		// bin count is the sample count, divided by 2, plus 1
-		DFT.binCount = (int) Math.floor((double) sampleCount / 2.0) + 1;
+		DFT.binCount = sampleCount / 2 + 1;
 		
 		// maximum frequency range (in Hertz) is from 0 to the sample rate (in Hertz), divided by 2
 		// example: sampling at 1kHz -> 0 Hz to 500 Hz
 		
-		// generate the sine and cosine LUTs
-		if(sinLUT == null || cosLUT == null || sinLUT[0].length != sampleCount || cosLUT[0].length != sampleCount) {
-			sinLUT = new double[DFT.binCount][sampleCount];
-			cosLUT = new double[DFT.binCount][sampleCount];
-			System.gc();
-			for(int bin = 0; bin < DFT.binCount; bin++) {
-				double frequencyHz  = (double) bin * DFT.binSizeHz;
-				for(int sample = 0; sample < sampleCount; sample++) {
-					double timeSec      = (double) sample / samplesPerSecond;
-					sinLUT[bin][sample] = Math.sin(2.0 * Math.PI * frequencyHz * timeSec);
-					cosLUT[bin][sample] = Math.cos(2.0 * Math.PI * frequencyHz * timeSec);
-				}
-			}
-		}
-		
-		// calc the DFT, assuming the samples are in Volts, and assuming the load is a unit load (1 ohm)
 		float[] powerLevels = new float[DFT.binCount];
 		
 		for(int bin = 0; bin < DFT.binCount; bin++) {
-			double realV = 0.0;
-			double imaginaryV = 0.0;
-//			double frequencyHz = (double) bin * binSizeHz;
-			for(int x = 0; x < sampleCount; x++) {
-				double sample = samples[x];
-//				double timeSec   = (double) x / samplesPerSecond;
-//				realV      += sample * Math.cos(2.0 * Math.PI * frequencyHz * timeSec);
-//				imaginaryV += sample * Math.sin(2.0 * Math.PI * frequencyHz * timeSec);
-				realV      += sample * cosLUT[bin][x];
-				imaginaryV += sample * sinLUT[bin][x];
+			double realV;
+			double imaginaryV;
+			if(bin == 0) {
+				realV = samplesD[2*bin + 0];
+				imaginaryV = 0;
+			} else if(bin == DFT.binCount - 1) {
+				realV = samplesD[1];
+				imaginaryV = 0;
+			} else {
+				realV      = samplesD[2*bin + 0];
+				imaginaryV = samplesD[2*bin + 1];
 			}
 			realV      /= (double) sampleCount;
 			imaginaryV /= (double) sampleCount;
@@ -672,6 +671,62 @@ public class OpenGLFrequencyDomainCache {
 		
 		return powerLevels;
 		
+//		// bin size (in Hertz) is the reciprocal of the window size (in seconds)
+//		// example: 500ms window -> 1/0.5 = 2 Hz bin size
+//		double samplesPerSecond = sampleRate;
+//		int sampleCount = samples.length;
+//		DFT.binSizeHz = 1.0 / ((double) sampleCount / samplesPerSecond);
+//		
+//		// bin count is the sample count, divided by 2, plus 1
+//		DFT.binCount = (int) Math.floor((double) sampleCount / 2.0) + 1;
+//		
+//		// maximum frequency range (in Hertz) is from 0 to the sample rate (in Hertz), divided by 2
+//		// example: sampling at 1kHz -> 0 Hz to 500 Hz
+//		
+//		// generate the sine and cosine LUTs
+//		if(sinLUT == null || cosLUT == null || sinLUT[0].length != sampleCount || cosLUT[0].length != sampleCount) {
+//			sinLUT = new double[DFT.binCount][sampleCount];
+//			cosLUT = new double[DFT.binCount][sampleCount];
+//			System.gc();
+//			for(int bin = 0; bin < DFT.binCount; bin++) {
+//				double frequencyHz  = (double) bin * DFT.binSizeHz;
+//				for(int sample = 0; sample < sampleCount; sample++) {
+//					double timeSec      = (double) sample / samplesPerSecond;
+//					sinLUT[bin][sample] = Math.sin(2.0 * Math.PI * frequencyHz * timeSec);
+//					cosLUT[bin][sample] = Math.cos(2.0 * Math.PI * frequencyHz * timeSec);
+//				}
+//			}
+//		}
+//		
+//		// calc the DFT, assuming the samples are in Volts, and assuming the load is a unit load (1 ohm)
+//		float[] powerLevels = new float[DFT.binCount];
+//		
+//		for(int bin = 0; bin < DFT.binCount; bin++) {
+//			double realV = 0.0;
+//			double imaginaryV = 0.0;
+////			double frequencyHz = (double) bin * binSizeHz;
+//			for(int x = 0; x < sampleCount; x++) {
+//				double sample = samples[x];
+////				double timeSec   = (double) x / samplesPerSecond;
+////				realV      += sample * Math.cos(2.0 * Math.PI * frequencyHz * timeSec);
+////				imaginaryV += sample * Math.sin(2.0 * Math.PI * frequencyHz * timeSec);
+//				realV      += sample * cosLUT[bin][x];
+//				imaginaryV += sample * sinLUT[bin][x];
+//			}
+//			realV      /= (double) sampleCount;
+//			imaginaryV /= (double) sampleCount;
+//			double powerW = (realV * realV) + (imaginaryV * imaginaryV);
+//			powerW *= 2; // because DFT is from -Fs to +Fs
+//			
+//			// ensure powerW != 0, which would cause the Math.log10() below to return -Infinity
+//			if(powerW == 0)
+//				powerW = Math.pow(10, -36); // arbitrarily picked because it looks like a reasonable min
+//			
+//			powerLevels[bin] = (float) Math.log10(powerW);
+//		}
+//		
+//		return powerLevels;
+		
 	}
 	
 	/**
@@ -683,6 +738,16 @@ public class OpenGLFrequencyDomainCache {
 	 * @returns             The DFT. If the samples have units of Volts, these numbers will have units of log10(Watts).
 	 */
 	float[] calculateDFTxy(float[] samples, int sampleRate) {
+			
+		if(fft == null || fftSampleCount != samples.length) {
+			fft = new DoubleFFT_1D(samples.length);
+			fftSampleCount = samples.length;
+		}
+		
+		double[] samplesD = new double[samples.length];
+		for(int i = 0; i < samples.length; i++)
+			samplesD[i] = samples[i];
+		fft.realForward(samplesD);
 		
 		// bin size (in Hertz) is the reciprocal of the window size (in seconds)
 		// example: 500ms window -> 1/0.5 = 2 Hz bin size
@@ -691,41 +756,27 @@ public class OpenGLFrequencyDomainCache {
 		DFT.binSizeHz = 1.0 / ((double) sampleCount / samplesPerSecond);
 		
 		// bin count is the sample count, divided by 2, plus 1
-		DFT.binCount = (int) Math.floor((double) sampleCount / 2.0) + 1;
+		DFT.binCount = sampleCount / 2 + 1;
 		
 		// maximum frequency range (in Hertz) is from 0 to the sample rate (in Hertz), divided by 2
 		// example: sampling at 1kHz -> 0 Hz to 500 Hz
 		
-		// generate the sine and cosine LUTs
-		if(sinLUT == null || cosLUT == null || sinLUT[0].length != sampleCount || cosLUT[0].length != sampleCount) {
-			sinLUT = new double[DFT.binCount][sampleCount];
-			cosLUT = new double[DFT.binCount][sampleCount];
-			System.gc();
-			for(int bin = 0; bin < DFT.binCount; bin++) {
-				double frequencyHz  = (double) bin * DFT.binSizeHz;
-				for(int sample = 0; sample < sampleCount; sample++) {
-					double timeSec      = (double) sample / samplesPerSecond;
-					sinLUT[bin][sample] = Math.sin(2.0 * Math.PI * frequencyHz * timeSec);
-					cosLUT[bin][sample] = Math.cos(2.0 * Math.PI * frequencyHz * timeSec);
-				}
-			}
-		}
-		
-		// calc the DFT, assuming the samples are in Volts, and assuming the load is a unit load (1 ohm)
 		float[] powerLevels = new float[DFT.binCount*2];
 		
 		for(int bin = 0; bin < DFT.binCount; bin++) {
-			double realV = 0.0;
-			double imaginaryV = 0.0;
-			double frequencyHz = (double) bin * DFT.binSizeHz;
-			for(int x = 0; x < sampleCount; x++) {
-				double sample = samples[x];
-//				double timeSec   = (double) x / samplesPerSecond;
-//				realV      += sample * Math.cos(2.0 * Math.PI * frequencyHz * timeSec);
-//				imaginaryV += sample * Math.sin(2.0 * Math.PI * frequencyHz * timeSec);
-				realV      += sample * cosLUT[bin][x];
-				imaginaryV += sample * sinLUT[bin][x];
+			double realV;
+			double imaginaryV;
+			if(bin == 0) {
+				realV = samplesD[2*bin + 0];
+				imaginaryV = 0;
+			} else if(bin == DFT.binCount - 1) {
+				realV = samplesD[1];
+				imaginaryV = 0;
+			} else {
+				realV      = samplesD[2*bin + 0];
+				imaginaryV = samplesD[2*bin + 1];
 			}
+			double frequencyHz = (double) bin * DFT.binSizeHz;
 			realV      /= (double) sampleCount;
 			imaginaryV /= (double) sampleCount;
 			double powerW = (realV * realV) + (imaginaryV * imaginaryV);
@@ -740,6 +791,63 @@ public class OpenGLFrequencyDomainCache {
 		}
 		
 		return powerLevels;
+		
+//		// bin size (in Hertz) is the reciprocal of the window size (in seconds)
+//		// example: 500ms window -> 1/0.5 = 2 Hz bin size
+//		double samplesPerSecond = sampleRate;
+//		int sampleCount = samples.length;
+//		DFT.binSizeHz = 1.0 / ((double) sampleCount / samplesPerSecond);
+//		
+//		// bin count is the sample count, divided by 2, plus 1
+//		DFT.binCount = (int) Math.floor((double) sampleCount / 2.0) + 1;
+//		
+//		// maximum frequency range (in Hertz) is from 0 to the sample rate (in Hertz), divided by 2
+//		// example: sampling at 1kHz -> 0 Hz to 500 Hz
+//		
+//		// generate the sine and cosine LUTs
+//		if(sinLUT == null || cosLUT == null || sinLUT[0].length != sampleCount || cosLUT[0].length != sampleCount) {
+//			sinLUT = new double[DFT.binCount][sampleCount];
+//			cosLUT = new double[DFT.binCount][sampleCount];
+//			System.gc();
+//			for(int bin = 0; bin < DFT.binCount; bin++) {
+//				double frequencyHz  = (double) bin * DFT.binSizeHz;
+//				for(int sample = 0; sample < sampleCount; sample++) {
+//					double timeSec      = (double) sample / samplesPerSecond;
+//					sinLUT[bin][sample] = Math.sin(2.0 * Math.PI * frequencyHz * timeSec);
+//					cosLUT[bin][sample] = Math.cos(2.0 * Math.PI * frequencyHz * timeSec);
+//				}
+//			}
+//		}
+//		
+//		// calc the DFT, assuming the samples are in Volts, and assuming the load is a unit load (1 ohm)
+//		float[] powerLevels = new float[DFT.binCount*2];
+//		
+//		for(int bin = 0; bin < DFT.binCount; bin++) {
+//			double realV = 0.0;
+//			double imaginaryV = 0.0;
+//			double frequencyHz = (double) bin * DFT.binSizeHz;
+//			for(int x = 0; x < sampleCount; x++) {
+//				double sample = samples[x];
+////				double timeSec   = (double) x / samplesPerSecond;
+////				realV      += sample * Math.cos(2.0 * Math.PI * frequencyHz * timeSec);
+////				imaginaryV += sample * Math.sin(2.0 * Math.PI * frequencyHz * timeSec);
+//				realV      += sample * cosLUT[bin][x];
+//				imaginaryV += sample * sinLUT[bin][x];
+//			}
+//			realV      /= (double) sampleCount;
+//			imaginaryV /= (double) sampleCount;
+//			double powerW = (realV * realV) + (imaginaryV * imaginaryV);
+//			powerW *= 2; // because DFT is from -Fs to +Fs
+//			
+//			// ensure powerW != 0, which would cause the Math.log10() below to return -Infinity
+//			if(powerW == 0)
+//				powerW = Math.pow(10, -36); // arbitrarily picked because it looks like a reasonable min
+//			
+//			powerLevels[bin*2]     = (float) frequencyHz;
+//			powerLevels[bin*2 + 1] = (float) Math.log10(powerW);
+//		}
+//		
+//		return powerLevels;
 		
 	}
 	
