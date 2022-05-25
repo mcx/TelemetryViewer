@@ -41,9 +41,6 @@ public class SettingsController {
 	// if plot tooltips should be drawn
 	private static boolean tooltipVisibility = true;
 	
-	// if logitech smooth scrolling should be enabled
-	private static boolean smoothScrolling = true;
-	
 	// OpenGL multisample (MSAA) level, use 1 to disable antialiasing
 	private static int antialiasingLevel = 16;
 	
@@ -262,28 +259,6 @@ public class SettingsController {
 	public static boolean getTooltipVisibility() {
 		
 		return tooltipVisibility;
-		
-	}
-	
-	/**
-	 * Enables or disables Logitech smooth scrolling.
-	 * 
-	 * @param value    True to enable, false to disable.
-	 */
-	public static void setSmoothScrolling(boolean value) {
-		
-		smoothScrolling = value;
-		SettingsView.instance.enableSmoothScrollingCheckbox.setSelected(smoothScrolling);
-		Main.mouse.updateScrolling();
-		
-	}
-	
-	/**
-	 * @return    True if Logitech smooth scrolling is enabled.
-	 */
-	public static boolean getSmoothScrolling() {
-		
-		return smoothScrolling;
 		
 	}
 	

@@ -48,7 +48,6 @@ public class SettingsView extends JPanel {
 	JButton   verboseNotificationsColorButton;
 	
 	JCheckBox showTooltipsCheckbox;
-	JCheckBox enableSmoothScrollingCheckbox;
 	JSlider   antialiasingLevelSlider;
 	JCheckBox showFpsCheckbox;
 	JCheckBox showBenchmarksCheckbox;
@@ -136,10 +135,6 @@ public class SettingsView extends JPanel {
 		showTooltipsCheckbox = new JCheckBox("Show Plot Tooltips", SettingsController.getTooltipVisibility());
 		showTooltipsCheckbox.addActionListener(event -> SettingsController.setTooltipVisibility(showTooltipsCheckbox.isSelected()));
 		
-		// logitech smooth scrolling
-		enableSmoothScrollingCheckbox = new JCheckBox("Enable Logitech Smooth Scrolling", SettingsController.getSmoothScrolling());
-		enableSmoothScrollingCheckbox.addActionListener(event -> SettingsController.setSmoothScrolling(enableSmoothScrollingCheckbox.isSelected()));
-		
 		// FPS
 		showFpsCheckbox = new JCheckBox("Show FPS and Period", SettingsController.getFpsVisibility());
 		showFpsCheckbox.addActionListener(event -> SettingsController.setFpsVisibility(showFpsCheckbox.isSelected()));
@@ -201,7 +196,6 @@ public class SettingsView extends JPanel {
 		panel.add(verboseNotificationsColorButton, "gapbottom " + 4*Theme.padding);
 		
 		panel.add(showTooltipsCheckbox, "span 2, grow x");
-		panel.add(enableSmoothScrollingCheckbox, "span 2, grow x");
 		panel.add(showFpsCheckbox, "span 2, grow x");
 		panel.add(showBenchmarksCheckbox, "span 2, grow x");
 		

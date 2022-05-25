@@ -6,8 +6,6 @@ import java.awt.dnd.DnDConstants;
 import java.awt.dnd.DropTarget;
 import java.awt.dnd.DropTargetDropEvent;
 import java.awt.event.WindowAdapter;
-import java.awt.event.WindowEvent;
-import java.awt.event.WindowFocusListener;
 import java.io.File;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
@@ -61,7 +59,6 @@ public class Main {
 		}
 		
 	};
-	static LogitechSmoothScrolling mouse = new LogitechSmoothScrolling();
 	
 	/**
 	 * Entry point for the program.
@@ -90,12 +87,6 @@ public class Main {
 		window.setMinimumSize(window.getMinimumSize());
 		window.setLocationRelativeTo(null);
 		window.setExtendedState(JFrame.MAXIMIZED_BOTH);
-		
-		// support smooth scrolling
-		window.addWindowFocusListener(new WindowFocusListener() {
-			@Override public void windowGainedFocus(WindowEvent we) { mouse.updateScrolling(); }
-			@Override public void windowLostFocus(WindowEvent we)   { }
-		});
 		
 		// allow the user to drag-n-drop settings/CSV/camera files
 		window.setDropTarget(new DropTarget() {			

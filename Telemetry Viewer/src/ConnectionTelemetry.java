@@ -1031,7 +1031,6 @@ public class ConnectionTelemetry extends Connection {
 		SettingsController.setVerboseNotificationVisibility(true);
 		SettingsController.setVerboseNotificationColor(Color.CYAN);
 		SettingsController.setTooltipVisibility(true);
-		SettingsController.setSmoothScrolling(true);
 		SettingsController.setFpsVisibility(false);
 		SettingsController.setAntialiasingLevel(1);
 		
