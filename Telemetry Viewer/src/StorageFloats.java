@@ -412,7 +412,7 @@ public class StorageFloats {
 						
 			// in stress test mode just delete the data
 			// because even high-end SSDs will become the bottleneck
-			if(connection.mode == ConnectionTelemetry.Mode.STRESS_TEST) {
+			if(connection.isTypeStressTest()) {
 				inRam = false;
 				value = null;
 				flushing = false;

@@ -17,7 +17,7 @@ import javax.swing.text.PlainDocument;
 import javax.swing.text.Position;
 
 @SuppressWarnings("serial")
-public class TextfieldInteger extends JTextField {
+public class WidgetTextfieldInt extends JTextField {
 	
 	private final String prefix;
 	private final String suffix;
@@ -58,7 +58,7 @@ public class TextfieldInteger extends JTextField {
 	 * @param sentinelString    Corresponding text to display when the sentinel number is used. (ignored if enableSentinel == false)
 	 * @param handler           Event handler to be notified when the number changes. Can be null.
 	 */
-	public TextfieldInteger(String label, String unit, int min, int max, int value, boolean enableSentinel, int sentinelValue, String sentinelString, Consumer<Integer> handler) {
+	public WidgetTextfieldInt(String label, String unit, int min, int max, int value, boolean enableSentinel, int sentinelValue, String sentinelString, Consumer<Integer> handler) {
 		
 		super();
 		
@@ -95,14 +95,17 @@ public class TextfieldInteger extends JTextField {
 		else
 			setText(prefix + number + suffix);
 		
+		// notify the event handler of the GUI's current state
+		if(eventHandler != null)
+			eventHandler.accept(number);
+		
 		// a DocumentFilter is used to intercept text changes (via keyboard, copy-and-paste, drag-and-drop, etc.)
-		// this ensures that only the number region can be edited, and only valid numbers or the sentinel can be entered
+		// this ensures that only the number region can be edited, and only numbers or the sentinel can be entered
 		// the textfield is only allowed to contain text in the following forms:
 		//
 		//     <any form>                                   (only if disabled, so you can disableWithNumber()/disableWithMessage())
 		//
 		//     prefix/number/suffix                         (typical use case)
-		//     prefix/beginningOrAllOfSentinelNumber/suffix (user is typing out the sentinelNumber)
 		//     prefix/suffix                                (user backspace/delete'd the number, and is about to enter a new value)
 		//     prefix/-/suffix                              (user started to enter a negative number, only allowed if minimum < 0 or sentinelNumber < 0)
 		//     prefix/beginningOrAllOfSentinelText/suffix   (user is typing out the sentinelText, case-insensitive)
@@ -111,7 +114,6 @@ public class TextfieldInteger extends JTextField {
 		//     prefix                              (user backspace/delete'd the sentinelNumber)
 		//     prefix/-                            (user typed - over the sentinelNumber, only allowed if minimum < 0 or sentinelNumber < 0)
 		//     prefix/number                       (user pasted or dropped a number over the sentinelText)
-		//     prefix/sentinelNumber               (user pasted or dropped the sentinelNumber over the sentinelText)
 		//     prefix/beginningOrAllOfSentinelText (user is typing out the sentinelText, case-insensitive)
 		//
 		//     when any of those last five forms occur, the suffix is immediately appended since a number will be/is being entered
@@ -164,11 +166,8 @@ public class TextfieldInteger extends JTextField {
 					String centerRegion = text.substring(prefixLength, text.length() - suffixLength);
 					
 					try {
-						int num = Integer.parseInt(centerRegion);
-						if(num >= minimum && num <= maximum)
-							return true; // prefix/number/suffix
-						if(checkForSentinel && Integer.toString(sentinelNumber).startsWith(centerRegion))
-							return true; // prefix/beginningOrAllOfSentinelNumber/suffix
+						Integer.parseInt(centerRegion);
+						return true; // prefix/number/suffix
 					} catch(NumberFormatException e) {}
 					
 					if(centerRegion.length() == 0)
@@ -194,11 +193,8 @@ public class TextfieldInteger extends JTextField {
 						return true; // prefix/-
 					
 					try {
-						int num = Integer.parseInt(remainingText);
-						if(num >= minimum && num <= maximum)
-							return true; // prefix/number
-						if(checkForSentinel && num == sentinelNumber)
-							return true; // prefix/sentinelNumber
+						Integer.parseInt(remainingText);
+						return true; // prefix/number
 					} catch(NumberFormatException e) {}
 					
 					if(checkForSentinel && sentinelText.toLowerCase().startsWith(remainingText.toLowerCase()))
@@ -327,9 +323,14 @@ public class TextfieldInteger extends JTextField {
 	 * @return             True if the new number was accepted, false if rejected.
 	 */
 	public boolean setNumber(int newNumber) {
+		
+		if(number == newNumber)
+			return true;
 
 		setText(prefix + newNumber + suffix);
 		validateNewText();
+		if(!isEnabled())
+			preDisabledText = getText();
 		return (number == newNumber);
 		
 	}
@@ -399,7 +400,9 @@ public class TextfieldInteger extends JTextField {
 				newNumber = sentinelNumber;
 			} else {
 				newNumber = Integer.parseInt(numberText);
-				if((newNumber < minimum || newNumber > maximum))
+				if((newNumber < minimum && checkForSentinel && newNumber != sentinelNumber) || (newNumber < minimum && !checkForSentinel))
+					throw new Exception();
+				else if((newNumber > maximum && checkForSentinel && newNumber != sentinelNumber) || (newNumber > maximum && !checkForSentinel))
 					throw new Exception();
 			}
 		} catch(Exception e) {
@@ -431,6 +434,15 @@ public class TextfieldInteger extends JTextField {
 		Dimension size = super.getPreferredSize();
 		size.width += getColumnWidth() * 2;
 		return size;
+		
+	}
+	
+	/**
+	 * Don't let this textfield shrink.
+	 */
+	@Override public Dimension getMinimumSize() {
+		
+		return getPreferredSize();
 		
 	}
 

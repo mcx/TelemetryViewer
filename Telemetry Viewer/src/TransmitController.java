@@ -43,7 +43,7 @@ public class TransmitController {
 	public void refreshGui() {
 		
 		boolean isConnected = connection.connected;
-		boolean isTc66 = connection.packetType == ConnectionTelemetry.PacketType.TC66;
+		boolean isTc66 = connection.isProtocolTc66();
 		
 		gui.redrawSavedPackets(savedPackets);
 		
@@ -104,6 +104,17 @@ public class TransmitController {
 		setAppendLF(true);
 		setRepeats(false);
 		setRepititionInterval(1000);
+		
+		if(connection.isProtocolTc66()) {
+			setTransmitText("getva", null);
+			setAppendCR(false);
+			setAppendLF(false);
+			setRepeats(true);
+			setRepititionInterval(200);
+			savePacket(new SavedPacket("rotat".getBytes(), "Rotate Display"));
+			savePacket(new SavedPacket("lastp".getBytes(), "Previous Screen"));
+			savePacket(new SavedPacket("nextp".getBytes(), "Next Screen"));
+		}
 		
 	}
 	

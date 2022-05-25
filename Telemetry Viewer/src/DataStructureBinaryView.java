@@ -341,7 +341,7 @@ public class DataStructureBinaryView extends JPanel {
 		dataStructureTable.getColumn("").setCellRenderer(new TableCellRenderer() {
 			@Override public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
 				JButton b = new JButton("Remove");
-				if(connection.mode == ConnectionTelemetry.Mode.DEMO)
+				if(connection.isTypeDemo())
 					b.setEnabled(false);
 				return b;
 			}
@@ -350,7 +350,7 @@ public class DataStructureBinaryView extends JPanel {
 			
 			// ask the user to confirm
 			@Override public void mousePressed(MouseEvent e) {
-				if(connection.mode == ConnectionTelemetry.Mode.DEMO)
+				if(connection.isTypeDemo())
 					return;
 				int datasetNumber = dataStructureTable.getSelectedRow() - datasets.syncWordByteCount;
 				if(datasetNumber < 0) {
@@ -468,7 +468,7 @@ public class DataStructureBinaryView extends JPanel {
 	 */
 	private void updateGui(boolean updateOffsetNumber) {
 		
-		if(connection.mode == ConnectionTelemetry.Mode.DEMO) {
+		if(connection.isTypeDemo()) {
 			
 			dsdLabel.setText("Data Structure Definition: (Not Editable in Demo Mode)");
 			offsetTextfield.setEnabled(false);
@@ -662,7 +662,7 @@ public class DataStructureBinaryView extends JPanel {
 		exampleCodePane.removeAll();
 		
 		// show java code for UDP mode
-		if(connection.mode == ConnectionTelemetry.Mode.UDP) {
+		if(connection.isTypeUDP()) {
 			
 			JTextArea code = new JTextArea();
 			code.setEditable(false);
@@ -743,7 +743,7 @@ public class DataStructureBinaryView extends JPanel {
 					code.append("\t\t\t\n");
 				}
 				
-				code.append("\t\t\tchannel.send(buffer.flip(), new InetSocketAddress(\"" + ConnectionTelemetry.localIp + "\", " + connection.portNumber + ")); // EDIT THIS LINE\n");
+				code.append("\t\t\tchannel.send(buffer.flip(), new InetSocketAddress(\"" + ConnectionTelemetry.localIp + "\", " + connection.getPortNumber() + ")); // EDIT THIS LINE\n");
 				code.append("\t\t\t\n");
 				code.append("\t\t} catch(Exception e) {\n");
 				code.append("\t\t\t\n");

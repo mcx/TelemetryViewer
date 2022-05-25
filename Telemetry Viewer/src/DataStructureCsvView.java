@@ -223,7 +223,7 @@ public class DataStructureCsvView extends JPanel {
 		dataStructureTable.getColumn("").setCellRenderer(new TableCellRenderer() {
 			@Override public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
 				JButton b = new JButton("Remove");
-				if(connection.mode == ConnectionTelemetry.Mode.DEMO)
+				if(connection.isTypeDemo())
 					b.setEnabled(false);
 				return b;
 			}
@@ -232,7 +232,7 @@ public class DataStructureCsvView extends JPanel {
 			
 			// ask the user to confirm
 			@Override public void mousePressed(MouseEvent e) {
-				if(connection.mode == ConnectionTelemetry.Mode.DEMO)
+				if(connection.isTypeDemo())
 					return;
 				Dataset dataset = datasets.getByIndex(dataStructureTable.getSelectedRow());
 				String title = "Remove " + dataset.name + "?";
@@ -309,7 +309,7 @@ public class DataStructureCsvView extends JPanel {
 	
 	private void updateGui(boolean updateColumnNumber) {
 		
-		if(connection.mode == ConnectionTelemetry.Mode.DEMO) {
+		if(connection.isTypeDemo()) {
 			
 			dsdLabel.setText("Data Structure Definition: (Not Editable in Demo Mode)");
 			columnTextfield.setEnabled(false);
@@ -361,7 +361,7 @@ public class DataStructureCsvView extends JPanel {
 	private void updateExampleCode() {
 
 		// get the commonly used data
-		int baudRate = connection.baudRate;
+		int baudRate = connection.getBaudRate();
 		int datasetsCount = datasets.getCount();
 		
 		List<String> datasetNames = new ArrayList<String>(datasetsCount);
@@ -399,8 +399,8 @@ public class DataStructureCsvView extends JPanel {
 		
 		exampleCodePane.removeAll();
 		
-		// show basic arduino code for UART mode and demo mode
-		if(connection.mode == ConnectionTelemetry.Mode.UART || connection.mode == ConnectionTelemetry.Mode.DEMO) {
+		// show basic arduino code for UART and demo modes
+		if(connection.isTypeUart() || connection.isTypeDemo()) {
 			
 			JTextArea code = new JTextArea();
 			code.setEditable(false);
@@ -460,8 +460,8 @@ public class DataStructureCsvView extends JPanel {
 		
 		}
 		
-		// show arduino/esp8266 code for udp mode
-		if(connection.mode == ConnectionTelemetry.Mode.UDP) {
+		// show arduino/esp8266 code for UDP mode
+		if(connection.isTypeUDP()) {
 			
 			JTextArea code = new JTextArea();
 			code.setEditable(false);
@@ -486,7 +486,7 @@ public class DataStructureCsvView extends JPanel {
 				code.append("\t   esp8266_reset() &&\n");
 				code.append("\t   esp8266_client_mode() &&\n");
 				code.append("\t   esp8266_join_ap(\"your_wifi_network_name_here\", \"your_wifi_password_here\") && // EDIT THIS LINE\n");
-				code.append("\t   esp8266_start_udp(\"" + ConnectionTelemetry.localIp + "\", " + connection.portNumber + ")) { // EDIT THIS LINE\n");
+				code.append("\t   esp8266_start_udp(\"" + ConnectionTelemetry.localIp + "\", " + connection.getPortNumber() + ")) { // EDIT THIS LINE\n");
 				code.append("\n");
 				code.append("\t\t// success, turn on LED\n");
 				code.append("\t\tdigitalWrite(LED_BUILTIN, HIGH);\n");
@@ -648,7 +648,7 @@ public class DataStructureCsvView extends JPanel {
 		}
 		
 		// show java code for TCP mode
-		if(connection.mode == ConnectionTelemetry.Mode.TCP) {
+		if(connection.isTypeTCP()) {
 			
 			JTextArea code = new JTextArea();
 			code.setEditable(false);
@@ -675,7 +675,7 @@ public class DataStructureCsvView extends JPanel {
 				code.append("\t\t// enter an infinite loop that tries to connect to the TCP server once every 3 seconds\n");
 				code.append("\t\twhile(true) {\n");
 				code.append("\n");
-				code.append("\t\t\ttry(Socket socket = new Socket(\"" + ConnectionTelemetry.localIp + "\", " + connection.portNumber + ")) { // EDIT THIS LINE\n");
+				code.append("\t\t\ttry(Socket socket = new Socket(\"" + ConnectionTelemetry.localIp + "\", " + connection.getPortNumber() + ")) { // EDIT THIS LINE\n");
 				code.append("\n");
 				code.append("\t\t\t\t// enter another infinite loop that sends packets of telemetry\n");
 				code.append("\t\t\t\tPrintWriter output = new PrintWriter(socket.getOutputStream(), true);\n");
@@ -708,7 +708,7 @@ public class DataStructureCsvView extends JPanel {
 		}
 		
 		// show java code for UDP mode
-		if(connection.mode == ConnectionTelemetry.Mode.UDP) {
+		if(connection.isTypeUDP()) {
 			
 			JTextArea code = new JTextArea();
 			code.setEditable(false);
@@ -743,7 +743,7 @@ public class DataStructureCsvView extends JPanel {
 				for(String name : datasetNames)
 					code.append("\t\t\t\t\tfloat " + name + " = ...; // EDIT THIS LINE\n");
 				code.append("\t\t\t\t\tbyte[] buffer = String.format(\"" + printfFormatString.replace('d', 'f') + "\\n\", " + intPrintfVariables + ").getBytes();\n");
-				code.append("\t\t\t\t\tDatagramPacket packet = new DatagramPacket(buffer, 0, buffer.length, InetAddress.getByName(\"" + ConnectionTelemetry.localIp + "\"), " + connection.portNumber + "); // EDIT THIS LINE\n");
+				code.append("\t\t\t\t\tDatagramPacket packet = new DatagramPacket(buffer, 0, buffer.length, InetAddress.getByName(\"" + ConnectionTelemetry.localIp + "\"), " + connection.getPortNumber() + "); // EDIT THIS LINE\n");
 				code.append("\t\t\t\t\tsocket.send(packet);\n");
 				code.append("\t\t\t\t\tThread.sleep(" + Math.round(1000.0 / connection.getSampleRate()) + ");\n");
 				code.append("\t\t\t\t}\n");

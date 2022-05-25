@@ -580,7 +580,7 @@ public class StorageTimestamps {
 			
 			// in stress test mode just delete the data
 			// because even high-end SSDs will become the bottleneck
-			if(connection.mode == ConnectionTelemetry.Mode.STRESS_TEST) {
+			if(connection.isTypeStressTest()) {
 				slot[slotN].inRam = false;
 				slot[slotN].record = null;
 				slot[slotN].flushing = false;

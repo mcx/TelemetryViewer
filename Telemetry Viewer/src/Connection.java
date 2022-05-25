@@ -23,7 +23,7 @@ public abstract class Connection {
 	/**
 	 * @return    A GUI with widgets for controlling this connection.
 	 */
-	public abstract JPanel getGui();
+	public abstract JPanel getUpdatedGui();
 	
 	/**
 	 * Connects and listens for incoming telemetry.

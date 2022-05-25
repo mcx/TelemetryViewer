@@ -217,7 +217,7 @@ public class CommunicationView extends JPanel {
 			add(helpButton);
 			add(connectionButton);
 			for(int i = 0; i < ConnectionsController.allConnections.size(); i++)
-				add(ConnectionsController.allConnections.get(i).getGui(), "align right, cell 5 " + i);
+				add(ConnectionsController.allConnections.get(i).getUpdatedGui(), "align right, cell 5 " + i);
 			
 			boolean importing = ConnectionsController.importing;
 			boolean exporting = ConnectionsController.exporting;

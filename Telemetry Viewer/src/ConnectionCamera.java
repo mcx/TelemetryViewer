@@ -172,7 +172,7 @@ public class ConnectionCamera extends Connection {
 		
 	}
 
-	@Override public JPanel getGui() {
+	@Override public JPanel getUpdatedGui() {
 		
 		JPanel panel = new JPanel();
 		panel.setLayout(new MigLayout("hidemode 3, gap " + Theme.padding  + ", insets 0 " + Theme.padding + " 0 0"));

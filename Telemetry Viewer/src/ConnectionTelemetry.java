@@ -43,7 +43,6 @@ import javax.crypto.spec.SecretKeySpec;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JFrame;
-import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
@@ -53,60 +52,205 @@ import net.miginfocom.swing.MigLayout;
 
 public class ConnectionTelemetry extends Connection {
 	
+	// reminder: fields are shared with multiple threads, so they must be final or volatile or atomic
+	
+	// possible telemetry connections
 	static List<String> names = new ArrayList<String>();
 	static {
 		for(SerialPort port : SerialPort.getCommPorts())
-			names.add("UART: " + port.getSystemPortName());
+			names.add(Type.UART + ": " + port.getSystemPortName());
 		Collections.sort(names);
 		
-		names.add("TCP");
-		names.add("UDP");
-		names.add("Demo Mode");
-		names.add("Stress Test Mode");
+		names.add(Type.TCP.toString());
+		names.add(Type.UDP.toString());
+		names.add(Type.DEMO.toString());
+		names.add(Type.STRESS_TEST.toString());
 	}
 	
-	// reminder: fields are shared with multiple threads, so they must be final or volatile or atomic.
-	public final DatasetsController datasets = new DatasetsController(this); // used to store "normal telemetry"
+	public static List<String> getNames() {
+		return names;
+	}
 	
-	public enum Mode {UART, TCP, UDP, DEMO, STRESS_TEST};
-	public volatile Mode mode = Mode.UART;
-	
-	private volatile int sampleRate = 0;
-	private volatile boolean automaticSampleRate = true;
-	private final int sampleRateMinimum = 1;
-	private final int sampleRateMaximum = Integer.MAX_VALUE;
-	
-	public enum PacketType {
-		CSV    { @Override public String toString() { return "CSV Mode";    } },
-		BINARY { @Override public String toString() { return "Binary Mode"; } },
-		TC66   { @Override public String toString() { return "TC66 Mode";   } }
-	};
-	public volatile PacketType packetType = PacketType.CSV;
-	
-	public volatile int baudRate = 9600; // for UART mode
-	public volatile int portNumber = 8080; // for TCP/UDP modes
-	
-	private volatile int packetByteCount = 0; // INCLUDING the optional sync word and checksum
-	
-	private long previousSampleCountTimestamp = 0; // for automatic sample rate calculation if enabled
-	private int  previousSampleCount = 0;
+	// sample rate
+	private volatile int     sampleRate = 0;
+	private final    int     sampleRateMinimum = 1;
+	private final    int     sampleRateMaximum = Integer.MAX_VALUE;
+	private volatile boolean sampleRateAutomatic = true;
+	private final WidgetTextfieldInt sampleRateTextfield;
 	
 	public int getSampleRate() {
-		if(sampleRate == 0)
-			return 1; // placeholder, because charts expect >0
-		else
-			return sampleRate;
+		return (sampleRate == 0) ? 1 : sampleRate; // charts expect >0
 	}
 	
 	private void setSampleRate(int newRate) {
 		if(newRate == sampleRate)
 			return;
 		sampleRate = newRate;
+		sampleRateTextfield.setNumber(sampleRate);
 	}
 	
 	private void setSampleRateAutomatic(boolean isAutomatic) {
-		automaticSampleRate = isAutomatic;
+		sampleRateAutomatic = isAutomatic;
 	}
+	
+	// communication protocol
+	private enum Protocol {
+		CSV    { @Override public String toString() { return "CSV Mode";    } },
+		BINARY { @Override public String toString() { return "Binary Mode"; } },
+		TC66   { @Override public String toString() { return "TC66 Mode";   } };
+		
+		public static Protocol fromString(String text) {
+			return text.equals(CSV.toString())    ? Protocol.CSV :
+			       text.equals(BINARY.toString()) ? Protocol.BINARY :
+			       text.equals(TC66.toString())   ? Protocol.TC66 :
+			                                        null;
+		}
+	};
+	private volatile Protocol protocol = Protocol.CSV;
+	private final WidgetComboboxEnum<Protocol> protocolCombobox;
+	
+	public boolean isProtocolCsv()    { return protocol == Protocol.CSV;    }
+	public boolean isProtocolBinary() { return protocol == Protocol.BINARY; }
+	public boolean isProtocolTc66()   { return protocol == Protocol.TC66;   }
+	
+	private void setProtocol(Protocol newProtocol) {
+		if(newProtocol == protocol)
+			return;
+		protocol = newProtocol;
+		datasets.removeAll();
+		if(transmit != null)
+			transmit.reset();
+		protocolCombobox.setSelectedItem(protocol);
+	}
+	
+	// connection type
+	public enum Type {
+		UART        { @Override public String toString() { return "UART";             } },
+		TCP         { @Override public String toString() { return "TCP";              } },
+		UDP         { @Override public String toString() { return "UDP";              } },
+		DEMO        { @Override public String toString() { return "Demo Mode";        } },
+		STRESS_TEST { @Override public String toString() { return "Stress Tess Mode"; } };
+		
+		public static Type fromString(String text) {
+			return text.startsWith(UART.toString())    ? Type.UART :
+			       text.equals(TCP.toString())         ? Type.TCP :
+			       text.equals(UDP.toString())         ? Type.UDP :
+			       text.equals(DEMO.toString())        ? Type.DEMO :
+			       text.equals(STRESS_TEST.toString()) ? Type.STRESS_TEST :
+			                                             null;
+		}
+	};
+	private volatile Type type = Type.UART;
+	private final WidgetComboboxString namesCombobox;
+	
+	public boolean isTypeUart()       {return type == Type.UART;        }
+	public boolean isTypeTCP()        {return type == Type.TCP;         }
+	public boolean isTypeUDP()        {return type == Type.UDP;         }
+	public boolean isTypeDemo()       {return type == Type.DEMO;        }
+	public boolean isTypeStressTest() {return type == Type.STRESS_TEST; }
+	
+	private void setNameAndType(String newName) {
+		if(newName.equals(name))
+			return;
+		Type newType = Type.fromString(newName);
+		if(newType == null)
+			newType = Type.DEMO;
+		boolean switchingToUartTcpOrUdp = (newType == Type.UART || newType == Type.TCP || newType == Type.UDP) &&
+		                                  (   type != Type.UART &&    type != Type.TCP &&    type != Type.UDP);
+		name = newName;
+		type = newType;
+		datasets.removeAll();
+		transmit      = isTypeUart() ? new TransmitController(this)        : null;
+		transmitQueue = isTypeUart() ? new ConcurrentLinkedQueue<byte[]>() : null;
+		previousRepititionTimestamp = 0;
+		
+		if(switchingToUartTcpOrUdp) {
+			setSampleRate(0);
+			setSampleRateAutomatic(true);
+			setProtocol(Protocol.CSV);
+			sampleRateTextfield.setEnabled(true);
+			protocolCombobox.setEnabled(true);
+		} else if(isTypeDemo()) {
+			setSampleRate(10000);
+			setSampleRateAutomatic(false);
+			setProtocol(Protocol.CSV);
+			sampleRateTextfield.setEnabled(false);
+			protocolCombobox.setEnabled(false);
+		} else if(isTypeStressTest()) {
+			setSampleRate(Integer.MAX_VALUE);
+			setSampleRateAutomatic(false);
+			setProtocol(Protocol.BINARY);
+			sampleRateTextfield.setEnabled(false);
+			protocolCombobox.setEnabled(false);
+		}
+	
+		namesCombobox.setSelectedItem(name);
+		if(isTypeUart()) {
+			baudRateCombobox.setVisible(true);
+			portNumberTextfield.setVisible(false);
+		} else if(isTypeTCP() || isTypeUDP()) {
+			baudRateCombobox.setVisible(false);
+			portNumberTextfield.setVisible(true);
+		} else {
+			baudRateCombobox.setVisible(false);
+			portNumberTextfield.setVisible(false);
+		}
+		
+		if(!isTypeUart()) {
+			// remove the TC66 protocol option
+			boolean wasTc66 = isProtocolTc66();
+			protocolCombobox.removeItem(Protocol.TC66);
+			if(wasTc66)
+				setProtocol(Protocol.CSV);
+		} else {
+			// add the TC66 protocol option if it's missing
+			if(protocolCombobox.getItemCount() == 2)
+				protocolCombobox.addItem(Protocol.TC66);
+		}
+
+	}
+	
+	// baud rate for UART mode
+	private volatile int baudRate = 9600;
+	private final JComboBox<String> baudRateCombobox;
+	
+	public int getBaudRate() {
+		return baudRate;
+	}
+	
+	private void setBaudRate(int newRate) {
+		if(newRate == baudRate)
+			return;
+		baudRate = newRate;
+		baudRateCombobox.setSelectedItem(baudRate + " Baud");
+	}
+	
+	// port number for TCP/UDP modes
+	private volatile int portNumber = 8080;
+	private final    int portNumberMinimum = 1;
+	private final    int portNumberMaximum = 65535;
+	private final WidgetTextfieldInt portNumberTextfield;
+	
+	public int getPortNumber() { return portNumber; }
+	
+	private void setPortNumber(int newNumber) {
+		if(newNumber == portNumber)
+			return;
+		portNumber = newNumber;
+		portNumberTextfield.setNumber(portNumber);
+	}
+
+	
+	public final DatasetsController datasets = new DatasetsController(this);
+	
+	private JPanel settingsGui;
+	private JButton connectButton;
+	private JButton removeButton;
+	
+	private volatile int packetByteCount = 0; // INCLUDING the optional sync word and checksum
+	
+	private long previousSampleCountTimestamp = 0; // for automatic sample rate calculation if enabled
+	private int  previousSampleCount = 0;
 	
 	public void setDataStructureDefined(boolean isDefined) {
 		
@@ -115,7 +259,7 @@ public class ConnectionTelemetry extends Connection {
 			return;
 		}
 		
-		if(packetType != PacketType.BINARY) {
+		if(!isProtocolBinary()) {
 			packetByteCount = 1; // not used outside of binary mode, so using 1 to indicate it's defined
 			return;
 		}
@@ -167,150 +311,86 @@ public class ConnectionTelemetry extends Connection {
 	
 	/**
 	 * Prepares, but does not connect to, a connection that can receive "normal telemetry" (a stream of numbers to visualize.)
+	 * The first unused connection will be selected.
 	 */
 	public ConnectionTelemetry() {
 		
-		name = names.get(0);
-		
-		// ensure this connection doesn't already exist, but allow multiple TCP/UDP/Demo Mode connections
-		for(int i = 1; i < names.size(); i++)
-			for(Connection connection : ConnectionsController.allConnections)
-				if(name.equals(connection.name) && !name.equals("TCP") && !name.equals("UDP") && !name.equals("Demo Mode"))
-					name = getNames().get(i);
-		
-		if(name.startsWith("UART"))
-			mode = Mode.UART;
-		else if(name.equals("TCP"))
-			mode = Mode.TCP;
-		else if(name.equals("UDP"))
-			mode = Mode.UDP;
-		else if(name.equals("Demo Mode"))
-			mode = Mode.DEMO;
-		else
-			mode = Mode.STRESS_TEST;
-		
-		// determine the sample rate and CSV/binary mode
-		if(mode == Mode.UART || mode == Mode.TCP || mode == Mode.UDP) {
-			setSampleRate(0);
-			setSampleRateAutomatic(true);
-			packetType = PacketType.CSV;
-		} else if(mode == Mode.DEMO) {
-			setSampleRate(10000);
-			setSampleRateAutomatic(false);
-			packetType = PacketType.CSV;
-		} else {
-			setSampleRate(Integer.MAX_VALUE);
-			setSampleRateAutomatic(false);
-			packetType = PacketType.BINARY;
-		}
-		
-		// give UARTs a transmit GUI
-		if(mode == Mode.UART) {
-			transmit = new TransmitController(this);
-			transmitQueue = new ConcurrentLinkedQueue<byte[]>();
-			previousRepititionTimestamp = 0;
-		}
-		
-		timestamps = new StorageTimestamps(this);
+		// select the first unused connection, but allow multiple TCP/UDP connections
+		// this is ugly because java requires calling another constructor from the first statement, so this is one giant statement:
+		this(names.stream().filter(name -> {
+			if(name.equals("TCP") || name.equals("UDP")) {
+				return true; // multiple TCP/UDP connections are fine
+			} else {
+				for(Connection connection : ConnectionsController.telemetryConnections)
+					if(name.equals(connection.name))
+						return false; // don't select an already used connection
+				return true; // unused connection is fine
+			}
+		}).findFirst().get());
 		
 	}
 	
 	/**
 	 * Prepares, but does not connect to, a connection that can receive "normal telemetry" (a stream of numbers to visualize.)
 	 * 
-	 * @param name    Connection name.
+	 * @param connectionName    The connection to select.
 	 */
-	public ConnectionTelemetry(String name) {
+	@SuppressWarnings("serial")
+	public ConnectionTelemetry(String connectionName) {
 		
-		// determine the connection name and mode
-		this.name = name;
-		if(name.startsWith("UART"))
-			mode = Mode.UART;
-		else if(name.equals("TCP"))
-			mode = Mode.TCP;
-		else if(name.equals("UDP"))
-			mode = Mode.UDP;
-		else if(name.equals("Demo Mode"))
-			mode = Mode.DEMO;
-		else
-			mode = Mode.STRESS_TEST;
-		
-		// determine the sample rate and CSV/binary mode
-		if(mode == Mode.UART || mode == Mode.TCP || mode == Mode.UDP) {
-			setSampleRate(0);
-			setSampleRateAutomatic(true);
-			packetType = PacketType.CSV;
-		} else if(mode == Mode.DEMO) {
-			setSampleRate(10000);
-			setSampleRateAutomatic(false);
-			packetType = PacketType.CSV;
-		} else {
-			setSampleRate(Integer.MAX_VALUE);
-			setSampleRateAutomatic(false);
-			packetType = PacketType.BINARY;
-		}
-
-		// give UARTs a transmit GUI
-		if(mode == Mode.UART) {
-			transmit = new TransmitController(this);
+		// configure this connection
+		name = connectionName;
+		type = Type.fromString(name);
+		if(isTypeUart()) {
+			sampleRate = 0;
+			sampleRateAutomatic = true;
+			protocol = Protocol.CSV;
+			
+			transmit      = new TransmitController(this);
 			transmitQueue = new ConcurrentLinkedQueue<byte[]>();
 			previousRepititionTimestamp = 0;
+		} else if(isTypeTCP() || isTypeUDP()) {
+			sampleRate = 0;
+			sampleRateAutomatic = true;
+			protocol = Protocol.CSV;
+		} else if(isTypeDemo()) {
+			sampleRate = 10000;
+			sampleRateAutomatic = false;
+			protocol = Protocol.CSV;
+		} else if(isTypeStressTest()) {
+			sampleRate = Integer.MAX_VALUE;
+			sampleRateAutomatic = false;
+			protocol = Protocol.BINARY;
 		}
 		
-		timestamps = new StorageTimestamps(this);
+		// prepare the connection settings GUI
+		settingsGui = new JPanel();
+		settingsGui.setLayout(new MigLayout("hidemode 3, gap " + Theme.padding  + ", insets 0 " + Theme.padding + " 0 0"));
 		
-	}
-	
-	/**
-	 * @return List of possible telemetry connections to show the user.
-	 */
-	public static List<String> getNames() {
-
-		return names;
-		
-	}
-	
-	/**
-	 * @return    True if using the CSV packet type.
-	 */
-	public boolean isCsvMode() {
-		
-		return packetType == PacketType.CSV;
-		
-	}
-
-	/**
-	 * @return    A GUI for controlling this Connection.
-	 */
-	@Override public JPanel getGui() {
-
-		JPanel panel = new JPanel();
-		panel.setLayout(new MigLayout("hidemode 3, gap " + Theme.padding  + ", insets 0 " + Theme.padding + " 0 0"));
-			
 		// sample rate
-		TextfieldInteger sampleRateTextfield = new TextfieldInteger("Sample Rate",
-		                                                            "Hz",
-		                                                            sampleRateMinimum,
-		                                                            sampleRateMaximum,
-		                                                            automaticSampleRate ? 0 : sampleRate,
-		                                                            true,
-		                                                            0,
-		                                                            "Automatic",
-		                                                            newRate -> {
-		                                                            	setSampleRate(newRate);
-		                                                            	setSampleRateAutomatic(newRate == 0);
-		                                                            });
-		sampleRateTextfield.setToolTipText("Number of telemetry packets sent to the PC each second. Use 0 to have it automatically calculated. If this number is inaccurate, things like the frequency domain chart will be inaccurate.");
+		sampleRateTextfield = new WidgetTextfieldInt("Sample Rate",
+		                                             "Hz",
+		                                             sampleRateMinimum,
+		                                             sampleRateMaximum,
+		                                             sampleRateAutomatic ? 0 : sampleRate,
+		                                             true,
+		                                             0,
+		                                             "Automatic",
+		                                             newRate -> {
+		                                             	setSampleRate(newRate);
+		                                             	setSampleRateAutomatic(newRate == 0);
+		                                             });
+		sampleRateTextfield.setToolTipText("<html>Number of telemetry packets sent to the PC each second.<br>Use 0 to have it automatically calculated.<br>If this number is inaccurate, things like the frequency domain chart will be inaccurate.</html>");
 		
 		// automatically calculate the sample rate if needed
 		Timer sampleRateCalculator = new Timer(1000, null);
 		sampleRateCalculator.addActionListener(event -> {
 			
-			if(panel.getParent() == null) {
+			if(settingsGui.getParent() == null) {
 				// cancel timer if this GUI is no longer on screen
 				sampleRateCalculator.stop();
 				return;
-			} else if(!automaticSampleRate || !connected || !isDataStructureDefined()) {
+			} else if(!sampleRateAutomatic || !connected || !isDataStructureDefined()) {
 				// skip this iteration if not ready/applicable
 				return;
 			} else if(previousSampleCountTimestamp == 0) {
@@ -326,7 +406,7 @@ public class ConnectionTelemetry extends Connection {
 				long millisecondsDelta = currentTimestamp - previousSampleCountTimestamp;
 				int sampleCountDelta = currentSampleCount - previousSampleCount;
 				int samplesPerSecond = (int) Math.round((double) sampleCountDelta / ((double) millisecondsDelta / 1000.0));
-				setSampleRate(samplesPerSecond);
+				sampleRate = samplesPerSecond;
 				sampleRateTextfield.disableWithNumber(samplesPerSecond);
 				previousSampleCountTimestamp = currentTimestamp;
 				previousSampleCount = currentSampleCount;
@@ -335,132 +415,39 @@ public class ConnectionTelemetry extends Connection {
 		});
 		sampleRateCalculator.start();
 		
-		// packet type
-		JComboBox<String> packetTypeCombobox = new JComboBox<String>(new String[] {"CSV Mode", "Binary Mode", "TC66 Mode"});
-		if(mode != Mode.UART) {
-			packetTypeCombobox.removeItem("TC66 Mode");
-			if(packetType == PacketType.TC66)
-				packetType = PacketType.CSV;
-		}
-		packetTypeCombobox.setMinimumSize(packetTypeCombobox.getPreferredSize());
-		packetTypeCombobox.setSelectedIndex(packetType == PacketType.CSV    ? 0 :
-		                                    packetType == PacketType.BINARY ? 1 :
-		                                                                      2);
-		packetTypeCombobox.addActionListener(event -> {
-			int index = packetTypeCombobox.getSelectedIndex();
-			boolean changing = (packetType == PacketType.CSV    && index != 0) ||
-			                   (packetType == PacketType.BINARY && index != 1) ||
-			                   (packetType == PacketType.TC66   && index != 2);
-			packetType = index == 0 ? PacketType.CSV :
-			             index == 1 ? PacketType.BINARY :
-			                          PacketType.TC66;
-			if(changing) {
-				datasets.removeAll();
-				if(transmit != null)
-					transmit.reset();
-			}
-			if(packetType == PacketType.TC66) {
-				transmit.reset();
-				transmit.savePacket(new TransmitController.SavedPacket("rotat".getBytes(), "Rotate Display"));
-				transmit.savePacket(new TransmitController.SavedPacket("lastp".getBytes(), "Previous Screen"));
-				transmit.savePacket(new TransmitController.SavedPacket("nextp".getBytes(), "Next Screen"));
-			}
-			CommunicationView.instance.redraw();
-		});
+		// communication protocol
+		protocolCombobox = new WidgetComboboxEnum<Protocol>(Protocol.values(),
+		                                                    protocol,
+		                                                    newProtocol -> setProtocol(newProtocol));
+		if(!isTypeUart())
+			protocolCombobox.removeItem(Protocol.TC66);
 		
 		// connections list
-		JComboBox<String> connectionNamesCombobox = new JComboBox<String>();
-		for(String name : ConnectionsController.getNames())
-			connectionNamesCombobox.addItem(name);
-		connectionNamesCombobox.setMaximumRowCount(connectionNamesCombobox.getItemCount());
-		connectionNamesCombobox.setSelectedItem(name);
-		if(!connectionNamesCombobox.getSelectedItem().equals(name)) {
-			connectionNamesCombobox.addItem(name);
-			connectionNamesCombobox.setSelectedItem(name);
-		}
-		if(ConnectionsController.importing) {
-			String importName = "Importing [" + name + "]";
-			connectionNamesCombobox.addItem(importName);
-			connectionNamesCombobox.setSelectedItem(importName);
-		}
-		connectionNamesCombobox.setMinimumSize(connectionNamesCombobox.getPreferredSize());
-		connectionNamesCombobox.addActionListener(event -> {
-			
-			String newConnectionName = connectionNamesCombobox.getSelectedItem().toString();
-			if(newConnectionName.equals(name))
-				return;
-			
-			// ignore change if the connection already exists, but allow multiple TCP/UDP/Demo Mode/MJPEG over HTTP connections
-			for(Connection connection : ConnectionsController.allConnections)
-				if(connection.name.equals(newConnectionName) && !newConnectionName.equals("TCP") && !newConnectionName.equals("UDP") && !newConnectionName.equals("Demo Mode") && !newConnectionName.equals("MJPEG over HTTP")) {
-					connectionNamesCombobox.setSelectedItem(name);
-					return;
-				}
-			
-			// change connection types if needed
-			if(!getNames().contains(newConnectionName)) {
-				ConnectionsController.replaceConnection(ConnectionTelemetry.this, new ConnectionCamera(newConnectionName));
-				return;
-			}
-
-			// change to the new connection and reset the data structure if changing modes
-			// only UARTs should have a transmit GUI
-			Mode oldMode = mode;
-			name = newConnectionName;
-			if(name.startsWith("UART")) {
-				mode = Mode.UART;
-				if(mode != oldMode)
-					datasets.removeAll();
-				transmit = new TransmitController(this);
-				if(oldMode == Mode.DEMO || oldMode == Mode.STRESS_TEST) {
-					setSampleRate(0);
-					setSampleRateAutomatic(true);
-					packetType = PacketType.CSV;
-				}
-			} else if(name.equals("TCP")) {
-				mode = Mode.TCP;
-				if(mode != oldMode)
-					datasets.removeAll();
-				transmit = null;
-				if(oldMode == Mode.DEMO || oldMode == Mode.STRESS_TEST) {
-					setSampleRate(0);
-					setSampleRateAutomatic(true);
-					packetType = PacketType.CSV;
-				}
-			} else if(name.equals("UDP")) {
-				mode = Mode.UDP;
-				if(mode != oldMode)
-					datasets.removeAll();
-				transmit = null;
-				if(oldMode == Mode.DEMO || oldMode == Mode.STRESS_TEST) {
-					setSampleRate(0);
-					setSampleRateAutomatic(true);
-					packetType = PacketType.CSV;
-				}
-			} else if(name.equals("Demo Mode")) {
-				mode = Mode.DEMO;
-				if(mode != oldMode)
-					datasets.removeAll();
-				transmit = null;
-				setSampleRate(10000);
-				setSampleRateAutomatic(false);
-				packetType = PacketType.CSV;
-			} else {
-				mode = Mode.STRESS_TEST;
-				if(mode != oldMode)
-					datasets.removeAll();
-				transmit = null;
-				setSampleRate(Integer.MAX_VALUE);
-				setSampleRateAutomatic(false);
-				packetType = PacketType.BINARY;
-			}
-
-			CommunicationView.instance.redraw();
-			
-		});
+		namesCombobox = new WidgetComboboxString(ConnectionsController.getNames(),
+		                                         name,
+		                                         proposedConnectionName -> {
+		                                         	// reject if already used, unless it's TCP/UDP/MJPEG
+		                                         	for(Connection c : ConnectionsController.allConnections)
+		                                         		if(c.name.equals(proposedConnectionName) &&
+		                                         		   c != this &&
+		                                         		   !proposedConnectionName.equals(Type.TCP.toString()) &&
+		                                         		   !proposedConnectionName.equals(Type.UDP.toString()) &&
+		                                         		   !proposedConnectionName.equals("MJPEG over HTTP"))
+		                                         			return false;
+		                                         	
+		                                         	// if the new connection is a camera, replace this connection
+		                                         	if(!getNames().contains(proposedConnectionName)) {
+		                                         		ConnectionsController.replaceConnection(ConnectionTelemetry.this, new ConnectionCamera(proposedConnectionName));
+		                                         		return true;
+		                                         	}
+		                                         	
+		                                         	// if the new connection is for telemetry, update this connection
+		                                         	setNameAndType(proposedConnectionName);
+		                                         	return true;
+		                                         });
 		
 		// baud rate (only used in UART mode)
-		JComboBox<String> baudRateCombobox = new JComboBox<String>(new String[] {"9600 Baud", "19200 Baud", "38400 Baud", "57600 Baud", "115200 Baud", "230400 Baud", "460800 Baud", "921600 Baud", "1000000 Baud", "2000000 Baud"});
+		baudRateCombobox = new JComboBox<String>(new String[] {"9600 Baud", "19200 Baud", "38400 Baud", "57600 Baud", "115200 Baud", "230400 Baud", "460800 Baud", "921600 Baud", "1000000 Baud", "2000000 Baud"});
 		baudRateCombobox.setMaximumRowCount(baudRateCombobox.getItemCount() + 1);
 		baudRateCombobox.setMinimumSize(baudRateCombobox.getPreferredSize());
 		baudRateCombobox.setMaximumSize(baudRateCombobox.getPreferredSize());
@@ -473,8 +460,8 @@ public class ConnectionTelemetry extends Connection {
 					text = text.substring(0, text.length() - 4).trim();
 				int rate = Integer.parseInt(text);
 				if(rate > 0 && rate != baudRate) {
-					baudRate = rate;
 					baudRateCombobox.setSelectedItem(rate + " Baud");
+					setBaudRate(rate);
 				} else if(rate <= 0)
 					throw new Exception();
 			} catch(Exception e) {
@@ -488,42 +475,22 @@ public class ConnectionTelemetry extends Connection {
 		});
 		
 		// port number (only used in TCP/UDP modes)
-		JComboBox<String> portNumberCombobox = new JComboBox<String>(new String[] {"Port 8080"});
-		portNumberCombobox.setMaximumRowCount(portNumberCombobox.getItemCount());
-		portNumberCombobox.setMinimumSize(portNumberCombobox.getPreferredSize());
-		portNumberCombobox.setMaximumSize(portNumberCombobox.getPreferredSize());
-		portNumberCombobox.setEditable(true);
-		portNumberCombobox.setSelectedItem("Port " + portNumber);
-		portNumberCombobox.addActionListener(event -> {
-			try {
-				String newPortNumber = portNumberCombobox.getSelectedItem().toString().trim();
-				if(newPortNumber.startsWith("Port"))
-					newPortNumber = newPortNumber.substring(4).trim(); // skip past the leading "Port"
-				int number = Integer.parseInt(newPortNumber);
-				if(number >= 0 && number <= 65535 && number != portNumber) {
-					portNumber = number;
-					portNumberCombobox.setSelectedItem("Port " + number);
-				} else if(number < 0 || number > 65535)
-					throw new Exception();
-			} catch(Exception e) {
-				portNumberCombobox.setSelectedItem("Port " + portNumber);
-			}
-			CommunicationView.instance.redraw();
-		});
-		portNumberCombobox.getEditor().getEditorComponent().addFocusListener(new FocusListener() {
-			@Override public void focusGained(FocusEvent e) { portNumberCombobox.getEditor().selectAll(); }
-			@Override public void focusLost(FocusEvent e) { }
-		});
+		portNumberTextfield = new WidgetTextfieldInt("Port",
+		                                             "",
+		                                             portNumberMinimum,
+		                                             portNumberMaximum,
+		                                             portNumber,
+		                                             false,
+		                                             0,
+		                                             null,
+		                                             newNumber -> setPortNumber(newNumber));
 		
 		// connect/disconnect button
-		@SuppressWarnings("serial")
-		JButton connectButton = new JButton("Connect") {
+		connectButton = new JButton("Connect") {
 			@Override public Dimension getPreferredSize() { // giving this button a fixed size so the GUI lines up nicely
 				return new JButton("Disconnect").getPreferredSize();
 			}
 		};
-		if(connected)
-			connectButton.setText("Disconnect");
 		
 		connectButton.addActionListener(event -> {
 			if(connectButton.getText().equals("Connect"))
@@ -533,49 +500,53 @@ public class ConnectionTelemetry extends Connection {
 		});
 		
 		// remove connection button
-		JButton removeButton = new JButton(Theme.removeSymbol);
+		removeButton = new JButton(Theme.removeSymbol);
 		removeButton.setBorder(Theme.narrowButtonBorder);
 		removeButton.addActionListener(event -> {
 			ConnectionsController.removeConnection(ConnectionTelemetry.this);
 			CommunicationView.instance.redraw();
 		});
+		
+		// populate the panel
+		settingsGui.add(sampleRateTextfield);
+		settingsGui.add(protocolCombobox);
+		settingsGui.add(portNumberTextfield);
+		settingsGui.add(baudRateCombobox);
+		settingsGui.add(namesCombobox);
+		settingsGui.add(connectButton);
+		settingsGui.add(removeButton);
+		
+		// hide/disable widgets as needed
+		portNumberTextfield.setVisible(isTypeTCP() || isTypeUDP());
+		baudRateCombobox.setVisible(isTypeUart());
+		sampleRateTextfield.setEnabled(!isTypeDemo() && !isTypeStressTest());
+		protocolCombobox.setEnabled(!isTypeDemo() && !isTypeStressTest());
+		
+	}
+
+	/**
+	 * @return    A GUI for controlling this Connection.
+	 */
+	@Override public JPanel getUpdatedGui() {
+
 		if(ConnectionsController.allConnections.size() < 2 || ConnectionsController.importing)
 			removeButton.setVisible(false);
 		
-		// populate the panel
-		if(mode == Mode.UART) {
-			panel.add(sampleRateTextfield);
-			panel.add(packetTypeCombobox);
-			panel.add(baudRateCombobox);
-			panel.add(connectionNamesCombobox);
-			panel.add(connectButton);
-			panel.add(removeButton);
-		} else if(mode == Mode.TCP || mode == Mode.UDP) {
-			panel.add(sampleRateTextfield);
-			panel.add(packetTypeCombobox);
-			panel.add(portNumberCombobox);
-			panel.add(connectionNamesCombobox);
-			panel.add(connectButton);
-			panel.add(removeButton);
-		} else {
-			panel.add(new JLabel(" ")); // dummy to fill row of 6 items
-			panel.add(sampleRateTextfield);
-			panel.add(packetTypeCombobox);
-			panel.add(connectionNamesCombobox);
-			panel.add(connectButton);
-			panel.add(removeButton);
-		}
+		connectButton.setText(connected ? "Disconnect" : "Connect");
+		
+		if(ConnectionsController.importing)
+			namesCombobox.disableWithMessage("Importing [" + name + "]");
 		
 		// disable widgets if appropriate
 		boolean importingOrExporting = ConnectionsController.importing || ConnectionsController.exporting;
-		sampleRateTextfield.setEnabled(!importingOrExporting && !connected && mode != Mode.DEMO && mode != Mode.STRESS_TEST);
-		packetTypeCombobox.setEnabled(!importingOrExporting && !connected && mode != Mode.DEMO && mode != Mode.STRESS_TEST);
-		connectionNamesCombobox.setEnabled(!importingOrExporting && !connected);
+		sampleRateTextfield.setEnabled(!importingOrExporting && !connected);
+		protocolCombobox.setEnabled(!importingOrExporting && !connected);
+		namesCombobox.setEnabled(!importingOrExporting && !connected);
 		baudRateCombobox.setEnabled(!importingOrExporting && !connected);
-		portNumberCombobox.setEnabled(!importingOrExporting && !connected);
+		portNumberTextfield.setEnabled(!importingOrExporting && !connected);
 		connectButton.setEnabled(!importingOrExporting);
 		
-		return panel;
+		return settingsGui;
 		
 	}
 
@@ -600,13 +571,13 @@ public class ConnectionTelemetry extends Connection {
 			CommunicationView.instance.redraw();	
 		}
 		
-		if(mode == Mode.UART)
+		if(isTypeUart())
 			connectUart(showGui);
-		else if(mode == Mode.TCP)
+		else if(isTypeTCP())
 			connectTcp(showGui);
-		else if(mode == Mode.UDP)
+		else if(isTypeUDP())
 			connectUdp(showGui);
-		else if(mode == Mode.DEMO)
+		else if(isTypeDemo())
 			connectDemo(showGui);
 		else
 			connectStressTest(showGui);
@@ -628,9 +599,9 @@ public class ConnectionTelemetry extends Connection {
 		connected = true;
 		CommunicationView.instance.redraw();
 		
-		if(showGui && packetType != PacketType.TC66)
-			Main.showConfigurationGui(packetType == PacketType.CSV ? new DataStructureCsvView(this) :
-			                                                         new DataStructureBinaryView(this));
+		if(showGui && !isProtocolTc66())
+			Main.showConfigurationGui(isProtocolCsv() ? new DataStructureCsvView(this) :
+			                                        new DataStructureBinaryView(this));
 		
 		receiverThread = new Thread(() -> {
 			
@@ -648,7 +619,7 @@ public class ConnectionTelemetry extends Connection {
 					
 					int length = uart.available();
 					if(length < 1) {
-						Thread.sleep(1);
+						;//Thread.sleep(1); // FIXME
 					} else {
 						byte[] buffer = new byte[length];
 						length = uart.read(buffer, 0, length);
@@ -746,7 +717,7 @@ public class ConnectionTelemetry extends Connection {
 		transmitterThread.start();
 		
 		// for the TC66/TC66C: populate the datasets and configure the transmit GUI to poll the device periodically
-		if(packetType == PacketType.TC66) {
+		if(isProtocolTc66()) {
 			
 			setSampleRate(2);
 			setSampleRateAutomatic(false);
@@ -780,15 +751,7 @@ public class ConnectionTelemetry extends Connection {
 				datasets.insert(10, fake, "D- Voltage",       new Color(0x0000FF), "V",       1, 1);
 			}
 			
-			transmit.setTransmitType("Text");
-			transmit.setTransmitText("getva", null);
-			transmit.setAppendCR(false);
-			transmit.setAppendLF(false);
-			transmit.setRepeats(true);
-			transmit.setRepititionInterval(200);
-			transmit.savePacket(new TransmitController.SavedPacket("rotat".getBytes(), "Rotate Display"));
-			transmit.savePacket(new TransmitController.SavedPacket("lastp".getBytes(), "Previous Screen"));
-			transmit.savePacket(new TransmitController.SavedPacket("nextp".getBytes(), "Next Screen"));
+			transmit.reset();
 			
 			setDataStructureDefined(true);
 			
@@ -818,8 +781,8 @@ public class ConnectionTelemetry extends Connection {
 			CommunicationView.instance.redraw();
 			
 			if(showGui)
-				Main.showConfigurationGui(packetType == PacketType.CSV ? new DataStructureCsvView(this) :
-				                                                         new DataStructureBinaryView(this));
+				Main.showConfigurationGui(isProtocolCsv() ? new DataStructureCsvView(this) :
+				                                        new DataStructureBinaryView(this));
 			
 			startProcessingTelemetry(stream);
 			
@@ -921,8 +884,8 @@ public class ConnectionTelemetry extends Connection {
 			CommunicationView.instance.redraw();
 			
 			if(showGui)
-				Main.showConfigurationGui(packetType == PacketType.CSV ? new DataStructureCsvView(this) :
-				                                                         new DataStructureBinaryView(this));
+				Main.showConfigurationGui(isProtocolCsv() ? new DataStructureCsvView(this) :
+				                                        new DataStructureBinaryView(this));
 			
 			startProcessingTelemetry(stream);
 			
@@ -995,8 +958,8 @@ public class ConnectionTelemetry extends Connection {
 		CommunicationView.instance.redraw();
 		
 		if(showGui)
-			Main.showConfigurationGui(packetType == PacketType.CSV ? new DataStructureCsvView(this) :
-			                                                         new DataStructureBinaryView(this));
+			Main.showConfigurationGui(isProtocolCsv() ? new DataStructureCsvView(this) :
+			                                        new DataStructureBinaryView(this));
 
 		// simulate the transmission of a telemetry packet every 100us.
 		transmitterThread = new Thread(() -> {
@@ -1072,9 +1035,9 @@ public class ConnectionTelemetry extends Connection {
 		SettingsController.setFpsVisibility(false);
 		SettingsController.setAntialiasingLevel(1);
 		
-		packetType = PacketType.BINARY;
 		setSampleRate(Integer.MAX_VALUE);
 		setSampleRateAutomatic(false);
+		setProtocol(Protocol.BINARY);
 		
 		DatasetsController.BinaryFieldProcessor processor = null;
 		for(DatasetsController.BinaryFieldProcessor p : DatasetsController.binaryFieldProcessors)
@@ -1194,14 +1157,11 @@ public class ConnectionTelemetry extends Connection {
 	@Override public void importSettings(ConnectionsController.QueueOfLines lines) throws AssertionError {
 		
 		String type = ChartUtils.parseString(lines.remove(), "connection type = %s");
-		if(!type.equals("UART") &&
-		   !type.equals("TCP") &&
-		   !type.equals("UDP") &&
-		   !type.equals("Demo Mode") &&
-		   !type.equals("Stress Test Mode"))
+		Type newType = Type.fromString(type);
+		if(newType == null)
 			throw new AssertionError("Invalid connection type.");
 		
-		if(type.equals("UART")) {
+		if(newType == Type.UART) {
 			
 			String portName = ChartUtils.parseString(lines.remove(), "port = %s");
 			if(portName.length() < 1)
@@ -1211,9 +1171,10 @@ public class ConnectionTelemetry extends Connection {
 			if(baud < 1)
 				throw new AssertionError("Invalid baud rate.");
 			
-			String packetTypeString = ChartUtils.parseString(lines.remove(), "packet type = %s");
-			if(!packetTypeString.equals("CSV") && !packetTypeString.equals("Binary") && !packetTypeString.equals("TC66"))
-				throw new AssertionError("Invalid packet type.");
+			String protocol = ChartUtils.parseString(lines.remove(), "protocol = %s");
+			Protocol newProtocol = Protocol.fromString(protocol);
+			if(newProtocol == null)
+				throw new AssertionError("Invalid protocol.");
 			
 			int hz = ChartUtils.parseInteger(lines.remove(), "sample rate hz = %d");
 			if(hz < 0)
@@ -1234,14 +1195,11 @@ public class ConnectionTelemetry extends Connection {
 			if(saveCount < 0)
 				throw new AssertionError("Invalid save count.");
 			
-			mode = Mode.UART;
-			name = "UART: " + portName;
-			baudRate = baud;
-			packetType = packetTypeString.equals("CSV")    ? PacketType.CSV :
-			             packetTypeString.equals("Binary") ? PacketType.BINARY :
-			                                                 PacketType.TC66;
+			setNameAndType("UART: " + portName);
+			setBaudRate(baud);
 			setSampleRate(hz);
 			setSampleRateAutomatic(hz == 0);
+			setProtocol(newProtocol);
 			
 			transmit = new TransmitController(this);
 			transmitQueue = new ConcurrentLinkedQueue<byte[]>();
@@ -1266,43 +1224,33 @@ public class ConnectionTelemetry extends Connection {
 				}
 			}
 			
-		} else if(type.equals("TCP") || type.equals("UDP")) {
+		} else if(newType == Type.TCP || newType == Type.UDP) {
 			
 			int port = ChartUtils.parseInteger(lines.remove(), "server port = %d");
 			if(port < 0 || port > 65535)
 				throw new AssertionError("Invalid port number.");
 			
-			String packetTypeString = ChartUtils.parseString(lines.remove(), "packet type = %s");
-			if(!packetTypeString.equals("CSV") && !packetTypeString.equals("Binary"))
+			String protocolString = ChartUtils.parseString(lines.remove(), "protocol = %s");
+			if(!protocolString.equals(Protocol.CSV.toString()) && !protocolString.equals(Protocol.BINARY.toString()))
 				throw new AssertionError("Invalid packet type.");
 			
 			int hz = ChartUtils.parseInteger(lines.remove(), "sample rate hz = %d");
 			if(hz < 1)
 				throw new AssertionError("Invalid sample rate.");
 			
-			mode = type.equals("TCP") ? Mode.TCP : Mode.UDP;
-			name = type.equals("TCP") ? "TCP" : "UDP";
-			portNumber = port;
-			packetType = packetTypeString.equals("CSV") ? PacketType.CSV :
-			                                              PacketType.BINARY;
+			setNameAndType(newType.toString());
 			setSampleRate(hz);
 			setSampleRateAutomatic(hz == 0);
+			setProtocol(Protocol.fromString(protocolString));
+			setPortNumber(port);
 			
-		} else if(type.equals("Demo Mode")) {
+		} else if(newType == Type.DEMO) {
 			
-			mode = Mode.DEMO;
-			name = "Demo Mode";
-			packetType = PacketType.CSV;
-			setSampleRate(10000);
-			setSampleRateAutomatic(false);
+			setNameAndType(newType.toString());
 			
 		} else {
 			
-			mode = Mode.STRESS_TEST;
-			name = "Stress Test Mode";
-			packetType = PacketType.BINARY;
-			setSampleRate(Integer.MAX_VALUE);
-			setSampleRateAutomatic(false);
+			setNameAndType(newType.toString());
 			
 		}
 		
@@ -1331,7 +1279,7 @@ public class ConnectionTelemetry extends Connection {
 			for(DatasetsController.BinaryFieldProcessor p : DatasetsController.binaryFieldProcessors)
 				if(p.toString().equals(processorName))
 					processor = p;
-			if(packetType == PacketType.BINARY && processor == null)
+			if(isProtocolBinary() && processor == null)
 				throw new AssertionError("Invalid binary processor.");
 			String name             = ChartUtils.parseString (lines.remove(), "name = %s");
 			String colorText        = ChartUtils.parseString (lines.remove(), "color = 0x%s");
@@ -1391,15 +1339,13 @@ public class ConnectionTelemetry extends Connection {
 
 	@Override public void exportSettings(PrintWriter file) {
 
-		if(mode == Mode.UART) {
+		if(isTypeUart()) {
 			
-			file.println("\tconnection type = UART");
-			file.println("\tport = "           + name.substring(6)); // skip past "UART: "
-			file.println("\tbaud rate = "      + baudRate);
-			file.println("\tpacket type = "    + (packetType == PacketType.CSV    ? "CSV" :
-			                                      packetType == PacketType.BINARY ? "Binary" :
-			                                                                        "TC66"));
-			file.println("\tsample rate hz = " + (automaticSampleRate ? 0 : sampleRate));
+			file.println("\tconnection type = " + type.toString());
+			file.println("\tport = "            + name.substring(6)); // skip past "UART: "
+			file.println("\tbaud rate = "       + baudRate);
+			file.println("\tprotocol = "        + protocol.toString());
+			file.println("\tsample rate hz = "  + (sampleRateAutomatic ? 0 : sampleRate));
 			
 			file.println("\ttransmit type = "                             + transmit.getTransmitType());
 			file.println("\ttransmit data = "                             + transmit.getTransmitText());
@@ -1413,14 +1359,14 @@ public class ConnectionTelemetry extends Connection {
 				file.println("\t\t" + ChartUtils.convertBytesToHexString(save.bytes));
 			});
 			
-		} else if(mode == Mode.TCP || mode == Mode.UDP) {
+		} else if(isTypeTCP() || isTypeUDP()) {
 			
-			file.println("\tconnection type = " + ((mode == Mode.TCP) ? "TCP" : "UDP"));
+			file.println("\tconnection type = " + type.toString());
 			file.println("\tserver port = "     + portNumber);
-			file.println("\tpacket type = "     + (packetType == PacketType.CSV ? "CSV" : "Binary"));
-			file.println("\tsample rate hz = "  + (automaticSampleRate ? 0 : sampleRate));
+			file.println("\tprotocol = "        + protocol.toString());
+			file.println("\tsample rate hz = "  + (sampleRateAutomatic ? 0 : sampleRate));
 			
-		} else if(mode == Mode.DEMO) {
+		} else if(isTypeDemo()) {
 			
 			file.println("\tconnection type = Demo Mode");
 			
@@ -1773,18 +1719,18 @@ public class ConnectionTelemetry extends Connection {
 			List<Dataset> list = datasets.getList();
 			
 			// if no telemetry after 100ms, notify the user
-			String waitingForTelemetry = mode == Mode.UART ? name.substring(6) + " is connected. Send telemetry." :
-			                             mode == Mode.TCP  ? "The TCP server is running. Send telemetry to " + localIp + ":" + portNumber :
-			                             mode == Mode.UDP  ? "The UDP listener is running. Send telemetry to " + localIp + ":" + portNumber :
+			String waitingForTelemetry = isTypeUart() ? name.substring(6) + " is connected. Send telemetry." :
+			                             isTypeTCP()  ? "The TCP server is running. Send telemetry to " + localIp + ":" + portNumber :
+			                             isTypeUDP()  ? "The UDP listener is running. Send telemetry to " + localIp + ":" + portNumber :
 			                                                                    "";
-			String receivingTelemetry  = mode == Mode.UART ? name.substring(6) + " is connected and receiving telemetry." :
-			                             mode == Mode.TCP  ? "The TCP server is running and receiving telemetry." :
-			                             mode == Mode.UDP  ? "The UDP listener is running and receiving telemetry." :
+			String receivingTelemetry  = isTypeUart() ? name.substring(6) + " is connected and receiving telemetry." :
+			                             isTypeTCP()  ? "The TCP server is running and receiving telemetry." :
+			                             isTypeUDP()  ? "The UDP listener is running and receiving telemetry." :
 			                                                                    "";
 			int oldSampleCount = getSampleCount();
 			Timer t = new Timer(100, event -> {
 				
-				if(mode == Mode.DEMO || mode == Mode.STRESS_TEST)
+				if(isTypeDemo() || isTypeStressTest())
 					return;
 				
 				if(connected) {
@@ -1798,7 +1744,7 @@ public class ConnectionTelemetry extends Connection {
 			t.setRepeats(false);
 			t.start();
 			
-			if(packetType == PacketType.CSV) {
+			if(isProtocolCsv()) {
 				
 				// prepare for CSV mode
 				stream.setPacketSize(0, list, 0, (byte) 0);
@@ -1844,7 +1790,7 @@ public class ConnectionTelemetry extends Connection {
 					
 				}
 				
-			} else if(packetType == PacketType.BINARY) {
+			} else if(isProtocolBinary()) {
 				
 				// prepare for binary mode 
 				final int syncWordByteCount = datasets.syncWordByteCount;
@@ -1977,7 +1923,7 @@ public class ConnectionTelemetry extends Connection {
 					
 				}
 				
-			} else if(packetType == PacketType.TC66) {
+			} else if(isProtocolTc66()) {
 				
 				int packetLength = 64;
 				stream.setPacketSize(packetLength, list, 0, (byte) 0);
@@ -2306,7 +2252,7 @@ public class ConnectionTelemetry extends Connection {
 	}
 	
 	private AtomicInteger sampleCount = new AtomicInteger(0);
-	private StorageTimestamps timestamps;
+	private StorageTimestamps timestamps = new StorageTimestamps(this);
 	private long firstTimestamp = 0;
 	private long lastTimestamp = 0;
 	

@@ -147,7 +147,7 @@ public class TransmitView extends JPanel {
 			removeButton.addActionListener(click -> controller.removePacket(packet));
 			savedPacketButtons.add(sendButton);
 			savedPacketButtons.add(removeButton);
-			if(controller.connection.packetType == ConnectionTelemetry.PacketType.TC66) {
+			if(controller.connection.isProtocolTc66()) {
 				add(sendButton, "span 2, grow x");
 			} else {
 				add(sendButton, "span 2, split 2, grow x, width 1:1:"); // setting min/pref width to 1px to ensure this button doesn't widen the panel
