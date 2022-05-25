@@ -49,7 +49,6 @@ public class SettingsView extends JPanel {
 	
 	JCheckBox showTooltipsCheckbox;
 	JSlider   antialiasingLevelSlider;
-	JCheckBox showFpsCheckbox;
 	JCheckBox showBenchmarksCheckbox;
 	
 	/**
@@ -135,23 +134,18 @@ public class SettingsView extends JPanel {
 		showTooltipsCheckbox = new JCheckBox("Show Plot Tooltips", SettingsController.getTooltipVisibility());
 		showTooltipsCheckbox.addActionListener(event -> SettingsController.setTooltipVisibility(showTooltipsCheckbox.isSelected()));
 		
-		// FPS
-		showFpsCheckbox = new JCheckBox("Show FPS and Period", SettingsController.getFpsVisibility());
-		showFpsCheckbox.addActionListener(event -> SettingsController.setFpsVisibility(showFpsCheckbox.isSelected()));
-		
 		// benchmarking
 		showBenchmarksCheckbox = new JCheckBox("Show Benchmarks", SettingsController.getBenchmarking());
 		showBenchmarksCheckbox.addActionListener(event -> SettingsController.setBenchmarking(showBenchmarksCheckbox.isSelected()));
 		
 		// antialiasing
-		antialiasingLevelSlider = new JSlider(0, 5, (int) (Math.log(SettingsController.getAntialiasingLevel()) / Math.log(2)));
+		antialiasingLevelSlider = new JSlider(0, 4, (int) (Math.log(SettingsController.getAntialiasingLevel()) / Math.log(2)));
 		Hashtable<Integer, JLabel> labels = new Hashtable<Integer, JLabel>();
 		labels.put(0, new JLabel("1"));
 		labels.put(1, new JLabel("2"));
 		labels.put(2, new JLabel("4"));
 		labels.put(3, new JLabel("8"));
 		labels.put(4, new JLabel("16"));
-		labels.put(5, new JLabel("32"));
 		antialiasingLevelSlider.setLabelTable(labels);
 		antialiasingLevelSlider.setMajorTickSpacing(1);
 		antialiasingLevelSlider.setPaintTicks(true);
@@ -196,7 +190,6 @@ public class SettingsView extends JPanel {
 		panel.add(verboseNotificationsColorButton, "gapbottom " + 4*Theme.padding);
 		
 		panel.add(showTooltipsCheckbox, "span 2, grow x");
-		panel.add(showFpsCheckbox, "span 2, grow x");
 		panel.add(showBenchmarksCheckbox, "span 2, grow x");
 		
 		panel.add(new JLabel("Antialiasing: "));

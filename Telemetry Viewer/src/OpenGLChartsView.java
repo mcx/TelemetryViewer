@@ -87,12 +87,15 @@ public class OpenGLChartsView extends JPanel {
 	long cpuStopNanoseconds;
 	double previousCpuMilliseconds;
 	double previousGpuMilliseconds;
+	double previousFps;
 	double cpuMillisecondsAccumulator;
 	double gpuMillisecondsAccumulator;
-	int count;
-	final int SAMPLE_COUNT = 60;
+	double fpsAccumulator;
 	double averageCpuMilliseconds;
 	double averageGpuMilliseconds;
+	double averageFps;
+	int count;
+	final int SAMPLE_COUNT = 60;
 	int[] gpuQueryHandles = new int[2];
 	long[] gpuTimes = new long[2];
 	boolean openGLES;
@@ -254,15 +257,19 @@ public class OpenGLChartsView extends JPanel {
 						gl.glGetQueryObjecti64v(gpuQueryHandles[1], GL3.GL_QUERY_RESULT, gpuTimes, 1);
 					}
 					previousGpuMilliseconds = (gpuTimes[1] - gpuTimes[0]) / 1000000.0;
+					previousFps = 1000000000.0 / (System.nanoTime() - cpuStartNanoseconds);
 					if(count < SAMPLE_COUNT) {
 						cpuMillisecondsAccumulator += previousCpuMilliseconds;
 						gpuMillisecondsAccumulator += previousGpuMilliseconds;
+						fpsAccumulator += previousFps;
 						count++;
 					} else {
 						averageCpuMilliseconds = cpuMillisecondsAccumulator / 60.0;
 						averageGpuMilliseconds = gpuMillisecondsAccumulator / 60.0;
+						averageFps = fpsAccumulator / 60.0;
 						cpuMillisecondsAccumulator = 0;
 						gpuMillisecondsAccumulator = 0;
+						fpsAccumulator = 0;
 						count = 0;
 					}
 					
@@ -613,17 +620,6 @@ public class OpenGLChartsView extends JPanel {
 					
 				}
 				
-				// show the FPS/period in the lower-left corner if enabled
-				if(SettingsController.getFpsVisibility()) {
-					String text = String.format("%2.1fFPS, %dms", animator.getLastFPS(), animator.getLastFPSPeriod());
-					int padding = 10;
-					float textHeight = OpenGL.largeTextHeight;
-					float textWidth = OpenGL.largeTextWidth(gl, text);
-					OpenGL.drawBox(gl, Theme.neutralColor, 0, 0, textWidth + padding*2, textHeight + padding*2);
-					OpenGL.drawLargeText(gl, text, padding, padding, 0);
-					NotificationsController.showDebugMessage(text);
-				}
-				
 				// update the mouse cursor
 				setCursor(eventHandler == null ? Theme.defaultCursor : eventHandler.cursor);
 				
@@ -640,9 +636,11 @@ public class OpenGLChartsView extends JPanel {
 					String line2 =             String.format("CPU = %.3fms (Average = %.3fms)", previousCpuMilliseconds, averageCpuMilliseconds);
 					String line3 = !openGLES ? String.format("GPU = %.3fms (Average = %.3fms)", previousGpuMilliseconds, averageGpuMilliseconds) :
 					                                         "GPU = unknown";
-					float textHeight = 3*OpenGL.smallTextHeight + 2*Theme.tickTextPadding;
+					String line4 =             String.format("FPS = %2.2f (Average = %2.2f)", previousFps, averageFps);
+					float textHeight = 4*OpenGL.smallTextHeight + 3*Theme.tickTextPadding;
 					float textWidth = Float.max(OpenGL.smallTextWidth(gl, line1), OpenGL.smallTextWidth(gl, line2));
 					textWidth = Float.max(textWidth, OpenGL.smallTextWidth(gl, line3));
+					textWidth = Float.max(textWidth, OpenGL.smallTextWidth(gl, line4));
 					float boxWidth = textWidth + 2*Theme.tickTextPadding;
 					float boxHeight = textHeight + 2*Theme.tickTextPadding;
 					int xBoxLeft = (canvasWidth / 2) - (int) (textWidth / 2);
@@ -652,15 +650,16 @@ public class OpenGLChartsView extends JPanel {
 					int yTextBaseline = top.get() - lineSpacing;
 					OpenGL.drawBox(gl, Theme.neutralColor, xBoxLeft, yBoxBottom, boxWidth, boxHeight);
 					OpenGL.drawSmallText(gl, line1, (canvasWidth / 2) - (int) (OpenGL.smallTextWidth(gl, line1) / 2), yTextBaseline, 0);
-					OpenGL.drawSmallText(gl, line2, xTextLeft, yTextBaseline - lineSpacing, 0);
-					OpenGL.drawSmallText(gl, line3, xTextLeft, yTextBaseline - lineSpacing - lineSpacing, 0);
+					OpenGL.drawSmallText(gl, line2, xTextLeft, yTextBaseline - (lineSpacing * 1), 0);
+					OpenGL.drawSmallText(gl, line3, xTextLeft, yTextBaseline - (lineSpacing * 2), 0);
+					OpenGL.drawSmallText(gl, line4, xTextLeft, yTextBaseline - (lineSpacing * 3), 0);
 					
-					String message = "Entire Frame: " + line2 + " " + line3;
-					for(int i = 0; i < charts.size(); i++) {
-						PositionedChart chart = charts.get(i);
-						message += ",     Chart " + i + ": " + chart.line1 + " " + line3;
-					}
-					NotificationsController.showDebugMessage(message);
+//					String message = "Entire Frame: " + line2 + " " + line3;
+//					for(int i = 0; i < charts.size(); i++) {
+//						PositionedChart chart = charts.get(i);
+//						message += ",     Chart " + i + ": " + chart.line1 + " " + line3;
+//					}
+//					NotificationsController.showDebugMessage(message);
 				}
 				
 			}

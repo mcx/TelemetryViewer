@@ -44,9 +44,6 @@ public class SettingsController {
 	// OpenGL multisample (MSAA) level, use 1 to disable antialiasing
 	private static int antialiasingLevel = 16;
 	
-	// if the FPS and period should be drawn
-	private static boolean fpsVisibility = false;
-	
 	// if charts should be benchmarked
 	private static boolean benchmarking = false;
 	
@@ -259,27 +256,6 @@ public class SettingsController {
 	public static boolean getTooltipVisibility() {
 		
 		return tooltipVisibility;
-		
-	}
-	
-	/**
-	 * Changes the FPS/period visibility.
-	 * 
-	 * @param value    True to enable, false to disable.
-	 */
-	public static void setFpsVisibility(boolean value) {
-		
-		fpsVisibility = value;
-		SettingsView.instance.showFpsCheckbox.setSelected(value);
-		
-	}
-	
-	/**
-	 * @return    True if FPS/period measurements should be drawn.
-	 */
-	public static boolean getFpsVisibility() {
-		
-		return fpsVisibility;
 		
 	}
 	

@@ -510,8 +510,6 @@ public class ConnectionsController {
 			                                                                                  SettingsController.getVerboseNotificationColor().getGreen(),
 			                                                                                  SettingsController.getVerboseNotificationColor().getBlue()));
 			file.println("\tshow plot tooltips = "          + SettingsController.getTooltipVisibility());
-			file.println("\tsmooth scrolling = "            + SettingsController.getSmoothScrolling());
-			file.println("\tshow fps and period = "         + SettingsController.getFpsVisibility());
 			file.println("\tbenchmarking = "                + SettingsController.getBenchmarking());
 			file.println("\tantialiasing level = "          + SettingsController.getAntialiasingLevel());
 			file.println("");
@@ -585,8 +583,6 @@ public class ConnectionsController {
 			boolean verboseVisibility = ChartUtils.parseBoolean(lines.remove(), "show verbose notifications = %b");
 			String verboseColorText   = ChartUtils.parseString (lines.remove(), "verbose notifications color = 0x%s");
 			boolean tooltipVisibility = ChartUtils.parseBoolean(lines.remove(), "show plot tooltips = %b");
-			boolean smoothScrolling   = ChartUtils.parseBoolean(lines.remove(), "smooth scrolling = %b");
-			boolean fpsVisibility     = ChartUtils.parseBoolean(lines.remove(), "show fps and period = %b");
 			boolean benchmarking      = ChartUtils.parseBoolean(lines.remove(), "benchmarking = %b");
 			int antialiasingLevel     = ChartUtils.parseInteger(lines.remove(), "antialiasing level = %d");
 			ChartUtils.parseExact(lines.remove(), "");
@@ -609,8 +605,6 @@ public class ConnectionsController {
 			SettingsController.setVerboseNotificationVisibility(verboseVisibility);
 			SettingsController.setVerboseNotificationColor(verboseColor);
 			SettingsController.setTooltipVisibility(tooltipVisibility);
-			SettingsController.setSmoothScrolling(smoothScrolling);
-			SettingsController.setFpsVisibility(fpsVisibility);
 			SettingsController.setBenchmarking(benchmarking);
 			SettingsController.setAntialiasingLevel(antialiasingLevel);
 
