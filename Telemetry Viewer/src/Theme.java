@@ -7,8 +7,11 @@ import javax.swing.JPanel;
 import javax.swing.JToggleButton;
 import javax.swing.border.Border;
 import javax.swing.border.EmptyBorder;
+import javax.swing.border.TitledBorder;
 
 import com.jogamp.opengl.GL2ES3;
+
+import net.miginfocom.swing.MigLayout;
 
 
 /**
@@ -105,6 +108,23 @@ public class Theme {
 		mediumFont = new Font("Geneva", Font.BOLD,  (int) (14.0 * displayScalingFactor));
 		largeFont  = new Font("Geneva", Font.BOLD,  (int) (18.0 * displayScalingFactor));
 		OpenGL.updateFontTextures(gl);
+		
+	}
+	
+	/**
+	 * Creates a panel intended for containing Widgets.
+	 * It has a TitledBorder, and uses a MigLayout.
+	 * The MigLayout is configured for 1 column and stretches the widgets to fill that column.
+	 * 
+	 * @param label    Text to show in the TitledBorder.
+	 * @return         The panel.
+	 */
+	public static JPanel newWidgetsPanel(String label) {
+		
+		JPanel panel = new JPanel();
+		panel.setLayout(new MigLayout("hidemode 3, wrap 1, insets 0 " + Theme.padding / 2 + " " + Theme.padding + " " + Theme.padding + ", gap " + Theme.padding, "[grow,fill]"));
+		panel.setBorder(new TitledBorder(label));
+		return panel;
 		
 	}
 

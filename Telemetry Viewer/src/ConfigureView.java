@@ -4,11 +4,6 @@ import java.awt.GridLayout;
 import java.awt.event.ActionListener;
 import java.awt.event.FocusEvent;
 import java.awt.event.FocusListener;
-import java.awt.event.KeyEvent;
-import java.awt.event.KeyListener;
-import java.util.Map;
-
-import javax.swing.Box;
 import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -41,7 +36,7 @@ public class ConfigureView extends JPanel {
 		super();
 		
 		widgetsPanel = new JPanel();
-		widgetsPanel.setLayout(new MigLayout("hidemode 3, wrap 4, insets" + Theme.padding + " " + Theme.padding / 2 + " " + Theme.padding + " " + Theme.padding + ", gap " + Theme.padding, "[pref][min!][min!][grow]"));
+		widgetsPanel.setLayout(new MigLayout("hidemode 3, wrap 1, insets " + Theme.padding + " " + Theme.padding / 2 + " " + Theme.padding + " " + Theme.padding + ", gapy " + Theme.padding*3, "[fill,grow]"));
 		scrollableRegion = new JScrollPane(widgetsPanel, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
 		scrollableRegion.setBorder(null);
 		scrollableRegion.getVerticalScrollBar().setUnitIncrement(10);
@@ -102,20 +97,11 @@ public class ConfigureView extends JPanel {
 		activeChartIsNew = false;
 		
 		widgetsPanel.removeAll();
-		buttonsPanel.removeAll();
-
-		for(Widget widget : chart.widgets) {
-			if(widget == null) {
-				widgetsPanel.add(Box.createVerticalStrut(Theme.padding), "span 4");
-			} else {
-				widget.update();
-				for(Map.Entry<Component, String> thing : widget.widgets.entrySet())
-					widgetsPanel.add(thing.getKey(), thing.getValue());
-			}
-		}
+		chart.getConfigurationGui(widgetsPanel);
 		
 		JButton doneButton = new JButton("Done");
 		doneButton.addActionListener(event -> close());
+		buttonsPanel.removeAll();
 		buttonsPanel.add(doneButton, "growx, cell 2 0");
 		
 		scrollableRegion.getVerticalScrollBar().setValue(0);
@@ -160,21 +146,14 @@ public class ConfigureView extends JPanel {
 		}
 		
 		widgetsPanel.removeAll();
-		widgetsPanel.add(chartTypePanel, "span 4, growx");
-		widgetsPanel.add(Box.createVerticalStrut(Theme.padding * 2), "span 4");
-		for(Widget widget : activeChart.widgets) {
-			if(widget == null)
-				widgetsPanel.add(Box.createVerticalStrut(Theme.padding), "span 4");
-			else
-				for(Map.Entry<Component, String> thing : widget.widgets.entrySet())
-					widgetsPanel.add(thing.getKey(), thing.getValue());
-		}
+		widgetsPanel.add(chartTypePanel);
+		chart.getConfigurationGui(widgetsPanel);
 		
-		buttonsPanel.removeAll();
 		JButton cancelButton = new JButton("Cancel");
 		cancelButton.addActionListener(event -> { ChartsController.removeChart(activeChart); close(); });
 		JButton doneButton = new JButton("Done");
 		doneButton.addActionListener(event -> close());
+		buttonsPanel.removeAll();
 		buttonsPanel.add(cancelButton, "growx, cell 0 0");
 		buttonsPanel.add(doneButton, "growx, cell 2 0");
 		
@@ -227,19 +206,17 @@ public class ConfigureView extends JPanel {
 			@Override public void focusLost(FocusEvent arg0)   { unitTextfield.setText(unitTextfield.getText().trim()); }
 			@Override public void focusGained(FocusEvent arg0) { unitTextfield.selectAll(); }
 		});
-		unitTextfield.addKeyListener(new KeyListener() {
-			@Override public void keyReleased(KeyEvent ke) { unitTextfield.setText(unitTextfield.getText().trim()); }
-			@Override public void keyPressed(KeyEvent ke)  { }
-			@Override public void keyTyped(KeyEvent ke)    { }
-		});
+		
+		JPanel datasetPanel = Theme.newWidgetsPanel("Dataset");
+		datasetPanel.add(new JLabel("Name: "), "split 2, sizegroup 0");
+		datasetPanel.add(nameTextfield, "grow, sizegroup 1");
+		datasetPanel.add(new JLabel("Color: "), "split 2, sizegroup 0");
+		datasetPanel.add(colorButton, "grow, sizegroup 1");
+		datasetPanel.add(new JLabel("Unit: "), "split 2, sizegroup 0");
+		datasetPanel.add(unitTextfield, "grow, sizegroup 1");
 		
 		widgetsPanel.removeAll();
-		widgetsPanel.add(new JLabel("Name: "));
-		widgetsPanel.add(nameTextfield, "span 3, growx");
-		widgetsPanel.add(new JLabel("Color: "));
-		widgetsPanel.add(colorButton, "span 3, growx");
-		widgetsPanel.add(new JLabel("Unit: "));
-		widgetsPanel.add(unitTextfield, "span 3, growx");
+		widgetsPanel.add(datasetPanel);
 		
 		scrollableRegion.getVerticalScrollBar().setValue(0);
 

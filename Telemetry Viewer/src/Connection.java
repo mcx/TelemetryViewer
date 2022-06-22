@@ -1,3 +1,4 @@
+import java.awt.Toolkit;
 import java.io.PrintWriter;
 import java.util.concurrent.atomic.AtomicLong;
 import javax.swing.JPanel;
@@ -154,8 +155,10 @@ public abstract class Connection {
 		}
 		
 		NotificationsController.removeIfConnectionRelated();
-		if(errorMessage != null)
+		if(errorMessage != null) {
+			Toolkit.getDefaultToolkit().beep();
 			NotificationsController.showFailureUntil(errorMessage, () -> false, true);
+		}
 		
 		CommunicationView.instance.redraw();
 		

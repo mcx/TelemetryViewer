@@ -1,51 +1,43 @@
-import javax.swing.SwingUtilities;
-
+import javax.swing.JPanel;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 
 import com.jogamp.opengl.GL2ES3;
 
-/**
- * Displays a table of current values and statistics of one or more datasets.
- * 
- * User settings:
- *     How many datasets.
- *     The datasets.
- *     Show one or more of the following:
- *         Current value
- *         Minimum value
- *         Maximum value
- *         Mean
- *         Median
- *         Standard Deviation
- *         90th Percentile
- */
 public class OpenGLStatisticsChart extends PositionedChart {
 	
+	// user settings
+	private WidgetDatasetCheckboxes datasetsWidget;
+	
+	private WidgetTextfieldInt sampleCountTextfield;
+	
+	private boolean sampleCountVisible = true;
+	private WidgetCheckbox sampleCountCheckbox;
+	
+	private boolean currentValuesVisible = true;
+	private WidgetCheckbox currentValuesCheckbox;
+	
+	private boolean minimumsVisible = true;
+	private WidgetCheckbox minimumsCheckbox;
+	
+	private boolean maximumsVisible = true;
+	private WidgetCheckbox maximumsCheckbox;
+	
+	private boolean meansVisible = true;
+	private WidgetCheckbox meansCheckbox;
+	
+	private boolean mediansVisible = true;
+	private WidgetCheckbox mediansCheckbox;
+	
+	private boolean standardDeviationsVisible = true;
+	private WidgetCheckbox standardDeviationCheckbox;
+	
+	private boolean percentileVisible = true;
+	private WidgetCheckbox percentileCheckbox;
+	
 	// duration
-	int durationSampleCount;
-	long durationMilliseconds;
-	
-	// settings
-	boolean showCurrentValues;
-	boolean showMinimums;
-	boolean showMaximums;
-	boolean showMeans;
-	boolean showMedians;
-	boolean showStandardDeviations;
-	boolean showPercentile;
-	boolean showDuration;
-	String showAs;
-	
-	// control widgets
-	WidgetDatasets datasetsAndDurationWidget;
-	WidgetCheckbox currentValuesWidget;
-	WidgetCheckbox minimumWidget;
-	WidgetCheckbox maximumWidget;
-	WidgetCheckbox meanWidget;
-	WidgetCheckbox medianWidget;
-	WidgetCheckbox standardDeviationWidget;
-	WidgetCheckbox percentileWidget;
-	WidgetCheckbox showDurationWidget;
+	private int durationSampleCount;
+	private long durationMilliseconds;
+	private String showAs;
 	
 	@Override public String toString() {
 		
@@ -57,43 +49,84 @@ public class OpenGLStatisticsChart extends PositionedChart {
 		
 		super(x1, y1, x2, y2);
 		
-		datasetsAndDurationWidget = new WidgetDatasets(newDatasets -> datasets.setNormals(newDatasets),
-		                                               null,
-		                                               null,
-		                                               (newType, newDuration) -> {
-		                                                   showAs = newType.toString();
-		                                                   SwingUtilities.invokeLater(() -> {
-		                                                       if(newType.toString().equals("Sample Count"))
-		                                                           durationSampleCount = (int) (long) newDuration;
-		                                                       else
-		                                                           durationMilliseconds = newDuration;
-		                                                   });
-		                                                   return newDuration;
-		                                                 },
-		                                               false,
-		                                               null);
+		datasetsWidget = new WidgetDatasetCheckboxes(newDatasets -> datasets.setNormals(newDatasets),
+		                                             null,
+		                                             null,
+		                                             null,
+		                                             false);
 		
-		currentValuesWidget     = new WidgetCheckbox("Show Current Value",      true, isSelected -> showCurrentValues = isSelected);
-		minimumWidget           = new WidgetCheckbox("Show Minimum",            true, isSelected -> showMinimums = isSelected);
-		maximumWidget           = new WidgetCheckbox("Show Maximum",            true, isSelected -> showMaximums = isSelected);
-		meanWidget              = new WidgetCheckbox("Show Mean",               true, isSelected -> showMeans = isSelected);
-		medianWidget            = new WidgetCheckbox("Show Median",             true, isSelected -> showMedians = isSelected);
-		standardDeviationWidget = new WidgetCheckbox("Show Standard Deviation", true, isSelected -> showStandardDeviations = isSelected);
-		percentileWidget        = new WidgetCheckbox("Show 90th Percentile",    true, isSelected -> showPercentile = isSelected);
-		showDurationWidget      = new WidgetCheckbox("Show Duration Label",     true, isSelected -> showDuration = isSelected);
-
-		widgets = new Widget[11];
-		widgets[0]  = datasetsAndDurationWidget;
-		widgets[1]  = null;
-		widgets[2]  = currentValuesWidget;
-		widgets[3]  = minimumWidget;
-		widgets[4]  = maximumWidget;
-		widgets[5]  = meanWidget;
-		widgets[6]  = medianWidget;
-		widgets[7]  = standardDeviationWidget;
-		widgets[8]  = percentileWidget;
-		widgets[9]  = null;
-		widgets[10] = showDurationWidget;		
+		sampleCountTextfield = new WidgetTextfieldInt("",
+		                                              "duration",
+		                                              "Samples",
+		                                              10,
+		                                              1048576,
+		                                              ConnectionsController.getDefaultChartDuration(),
+		                                              newDuration -> durationSampleCount = newDuration);
+		
+		sampleCountCheckbox = new WidgetCheckbox("Show Sample Count",
+		                                         sampleCountVisible,
+		                                         isVisible -> sampleCountVisible = isVisible);
+		
+		currentValuesCheckbox = new WidgetCheckbox("Current Value",
+		                                           currentValuesVisible,
+		                                           isVisible -> currentValuesVisible = isVisible);
+		
+		minimumsCheckbox = new WidgetCheckbox("Minimum",
+		                                      minimumsVisible,
+		                                      isVisible -> minimumsVisible = isVisible);
+		
+		maximumsCheckbox = new WidgetCheckbox("Maximum",
+		                                      maximumsVisible,
+		                                      isVisible -> maximumsVisible = isVisible);
+		
+		meansCheckbox = new WidgetCheckbox("Mean",
+		                                   meansVisible,
+		                                   isVisible -> meansVisible = isVisible);
+		
+		mediansCheckbox = new WidgetCheckbox("Median",
+		                                     mediansVisible,
+		                                     isVisible -> mediansVisible = isVisible);
+		
+		standardDeviationCheckbox = new WidgetCheckbox("Standard Deviation",
+		                                               standardDeviationsVisible,
+		                                               isVisible -> standardDeviationsVisible = isVisible);
+		
+		percentileCheckbox = new WidgetCheckbox("90th Percentile",
+		                                        percentileVisible,
+		                                        isVisible -> percentileVisible = isVisible);
+		
+		widgets.add(datasetsWidget);
+		widgets.add(sampleCountTextfield);
+		widgets.add(sampleCountCheckbox);
+		widgets.add(currentValuesCheckbox);
+		widgets.add(minimumsCheckbox);
+		widgets.add(maximumsCheckbox);
+		widgets.add(meansCheckbox);
+		widgets.add(mediansCheckbox);
+		widgets.add(standardDeviationCheckbox);
+		widgets.add(percentileCheckbox);
+		
+	}
+	
+	@Override public void getConfigurationGui(JPanel gui) {
+		
+		JPanel dataPanel = Theme.newWidgetsPanel("Data");
+		datasetsWidget.appendToGui(dataPanel);
+		dataPanel.add(sampleCountTextfield, "span 4, split 2, sizegroup 0");
+		dataPanel.add(sampleCountCheckbox, "sizegroup 0");
+		
+		JPanel statsPanel = Theme.newWidgetsPanel("Statistics");
+		statsPanel.add(currentValuesCheckbox);
+		statsPanel.add(minimumsCheckbox);
+		statsPanel.add(maximumsCheckbox);
+		statsPanel.add(meansCheckbox);
+		statsPanel.add(mediansCheckbox);
+		statsPanel.add(standardDeviationCheckbox);
+		statsPanel.add(percentileCheckbox);
+		
+		gui.add(dataPanel);
+		gui.add(statsPanel);
+		
 	}
 	
 	@Override public EventHandler drawChart(GL2ES3 gl, float[] chartMatrix, int width, int height, long endTimestamp, int endSampleNumber, double zoomLevel, int mouseX, int mouseY) {
@@ -146,25 +179,25 @@ public class OpenGLStatisticsChart extends PositionedChart {
 		
 		// determine the text to display
 		int lineCount = 1; // always show the dataset labels
-		if(showCurrentValues)      lineCount++;
-		if(showMinimums)           lineCount++;
-		if(showMaximums)           lineCount++;
-		if(showMeans)              lineCount++;
-		if(showMedians)            lineCount++;
-		if(showStandardDeviations) lineCount++;
-		if(showPercentile)         lineCount++;
+		if(currentValuesVisible)      lineCount++;
+		if(minimumsVisible)           lineCount++;
+		if(maximumsVisible)           lineCount++;
+		if(meansVisible)              lineCount++;
+		if(mediansVisible)            lineCount++;
+		if(standardDeviationsVisible) lineCount++;
+		if(percentileVisible)         lineCount++;
 		String[][] text = new String[datasetsCount + 1][lineCount];
 		
 		// first column of text are the labels, but don't label the dataset name or current value because that's obvious
 		int line = 0;
 		text[0][line++] = "";
-		if(showCurrentValues)      text[0][line++] = "";
-		if(showMinimums)           text[0][line++] = "Minimum";
-		if(showMaximums)           text[0][line++] = "Maximum";
-		if(showMeans)              text[0][line++] = "Mean";
-		if(showMedians)            text[0][line++] = "Median";
-		if(showStandardDeviations) text[0][line++] = "Std Dev";
-		if(showPercentile)         text[0][line++] = "90th Pctl";
+		if(currentValuesVisible)      text[0][line++] = "";
+		if(minimumsVisible)           text[0][line++] = "Minimum";
+		if(maximumsVisible)           text[0][line++] = "Maximum";
+		if(meansVisible)              text[0][line++] = "Mean";
+		if(mediansVisible)            text[0][line++] = "Median";
+		if(standardDeviationsVisible) text[0][line++] = "Std Dev";
+		if(percentileVisible)         text[0][line++] = "90th Pctl";
 		
 		// subsequent columns of text are the dataset names and numeric values
 		if(sampleCount > 0)
@@ -181,13 +214,13 @@ public class OpenGLStatisticsChart extends PositionedChart {
 				int column = datasetN + 1;
 				line = 0;
 				text[column][line++] = dataset.name;
-				if(showCurrentValues)      text[column][line++] = ChartUtils.formattedNumber(samples[samples.length - 1], 5) + " " + dataset.unit;
-				if(showMinimums)           text[column][line++] = ChartUtils.formattedNumber(range[0], 5) + " " + dataset.unit;
-				if(showMaximums)           text[column][line++] = ChartUtils.formattedNumber(range[1], 5) + " " + dataset.unit;
-				if(showMeans)              text[column][line++] = ChartUtils.formattedNumber(stats.getMean(), 5) + " " + dataset.unit;
-				if(showMedians)            text[column][line++] = ChartUtils.formattedNumber(stats.getPercentile(50), 5) + " " + dataset.unit;
-				if(showStandardDeviations) text[column][line++] = ChartUtils.formattedNumber(stats.getStandardDeviation(), 5) + " " + dataset.unit;
-				if(showPercentile)         text[column][line++] = ChartUtils.formattedNumber(stats.getPercentile(90), 5) + " " + dataset.unit;
+				if(currentValuesVisible)      text[column][line++] = ChartUtils.formattedNumber(samples[samples.length - 1], 5) + " " + dataset.unit;
+				if(minimumsVisible)           text[column][line++] = ChartUtils.formattedNumber(range[0], 5) + " " + dataset.unit;
+				if(maximumsVisible)           text[column][line++] = ChartUtils.formattedNumber(range[1], 5) + " " + dataset.unit;
+				if(meansVisible)              text[column][line++] = ChartUtils.formattedNumber(stats.getMean(), 5) + " " + dataset.unit;
+				if(mediansVisible)            text[column][line++] = ChartUtils.formattedNumber(stats.getPercentile(50), 5) + " " + dataset.unit;
+				if(standardDeviationsVisible) text[column][line++] = ChartUtils.formattedNumber(stats.getStandardDeviation(), 5) + " " + dataset.unit;
+				if(percentileVisible)         text[column][line++] = ChartUtils.formattedNumber(stats.getPercentile(90), 5) + " " + dataset.unit;
 			}
 		
 		// determine the width of each piece of text, and track the max for each column
@@ -197,39 +230,39 @@ public class OpenGLStatisticsChart extends PositionedChart {
 		line = 0;
 		columnWidth[0] = 0;
 		textWidth[0][line++] = 0; // no label for the dataset name
-		if(showCurrentValues)
+		if(currentValuesVisible)
 			textWidth[0][line++] = 0; // no label for the current value
-		if(showMinimums) {
+		if(minimumsVisible) {
 			textWidth[0][line] = OpenGL.smallTextWidth(gl, text[0][line]);
 			if(columnWidth[0] < textWidth[0][line])
 				columnWidth[0] = textWidth[0][line];
 			line++;
 		}
-		if(showMaximums) {
+		if(maximumsVisible) {
 			textWidth[0][line] = OpenGL.smallTextWidth(gl, text[0][line]);
 			if(columnWidth[0] < textWidth[0][line])
 				columnWidth[0] = textWidth[0][line];
 			line++;
 		}
-		if(showMeans) {
+		if(meansVisible) {
 			textWidth[0][line] = OpenGL.smallTextWidth(gl, text[0][line]);
 			if(columnWidth[0] < textWidth[0][line])
 				columnWidth[0] = textWidth[0][line];
 			line++;
 		}
-		if(showMedians) {
+		if(mediansVisible) {
 			textWidth[0][line] = OpenGL.smallTextWidth(gl, text[0][line]);
 			if(columnWidth[0] < textWidth[0][line])
 				columnWidth[0] = textWidth[0][line];
 			line++;
 		}
-		if(showStandardDeviations) {
+		if(standardDeviationsVisible) {
 			textWidth[0][line] = OpenGL.smallTextWidth(gl, text[0][line]);
 			if(columnWidth[0] < textWidth[0][line])
 				columnWidth[0] = textWidth[0][line];
 			line++;
 		}
-		if(showPercentile) {
+		if(percentileVisible) {
 			textWidth[0][line] = OpenGL.smallTextWidth(gl, text[0][line]);
 			if(columnWidth[0] < textWidth[0][line])
 				columnWidth[0] = textWidth[0][line];
@@ -241,12 +274,12 @@ public class OpenGLStatisticsChart extends PositionedChart {
 				int column = datasetN + 1;
 				textWidth[column][0] = OpenGL.smallTextWidth(gl, text[column][0]);
 				columnWidth[column] = textWidth[column][0];
-				if(showCurrentValues) {
+				if(currentValuesVisible) {
 					textWidth[column][1] = OpenGL.largeTextWidth(gl, text[column][1]);
 					if(columnWidth[column] < textWidth[column][1])
 						columnWidth[column] = textWidth[column][1];
 				}
-				for(line = showCurrentValues ? 2 : 1; line < lineCount; line++) {
+				for(line = currentValuesVisible ? 2 : 1; line < lineCount; line++) {
 					textWidth[column][line] = OpenGL.smallTextWidth(gl, text[column][line]);
 					if(columnWidth[column] < textWidth[column][line])
 						columnWidth[column] = textWidth[column][line];
@@ -256,15 +289,15 @@ public class OpenGLStatisticsChart extends PositionedChart {
 		// determine the gaps to leave above and to the left of the text
 		boolean showingLabels = columnWidth[0] > 0;
 		int occupiedHeight = 0;
-		                           occupiedHeight += Theme.tilePadding + OpenGL.smallTextHeight; // dataset name
-		if(showCurrentValues)      occupiedHeight += Theme.tilePadding + OpenGL.largeTextHeight;
-		if(showMinimums)           occupiedHeight += Theme.tilePadding + OpenGL.smallTextHeight;
-		if(showMaximums)           occupiedHeight += Theme.tilePadding + OpenGL.smallTextHeight;
-		if(showMeans)              occupiedHeight += Theme.tilePadding + OpenGL.smallTextHeight;
-		if(showMedians)            occupiedHeight += Theme.tilePadding + OpenGL.smallTextHeight;
-		if(showStandardDeviations) occupiedHeight += Theme.tilePadding + OpenGL.smallTextHeight;
-		if(showPercentile)         occupiedHeight += Theme.tilePadding + OpenGL.smallTextHeight;
-		if(showDuration)           occupiedHeight += 2 * (Theme.tilePadding + OpenGL.smallTextHeight);
+		                              occupiedHeight += Theme.tilePadding + OpenGL.smallTextHeight; // dataset name
+		if(currentValuesVisible)      occupiedHeight += Theme.tilePadding + OpenGL.largeTextHeight;
+		if(minimumsVisible)           occupiedHeight += Theme.tilePadding + OpenGL.smallTextHeight;
+		if(maximumsVisible)           occupiedHeight += Theme.tilePadding + OpenGL.smallTextHeight;
+		if(meansVisible)              occupiedHeight += Theme.tilePadding + OpenGL.smallTextHeight;
+		if(mediansVisible)            occupiedHeight += Theme.tilePadding + OpenGL.smallTextHeight;
+		if(standardDeviationsVisible) occupiedHeight += Theme.tilePadding + OpenGL.smallTextHeight;
+		if(percentileVisible)         occupiedHeight += Theme.tilePadding + OpenGL.smallTextHeight;
+		if(sampleCountVisible)           occupiedHeight += 2 * (Theme.tilePadding + OpenGL.smallTextHeight);
 		occupiedHeight += Theme.tilePadding;
 		int occupiedWidth = (int) columnWidth[0];
 		for(int i = 1; i < columnWidth.length; i++) {
@@ -285,31 +318,31 @@ public class OpenGLStatisticsChart extends PositionedChart {
 		int y = height - yOffset;
 		y -= (int) Theme.tilePadding + OpenGL.smallTextHeight; // no label for dataset name
 		line = 1;
-		if(showCurrentValues) {
+		if(currentValuesVisible) {
 			y -= (int) (Theme.tilePadding + OpenGL.largeTextHeight); // no label for current value
 			line++;
 		}
-		if(showMinimums) {
+		if(minimumsVisible) {
 			y -= (int) (Theme.tilePadding + OpenGL.smallTextHeight);
 			OpenGL.drawSmallText(gl, text[0][line++], x, y, 0);
 		}
-		if(showMaximums) {
+		if(maximumsVisible) {
 			y -= (int) (Theme.tilePadding + OpenGL.smallTextHeight);
 			OpenGL.drawSmallText(gl, text[0][line++], x, y, 0);
 		}
-		if(showMeans) {
+		if(meansVisible) {
 			y -= (int) (Theme.tilePadding + OpenGL.smallTextHeight);
 			OpenGL.drawSmallText(gl, text[0][line++], x, y, 0);
 		}
-		if(showMedians) {
+		if(mediansVisible) {
 			y -= (int) (Theme.tilePadding + OpenGL.smallTextHeight);
 			OpenGL.drawSmallText(gl, text[0][line++], x, y, 0);
 		}
-		if(showStandardDeviations) {
+		if(standardDeviationsVisible) {
 			y -= (int) (Theme.tilePadding + OpenGL.smallTextHeight);
 			OpenGL.drawSmallText(gl, text[0][line++], x, y, 0);
 		}
-		if(showPercentile) {
+		if(percentileVisible) {
 			y -= (int) (Theme.tilePadding + OpenGL.smallTextHeight);
 			OpenGL.drawSmallText(gl, text[0][line++], x, y, 0);
 		}
@@ -333,49 +366,49 @@ public class OpenGLStatisticsChart extends PositionedChart {
 				int xRightJustified = (int) (x + columnWidth[column] - textWidth[column][line]);
 				OpenGL.drawSmallText(gl, text[column][line++], (int) xCentered, y, 0);
 				
-				if(showCurrentValues) {
+				if(currentValuesVisible) {
 					xCentered = (int) (x + (columnWidth[column] - textWidth[column][line]) / 2);
 					xRightJustified = (int) (x + columnWidth[column] - textWidth[column][line]);
 					y -= (int) (Theme.tilePadding + OpenGL.largeTextHeight);
 					OpenGL.drawLargeText(gl, text[column][line++], lineCount == 2 ? xCentered : xRightJustified, y, 0);
 				}
 				
-				if(showMinimums) {
+				if(minimumsVisible) {
 					xCentered = (int) (x + (columnWidth[column] - textWidth[column][line]) / 2);
 					xRightJustified = (int) (x + columnWidth[column] - textWidth[column][line]);
 					y -= (int) (Theme.tilePadding + OpenGL.smallTextHeight);
 					OpenGL.drawSmallText(gl, text[column][line++], lineCount == 2 ? xCentered : xRightJustified, y, 0);
 				}
 				
-				if(showMaximums) {
+				if(maximumsVisible) {
 					xCentered = (int) (x + (columnWidth[column] - textWidth[column][line]) / 2);
 					xRightJustified = (int) (x + columnWidth[column] - textWidth[column][line]);
 					y -= (int) (Theme.tilePadding + OpenGL.smallTextHeight);
 					OpenGL.drawSmallText(gl, text[column][line++], lineCount == 2 ? xCentered : xRightJustified, y, 0);
 				}
 				
-				if(showMeans) {
+				if(meansVisible) {
 					xCentered = (int) (x + (columnWidth[column] - textWidth[column][line]) / 2);
 					xRightJustified = (int) (x + columnWidth[column] - textWidth[column][line]);
 					y -= (int) (Theme.tilePadding + OpenGL.smallTextHeight);
 					OpenGL.drawSmallText(gl, text[column][line++], lineCount == 2 ? xCentered : xRightJustified, y, 0);
 				}
 				
-				if(showMedians) {
+				if(mediansVisible) {
 					xCentered = (int) (x + (columnWidth[column] - textWidth[column][line]) / 2);
 					xRightJustified = (int) (x + columnWidth[column] - textWidth[column][line]);
 					y -= (int) (Theme.tilePadding + OpenGL.smallTextHeight);
 					OpenGL.drawSmallText(gl, text[column][line++], lineCount == 2 ? xCentered : xRightJustified, y, 0);
 				}
 				
-				if(showStandardDeviations) {
+				if(standardDeviationsVisible) {
 					xCentered = (int) (x + (columnWidth[column] - textWidth[column][line]) / 2);
 					xRightJustified = (int) (x + columnWidth[column] - textWidth[column][line]);
 					y -= (int) (Theme.tilePadding + OpenGL.smallTextHeight);
 					OpenGL.drawSmallText(gl, text[column][line++], lineCount == 2 ? xCentered : xRightJustified, y, 0);
 				}
 				
-				if(showPercentile) {
+				if(percentileVisible) {
 					xCentered = (int) (x + (columnWidth[column] - textWidth[column][line]) / 2);
 					xRightJustified = (int) (x + columnWidth[column] - textWidth[column][line]);
 					y -= (int) (Theme.tilePadding + OpenGL.smallTextHeight);
@@ -387,7 +420,7 @@ public class OpenGLStatisticsChart extends PositionedChart {
 			}
 		
 		// draw the duration if enabled and enough space
-		if(showDuration) {
+		if(sampleCountVisible) {
 			y -= 2 * (Theme.tilePadding + OpenGL.smallTextHeight);
 			float durationLabelWidth = OpenGL.smallTextWidth(gl, durationLabel);
 			if(y > 0 && durationLabelWidth < width - 2*Theme.tilePadding) {

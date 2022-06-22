@@ -1,19 +1,23 @@
 import java.awt.Dimension;
 import java.awt.event.ActionListener;
 import java.util.List;
+import java.util.Queue;
 import java.util.function.Predicate;
 
 import javax.swing.JComboBox;
+import javax.swing.JPanel;
 
 @SuppressWarnings("serial")
-public class WidgetComboboxString extends JComboBox<String> {
+public class WidgetComboboxString extends JComboBox<String> implements Widget {
 	
 	private String value;
+	private String importExportLabel;
 
-	public WidgetComboboxString(List<String> values, String selectedValue, Predicate<String> handler) {
+	public WidgetComboboxString(String importExportText, List<String> values, String selectedValue, Predicate<String> handler) {
 		
 		// initialize
 		super();
+		importExportLabel = importExportText;
 		for(String value : values)
 			addItem(value);
 		if(values.contains(selectedValue)) {
@@ -98,6 +102,36 @@ public class WidgetComboboxString extends JComboBox<String> {
 	@Override public Dimension getMinimumSize() {
 		
 		return getPreferredSize();
+		
+	}
+
+	@Override public void appendToGui(JPanel gui) {
+		
+		gui.add(this);
+		
+	}
+
+	@Override public void importFrom(Queue<String> lines) {
+
+		String text = ChartUtils.parseString(lines.remove(), importExportLabel + " = %s");
+		int n = -1;
+		for(int i = 0; i < getItemCount(); i++)
+			if(getItemAt(i).equals(text))
+				n = i;
+		if(n >= 0) {
+			setSelectedIndex(n);
+		} else {
+			addItem(text);
+			setSelectedItem(text);
+		}
+		
+		value = text;
+		
+	}
+
+	@Override public void exportTo(List<String> lines) {
+
+		lines.add(importExportLabel + " = " + value);
 		
 	}
 	

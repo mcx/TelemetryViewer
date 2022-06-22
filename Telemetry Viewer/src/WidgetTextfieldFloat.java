@@ -19,7 +19,7 @@ import javax.swing.text.PlainDocument;
 import javax.swing.text.Position;
 
 @SuppressWarnings("serial")
-public class WidgetTextfieldInt extends JTextField implements Widget {
+public class WidgetTextfieldFloat extends JTextField implements Widget {
 	
 	private String prefix;
 	private String suffix;
@@ -27,13 +27,13 @@ public class WidgetTextfieldInt extends JTextField implements Widget {
 	private int suffixLength;
 	private String importExportLabel;
 	
-	private final int minimum;
-	private final int maximum;
-	private int number;
-	private final Consumer<Integer> eventHandler;
+	private final float minimum;
+	private final float maximum;
+	private float number;
+	private final Consumer<Float> eventHandler;
 	
 	private boolean checkForSentinel;
-	private int sentinelNumber;
+	private float sentinelNumber;
 	private String sentinelText;
 	
 	private boolean mouseButtonDown = false;
@@ -49,8 +49,7 @@ public class WidgetTextfieldInt extends JTextField implements Widget {
 	 * When disabled, showing a number or message will not cause the underlying number to change,
 	 * and will not trigger the event handler. When enabled, the old underlying number will be shown again.
 	 * 
-	 * For example: a textfield might be used to show a sample rate, with a number of "1000" displayed as "Sample Rate: 1000 Hz"
-	 * A sample rate of "0" could be entered to indicate that the user wants the rate automatically calculated.
+	 * For example: a textfield might be used to show a plot's maximum value, with a number of "12.3" displayed as "Maximum: 12.3 Volts"
 	 * 
 	 * @param label               Optional text to show before the number. Can be null or "".
 	 * @param importExportText    Text to use when importing or exporting.
@@ -60,7 +59,7 @@ public class WidgetTextfieldInt extends JTextField implements Widget {
 	 * @param value               Default number.
 	 * @param handler             Event handler to be notified when the number changes. Can be null.
 	 */
-	public WidgetTextfieldInt(String label, String importExportText, String unit, int min, int max, int value, Consumer<Integer> handler) {
+	public WidgetTextfieldFloat(String label, String importExportText, String unit, float min, float max, float value, Consumer<Float> handler) {
 		
 		this(label, importExportText, unit, min, max, value, false, 0, null, handler);
 		
@@ -76,8 +75,8 @@ public class WidgetTextfieldInt extends JTextField implements Widget {
 	 * When disabled, showing a number or message will not cause the underlying number to change,
 	 * and will not trigger the event handler. When enabled, the old underlying number will be shown again.
 	 * 
-	 * For example: a textfield might be used to show a sample rate, with a number of "1000" displayed as "Sample Rate: 1000 Hz"
-	 * A sample rate of "0" could be entered to indicate that the user wants the rate automatically calculated.
+	 * For example: a textfield might be used to show a plot's maximum value, with a number of "12.3" displayed as "Maximum: 12.3 Volts"
+	 * A value of Float.NaN could be entered to indicate that the user wants the maximum automatically calculated.
 	 * 
 	 * @param label               Optional text to show before the number. Can be null or "".
 	 * @param importExportText    Text to use when importing or exporting.
@@ -90,13 +89,13 @@ public class WidgetTextfieldInt extends JTextField implements Widget {
 	 * @param sentinelString      Corresponding text to display when the sentinel number is used. (ignored if enableSentinel == false)
 	 * @param handler             Event handler to be notified when the number changes. Can be null.
 	 */
-	public WidgetTextfieldInt(String label, String importExportText, String unit, int min, int max, int value, boolean enableSentinel, int sentinelValue, String sentinelString, Consumer<Integer> handler) {
+	public WidgetTextfieldFloat(String label, String importExportText, String unit, float min, float max, float value, boolean enableSentinel, float sentinelValue, String sentinelString, Consumer<Float> handler) {
 		
 		super();
 		
 		// sanity checks
 		if(min > max) {
-			int temp = min;
+			float temp = min;
 			min = max;
 			max = temp;
 		}
@@ -139,17 +138,26 @@ public class WidgetTextfieldInt extends JTextField implements Widget {
 		//     <any form>                                   (only if disabled, so you can disableWithNumber()/disableWithMessage())
 		//
 		//     prefix/number/suffix                         (typical use case)
+		//     prefix/./suffix                              (user about to provide a number <1 and >0)
+		//     prefix/-./suffix                             (user about to provide a number <0 and >-1)
+		//     prefix/<integer>./suffix                     (user about to provide the decimal part)
+		//     prefix/<number>e/suffix                      (exponential notation, user about to provide an exponent)
+		//     prefix/<number>e-/suffix                     (exponential notation, user about to provide a negative exponent)
+		//     prefix/<integer>.e<integer>/suffix           (exponential notation, user modifying the mantissa's decimal part)
+		//     prefix/.<integer>e<integer>/suffix           (exponential notation, user modifying the mantissa's integer part)
+		//     prefix/e<integer>/suffix                     (exponential notation, user modifying the mantissa)
 		//     prefix/suffix                                (user backspace/delete'd the number, and is about to enter a new value)
 		//     prefix/-/suffix                              (user started to enter a negative number, only allowed if minimum < 0 or sentinelNumber < 0)
 		//     prefix/beginningOrAllOfSentinelText/suffix   (user is typing out the sentinelText, case-insensitive)
 		//     prefix/sentinelText                          (sentinel value is active)
 		//
 		//     prefix                              (user backspace/delete'd the sentinelNumber)
+		//     prefix/.                            (user typed . over the sentinelNumber)
 		//     prefix/-                            (user typed - over the sentinelNumber, only allowed if minimum < 0 or sentinelNumber < 0)
 		//     prefix/number                       (user pasted or dropped a number over the sentinelText)
 		//     prefix/beginningOrAllOfSentinelText (user is typing out the sentinelText, case-insensitive)
 		//
-		//     when any of those last four forms occur, the suffix is immediately appended since a number will be/is being entered
+		//     when any of those last five forms occur, the suffix is immediately appended since a number will be/is being entered
 		
 		((PlainDocument) getDocument()).setDocumentFilter(new DocumentFilter() {
 			
@@ -196,12 +204,61 @@ public class WidgetTextfieldInt extends JTextField implements Widget {
 				
 				if(hasPrefix && hasSuffix && text.length() >= prefixLength + suffixLength) {
 					
-					String centerRegion = text.substring(prefixLength, text.length() - suffixLength);
+					String centerRegion = text.substring(prefixLength, text.length() - suffixLength).toLowerCase();
 					
 					try {
-						Integer.parseInt(centerRegion);
+						Float.parseFloat(centerRegion);
 						return true; // prefix/number/suffix
 					} catch(NumberFormatException e) {}
+					
+					if(centerRegion.equals("."))
+						return true; // prefix/./suffix
+
+					if(centerRegion.equals("-."))
+						return true; // prefix/-./suffix
+					
+					if(centerRegion.endsWith(".")) {
+						try {
+							Integer.parseInt(centerRegion.substring(0, centerRegion.length() - 1));
+							return true; // prefix/<integer>./suffix
+						} catch(NumberFormatException e) {}
+					}
+					
+					if(centerRegion.endsWith("e")) {
+						try {
+							Float.parseFloat(centerRegion.substring(0, centerRegion.length() - 1));
+							return true; // prefix/<number>e/suffix
+						} catch(NumberFormatException e) {}
+					}
+					
+					if(centerRegion.endsWith("e-")) {
+						try {
+							Float.parseFloat(centerRegion.substring(0, centerRegion.length() - 2));
+							return true; // prefix/<number>e-/suffix
+						} catch(NumberFormatException e) {}
+					}
+					
+					String[] tokens = centerRegion.split("e");
+					if(tokens.length == 2) {
+						try {
+							Integer.parseInt(tokens[1]);
+							// center regions ends with "e<integer>"
+							if(tokens[0].length() == 0)
+								return true; // prefix/e<integer>/suffix
+							if(tokens[0].endsWith(".")) {
+								try {
+									Integer.parseInt(tokens[0].substring(0, tokens[0].length() - 1));
+									return true; // prefix/<integer>.e<integer>/suffix
+								} catch(NumberFormatException e) {}
+							}
+							if(tokens[0].startsWith(".")) {
+								try {
+									Integer.parseInt(tokens[0].substring(1));
+									return true; // prefix/.<integer>e<integer>/suffix
+								} catch(NumberFormatException e) {}
+							}
+						} catch(NumberFormatException e) {}
+					}
 					
 					if(centerRegion.length() == 0)
 						return true; // prefix/suffix
@@ -221,6 +278,9 @@ public class WidgetTextfieldInt extends JTextField implements Widget {
 					
 					if(remainingText.length() == 0)
 						return true; // prefix
+					
+					if(remainingText.equals("."))
+						return true; // prefix/.
 					
 					if(remainingText.length() == 1 && remainingText.charAt(0) == '-' && (minimum < 0 || (checkForSentinel && sentinelNumber < 0)))
 						return true; // prefix/-
@@ -358,7 +418,7 @@ public class WidgetTextfieldInt extends JTextField implements Widget {
 	 * @param newNumber    New number to use.
 	 * @return             True if the new number was accepted, false if rejected.
 	 */
-	public boolean setNumber(int newNumber) {
+	public boolean setNumber(float newNumber) {
 		
 		if(number == newNumber)
 			return true;
@@ -396,7 +456,7 @@ public class WidgetTextfieldInt extends JTextField implements Widget {
 	 * 
 	 * @param displayedNumber    Number to display.
 	 */
-	public void disableWithNumber(int displayedNumber) {
+	public void disableWithNumber(float displayedNumber) {
 		
 		setEnabled(false);
 		setText(prefix + displayedNumber + suffix);
@@ -420,7 +480,7 @@ public class WidgetTextfieldInt extends JTextField implements Widget {
 	/**
 	 * @return    The underlying number.
 	 */
-	public int getNumber() {
+	public float getNumber() {
 		
 		return number;
 		
@@ -446,14 +506,14 @@ public class WidgetTextfieldInt extends JTextField implements Widget {
 		String numberText = newText.substring(prefixLength, newText.length() - suffixLength);
 		
 		// reject if the number region doesn't contain an integer/sentinel or it's outside the allowed range
-		int newNumber = 0;
+		float newNumber = 0;
 		try {
 			if(checkForSentinel && numberText.toLowerCase().equals(sentinelText.toLowerCase())) {
 				newNumber = sentinelNumber;
-			} else if(checkForSentinel && numberText.equals(Integer.toString(sentinelNumber))) {
+			} else if(checkForSentinel && numberText.equals(Float.toString(sentinelNumber))) {
 				newNumber = sentinelNumber;
 			} else {
-				newNumber = Integer.parseInt(numberText);
+				newNumber = Float.parseFloat(numberText);
 				if((newNumber < minimum && checkForSentinel && newNumber != sentinelNumber) || (newNumber < minimum && !checkForSentinel))
 					throw new Exception();
 				else if((newNumber > maximum && checkForSentinel && newNumber != sentinelNumber) || (newNumber > maximum && !checkForSentinel))
@@ -508,7 +568,7 @@ public class WidgetTextfieldInt extends JTextField implements Widget {
 
 	@Override public void importFrom(Queue<String> lines) {
 
-		int newNumber = ChartUtils.parseInteger(lines.remove(), importExportLabel + " = %d");
+		float newNumber = ChartUtils.parseFloat(lines.remove(), importExportLabel + " = %f");
 		setNumber(newNumber);
 		
 	}

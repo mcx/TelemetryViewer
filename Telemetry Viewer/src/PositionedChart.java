@@ -1,5 +1,9 @@
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Queue;
+
+import javax.swing.JPanel;
+
 import com.jogamp.opengl.GL2ES3;
 import com.jogamp.opengl.GL3;
 
@@ -13,9 +17,10 @@ public abstract class PositionedChart {
 	
 	int duration;
 	boolean sampleCountMode;
-	
-	Widget[] widgets;
+
 	DatasetsInterface datasets = new DatasetsInterface();
+	public WidgetTrigger trigger = null;
+	List<Widget> widgets = new ArrayList<Widget>();
 	
 	public PositionedChart(int x1, int y1, int x2, int y2) {
 		
@@ -143,24 +148,17 @@ public abstract class PositionedChart {
 	 */
 	public abstract EventHandler drawChart(GL2ES3 gl, float[] chartMatrix, int width, int height, long endTimestamp, int endSampleNumber, double zoomLevel, int mouseX, int mouseY);
 	
-	public final void importChart(ConnectionsController.QueueOfLines lines) {
+	public abstract void getConfigurationGui(JPanel gui);
+	
+	final public void importFrom(Queue<String> lines) {
 
-		for(Widget widget : widgets)
-			if(widget != null)
-				widget.importState(lines);
+		widgets.forEach(widget -> widget.importFrom(lines));
 		
 	}
 	
-	final public List<String> exportChart() {
-		
-		List<String> lines = new ArrayList<String>();
-		
-		for(Widget widget : widgets)
-			if(widget != null)
-				for(String line : widget.exportState())
-					lines.add(line);
-		
-		return lines;
+	final public void exportTo(List<String> lines) {
+
+		widgets.forEach(widget -> widget.exportTo(lines));
 		
 	}
 	

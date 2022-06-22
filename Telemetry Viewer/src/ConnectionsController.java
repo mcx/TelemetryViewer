@@ -108,6 +108,18 @@ public class ConnectionsController {
 		
 	}
 	
+	/**
+	 * @return    Default number of samples to use for a new chart. This is equivalent to 10 seconds.
+	 */
+	public static int getDefaultChartDuration() {
+		
+		int duration = 10000;
+		if(!telemetryConnections.isEmpty() && telemetryConnections.get(0).getSampleRate() < Integer.MAX_VALUE / 10)
+			duration = telemetryConnections.get(0).getSampleRate() * 10;
+		return duration;
+		
+	}
+	
 	public static class SampleDetails {
 		public ConnectionTelemetry connection;
 		public int sampleNumber;
@@ -530,8 +542,9 @@ public class ConnectionsController {
 				file.println("\tbottom right x = " + chart.bottomRightX);
 				file.println("\tbottom right y = " + chart.bottomRightY);
 				
-				for(String line : chart.exportChart())
-					file.println("\t" + line);
+				List<String> lines = new ArrayList<String>();
+				chart.exportTo(lines);
+				lines.forEach(line -> file.println("\t" + line));
 				
 			}
 			
@@ -664,7 +677,7 @@ public class ConnectionsController {
 					lines.lineNumber -= 4;
 					throw new AssertionError("Invalid chart type.");
 				}
-				chart.importChart(lines);
+				chart.importFrom(lines);
 				
 			}
 			

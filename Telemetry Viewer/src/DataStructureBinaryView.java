@@ -129,7 +129,7 @@ public class DataStructureBinaryView extends JPanel {
 		colorButton.addActionListener(event -> colorButton.setForeground(ColorPickerView.getColor(nameTextfield.getText(), colorButton.getForeground(), true)));
 		
 		// unit of the field
-		unitTextfield = new JTextField("", 15);
+		unitTextfield = new JTextField("", 10);
 		unitTextfield.addActionListener(pressEnterToAddField);
 		unitTextfield.addFocusListener(new FocusListener() {
 			@Override public void focusLost(FocusEvent arg0) {

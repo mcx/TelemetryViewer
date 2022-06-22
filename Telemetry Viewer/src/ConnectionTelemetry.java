@@ -79,7 +79,7 @@ public class ConnectionTelemetry extends Connection {
 	private final WidgetTextfieldInt sampleRateTextfield;
 	
 	public int getSampleRate() {
-		return (sampleRate == 0) ? 1 : sampleRate; // charts expect >0
+		return (sampleRate == 0) ? 1000 : sampleRate; // charts expect >0
 	}
 	
 	private void setSampleRate(int newRate) {
@@ -181,6 +181,7 @@ public class ConnectionTelemetry extends Connection {
 			setSampleRateAutomatic(false);
 			setProtocol(Protocol.BINARY);
 			sampleRateTextfield.setEnabled(false);
+			sampleRateTextfield.disableWithMessage("Maximum");
 			protocolCombobox.setEnabled(false);
 		}
 	
@@ -369,6 +370,7 @@ public class ConnectionTelemetry extends Connection {
 		
 		// sample rate
 		sampleRateTextfield = new WidgetTextfieldInt("Sample Rate",
+		                                             "samples rate (hz)",
 		                                             "Hz",
 		                                             sampleRateMinimum,
 		                                             sampleRateMaximum,
@@ -423,7 +425,8 @@ public class ConnectionTelemetry extends Connection {
 			protocolCombobox.removeItem(Protocol.TC66);
 		
 		// connections list
-		namesCombobox = new WidgetComboboxString(ConnectionsController.getNames(),
+		namesCombobox = new WidgetComboboxString("connections",
+		                                         ConnectionsController.getNames(),
 		                                         name,
 		                                         proposedConnectionName -> {
 		                                         	// reject if already used, unless it's TCP/UDP/MJPEG
@@ -476,6 +479,7 @@ public class ConnectionTelemetry extends Connection {
 		
 		// port number (only used in TCP/UDP modes)
 		portNumberTextfield = new WidgetTextfieldInt("Port",
+		                                             "tcp/udp port",
 		                                             "",
 		                                             portNumberMinimum,
 		                                             portNumberMaximum,
@@ -528,9 +532,8 @@ public class ConnectionTelemetry extends Connection {
 	 * @return    A GUI for controlling this Connection.
 	 */
 	@Override public JPanel getUpdatedGui() {
-
-		if(ConnectionsController.allConnections.size() < 2 || ConnectionsController.importing)
-			removeButton.setVisible(false);
+		
+		removeButton.setVisible(ConnectionsController.allConnections.size() > 1 && !ConnectionsController.importing);
 		
 		connectButton.setText(connected ? "Disconnect" : "Connect");
 		
@@ -539,8 +542,8 @@ public class ConnectionTelemetry extends Connection {
 		
 		// disable widgets if appropriate
 		boolean importingOrExporting = ConnectionsController.importing || ConnectionsController.exporting;
-		sampleRateTextfield.setEnabled(!importingOrExporting && !connected);
-		protocolCombobox.setEnabled(!importingOrExporting && !connected);
+		sampleRateTextfield.setEnabled(!importingOrExporting && !connected && !isTypeDemo() && !isTypeStressTest());
+		protocolCombobox.setEnabled(!importingOrExporting && !connected && !isTypeDemo() && !isTypeStressTest());
 		namesCombobox.setEnabled(!importingOrExporting && !connected);
 		baudRateCombobox.setEnabled(!importingOrExporting && !connected);
 		portNumberTextfield.setEnabled(!importingOrExporting && !connected);
@@ -601,7 +604,7 @@ public class ConnectionTelemetry extends Connection {
 		
 		if(showGui && !isProtocolTc66())
 			Main.showConfigurationGui(isProtocolCsv() ? new DataStructureCsvView(this) :
-			                                        new DataStructureBinaryView(this));
+			                                         new DataStructureBinaryView(this));
 		
 		receiverThread = new Thread(() -> {
 			
@@ -1083,7 +1086,7 @@ public class ConnectionTelemetry extends Connection {
 		chartSettings.add("trigger level = 0");
 		chartSettings.add("trigger hysteresis = 0");
 		chartSettings.add("trigger pre/post ratio = 20");
-		chart.importChart(new ConnectionsController.QueueOfLines(chartSettings));
+		chart.importFrom(new ConnectionsController.QueueOfLines(chartSettings));
 		
 		Main.window.setExtendedState(JFrame.NORMAL);
 		

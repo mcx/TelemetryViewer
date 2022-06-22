@@ -1,38 +1,13 @@
 import java.awt.Color;
 import java.util.Map;
 
+import javax.swing.Box;
+import javax.swing.JPanel;
 import com.jogamp.opengl.GL2ES3;
 import com.jogamp.opengl.GL3;
 
-/**
- * Renders a frequency domain chart, using one of three possible visualizations: Live View, Waveform View, or Waterfall View.
- * 
- * User settings:
- *     Datasets to visualize.
- *     Sample count per DFT.
- *     Power minimum value can be fixed or autoscaled.
- *     Power maximum value can be fixed or autoscaled.
- *     Chart mode:
- *         "Single" renders a single DFT of the most recent samples. This is a line chart.
- *         "Multiple" renders a sequence of DFTs as a 2D histogram. This is basically a "long exposure photo" of Single.
- *         "Waterfall" renders a sequence of DFTs as a sequence of rows. Each row is one DFT, allowing you to see how the DFTs have changed over time.
- *     DFT count for the Multiple and Waterfall modes.
- *     Vertical resolution for Multiple mode.
- *     X-axis title can be displayed.
- *     X-axis scale can be displayed.
- *     Y-axis title can be displayed.
- *     Y-axis scale can be displayed.
- *     Legend can be displayed.
- *     DFT information (window length and type, window count, and waterfall power range) can be displayed.
- */
 public class OpenGLFrequencyDomainChart extends PositionedChart {
 	
-	String chartMode; // "Single" or "Multiple" or "Waterfall"
-	boolean singleMode;
-	boolean multipleMode;
-	boolean waterfallMode;
-	int dftCount;
-	int waveformRowCount;
 	OpenGLFrequencyDomainCache cache;
 	
 	// plot region
@@ -44,7 +19,6 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 	float plotHeight;
 	
 	// legend
-	boolean showLegend;
 	float xLegendBorderLeft;
 	float yLegendBorderBottom;
 	float yLegendTextBaseline;
@@ -56,7 +30,6 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 	float xLegendBorderRight;
 	
 	// dft info
-	boolean showDftInfo;
 	String dftWindowLengthText;
 	float yDftWindowLengthTextBaseline;
 	float xDftWindowLenghtTextLeft;
@@ -74,21 +47,18 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 	float xDftInfoTextLeft;
 	
 	// y-axis title
-	boolean showYaxisTitle;
 	float xYaxisTitleTextTop;
 	float xYaxisTitleTextBaseline;
 	String yAxisTitle;
 	float yYaxisTitleTextLeft;
 	
 	// x-axis title
-	boolean showXaxisTitle;
 	float yXaxisTitleTextBasline;
 	float yXaxisTitleTextTop;
 	String xAxisTitle;
 	float xXaxisTitleTextLeft;
 	
 	// x-axis scale
-	boolean showXaxisScale;
 	Map<Float, String> xDivisions;
 	float yXaxisTickTextBaseline;
 	float yXaxisTickTextTop;
@@ -96,33 +66,60 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 	float yXaxisTickTop;
 	
 	// y-axis scale
-	boolean showYaxisScale;
 	Map<Float, String> yDivisions;
 	float xYaxisTickTextRight;
 	float xYaxisTickLeft;
 	float xYaxisTickRight;
 	AutoScale autoscalePower;
-	boolean autoscaleMinPower;
-	boolean autoscaleMaxPower;
-	float manualMinPower;
-	float manualMaxPower;
 	
-	// constraints
-	static final float PowerMinimumDefault = 0.001f;
-	static final float PowerMaximumDefault = 1.0f;
-	static final float PowerLowerLimit     = Float.MIN_VALUE;
-	static final float PowerUpperLimit     = Float.MAX_VALUE;
+	// user settings
+	private WidgetDatasetCheckboxes datasetsWidget;
 	
-	// control widgets
-	WidgetDatasets datasetsAndDurationWidget;
-	WidgetTextfieldsOptionalMinMax minMaxWidget;
-	WidgetFrequencyDomainType typeWidget;
-	WidgetCheckbox showXaxisTitleWidget;
-	WidgetCheckbox showXaxisScaleWidget;
-	WidgetCheckbox showYaxisTitleWidget;
-	WidgetCheckbox showYaxisScaleWidget;
-	WidgetCheckbox showLegendWidget;
-	WidgetCheckbox showDftInfoWidget;
+	private WidgetTextfieldInt sampleCountTextfield;
+
+	private boolean legendVisible = true;
+	private WidgetCheckbox legendCheckbox;
+	
+	private enum ChartStyle {
+		SINGLE    { @Override public String toString() { return "Single";    } },
+		MULTIPLE  { @Override public String toString() { return "Multiple";  } },
+		WATERFALL { @Override public String toString() { return "Waterfall"; } };
+	};
+	private ChartStyle chartStyle = ChartStyle.SINGLE;
+	private WidgetToggleButtonEnum<ChartStyle> chartStyleButtons;
+	
+	private int fftCount = 20;
+	private WidgetTextfieldInt fftCountTextfield;
+	
+	private int waveformRowCount = 60;
+	private WidgetTextfieldInt waveformRowCountTextfield;
+	
+	private float minimumPower = 1e-9f;
+	private WidgetTextfieldFloat minimumPowerTextfield;
+	
+	private boolean minimumPowerAutomatic = true;
+	private WidgetCheckbox minimumPowerAutomaticCheckbox;
+	
+	private float maximumPower = 1e9f;
+	private WidgetTextfieldFloat maximumPowerTextfield;
+	
+	private boolean maximumPowerAutomatic = true;
+	private WidgetCheckbox maximumPowerAutomaticCheckbox;
+	
+	private boolean fftInfoVisible = true;
+	private WidgetCheckbox fftInfoCheckbox;
+	
+	private boolean xAxisTicksVisible = true;
+	private WidgetCheckbox xAxisTicksCheckbox;
+	
+	private boolean xAxisTitleVisible = true;
+	private WidgetCheckbox xAxisTitleCheckbox;
+	
+	private boolean yAxisTicksVisible = true;
+	private WidgetCheckbox yAxisTicksCheckbox;
+	
+	private boolean yAxisTitleVisible = true;
+	private WidgetCheckbox yAxisTitleCheckbox;
 	
 	@Override public String toString() {
 		
@@ -137,79 +134,170 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		autoscalePower = new AutoScale(AutoScale.MODE_EXPONENTIAL, 90, 0.20f);
 		
 		// create the control widgets and event handlers
-		datasetsAndDurationWidget = new WidgetDatasets(newDatasets -> datasets.setNormals(newDatasets),
-		                                               null,
-		                                               null,
-		                                               (newDurationType, newDuration) -> {
-		                                                   duration = (int) (long) newDuration;
-		                                                   if(duration > 5_000)
-		                                                	   duration = 5_000;
-		                                                   if(duration < 10)
-		                                                	   duration = 10;
-		                                                   return (long) duration;
-		                                               },
-		                                               false,
-		                                               null);
+		datasetsWidget = new WidgetDatasetCheckboxes(newDatasets -> datasets.setNormals(newDatasets),
+		                                             null,
+		                                             null,
+		                                             null,
+		                                             false);
 		
-		minMaxWidget = new WidgetTextfieldsOptionalMinMax("Power",
-		                                                  true,
-		                                                  PowerMinimumDefault,
-		                                                  PowerMaximumDefault,
-		                                                  PowerLowerLimit,
-		                                                  PowerUpperLimit,
-		                                                  (newAutoscaleMinPower, newManualMinPower) -> { autoscaleMinPower = newAutoscaleMinPower; manualMinPower = newManualMinPower; },
-		                                                  (newAutoscaleMaxPower, newManualMaxPower) -> { autoscaleMaxPower = newAutoscaleMaxPower; manualMaxPower = newManualMaxPower; });
+		sampleCountTextfield = new WidgetTextfieldInt("",
+		                                              "sample count",
+		                                              "Samples",
+		                                              10,
+		                                              1048576,
+		                                              ConnectionsController.getDefaultChartDuration(),
+		                                              newDuration -> duration = newDuration);
 		
-		typeWidget = new WidgetFrequencyDomainType(newChartMode -> {
-		                                               chartMode = newChartMode;
-		                                               singleMode    = chartMode.equals("Single");
-		                                               multipleMode  = chartMode.equals("Multiple");
-		                                               waterfallMode = chartMode.equals("Waterfall");
-		                                           },
-		                                           newDftCount -> dftCount = newDftCount,
-		                                           newWaveformRowCount -> waveformRowCount = newWaveformRowCount);
+		legendCheckbox = new WidgetCheckbox("Show Legend",
+		                                    legendVisible,
+		                                    newVisibility -> legendVisible = newVisibility);
 		
-		showXaxisTitleWidget = new WidgetCheckbox("Show X-Axis Title",
-		                                          true,
-		                                          newShowXaxisTitle -> showXaxisTitle = newShowXaxisTitle);
+		fftCountTextfield = new WidgetTextfieldInt("",
+		                                           "fft count",
+		                                           "FFTs",
+		                                           2,
+		                                           100,
+		                                           fftCount,
+		                                           newCount -> fftCount = newCount);
 		
-		showXaxisScaleWidget = new WidgetCheckbox("Show X-Axis Scale",
-		                                          true,
-		                                          newShowXaxisScale -> showXaxisScale = newShowXaxisScale);
+		waveformRowCountTextfield = new WidgetTextfieldInt("",
+		                                                   "fft row count",
+		                                                   "Rows",
+		                                                   2,
+		                                                   1000,
+		                                                   waveformRowCount,
+		                                                   newCount -> waveformRowCount = newCount);
 		
-		showYaxisTitleWidget = new WidgetCheckbox("Show Y-Axis Title",
-		                                          true,
-		                                          newShowYaxisTitle -> showYaxisTitle = newShowYaxisTitle);
+		chartStyleButtons = new WidgetToggleButtonEnum<ChartStyle>("Style",
+		                                                           "fft style",
+		                                                           ChartStyle.values(),
+		                                                           chartStyle,
+		                                                           newStyle -> {
+		                                                               chartStyle = newStyle;
+		                                                               fftCountTextfield.setVisible(chartStyle != ChartStyle.SINGLE);
+		                                                               waveformRowCountTextfield.setVisible(chartStyle == ChartStyle.MULTIPLE);
+		                                                           });
 		
-		showYaxisScaleWidget = new WidgetCheckbox("Show Y-Axis Scale",
-		                                          true,
-		                                          newShowYaxisScale -> showYaxisScale = newShowYaxisScale);
+		minimumPowerTextfield = new WidgetTextfieldFloat("Minimum Power",
+		                                                 "fft minimum power",
+		                                                 "Watts",
+		                                                 Float.MIN_VALUE,
+		                                                 Float.MAX_VALUE,
+		                                                 minimumPower,
+		                                                 newMinimum -> {
+		                                                     minimumPower = newMinimum;
+		                                                     if(minimumPower > maximumPower)
+		                                                         maximumPowerTextfield.setNumber(minimumPower);
+		                                                 });
 		
-		showLegendWidget = new WidgetCheckbox("Show Legend",
-		                                      true,
-		                                      newShowLegend -> showLegend = newShowLegend);
+		minimumPowerAutomaticCheckbox = new WidgetCheckbox("Automatic",
+		                                                   "fft minimum power automatic",
+		                                                   minimumPowerAutomatic,
+		                                                   isAutomatic -> {
+		                                                       minimumPowerAutomatic = isAutomatic;
+		                                                       if(isAutomatic)
+		                                                           minimumPowerTextfield.disableWithMessage("Automatic");
+		                                                       else
+		                                                           minimumPowerTextfield.setEnabled(true);
+		                                                   });
 		
-		showDftInfoWidget = new WidgetCheckbox("Show DFT Info",
-		                                       true,
-		                                       newShowDftInfo -> showDftInfo = newShowDftInfo);
-
-		widgets = new Widget[15];
+		maximumPowerTextfield = new WidgetTextfieldFloat("Maximum Power",
+		                                                 "fft maximum power",
+		                                                 "Watts",
+		                                                 Float.MIN_VALUE,
+		                                                 Float.MAX_VALUE,
+		                                                 maximumPower,
+		                                                 newMaximum -> {
+		                                                     maximumPower = newMaximum;
+		                                                     if(maximumPower < minimumPower)
+		                                                         minimumPowerTextfield.setNumber(maximumPower);
+		                                                 });
 		
-		widgets[0]  = datasetsAndDurationWidget;
-		widgets[1]  = null;
-		widgets[2]  = minMaxWidget;
-		widgets[3]  = null;
-		widgets[4]  = typeWidget;
-		widgets[5]  = null;
-		widgets[6]  = showXaxisTitleWidget;
-		widgets[7]  = showXaxisScaleWidget;
-		widgets[8]  = null;
-		widgets[9]  = showYaxisTitleWidget;
-		widgets[10] = showYaxisScaleWidget;
-		widgets[11] = null;
-		widgets[12] = showLegendWidget;
-		widgets[13] = null;
-		widgets[14] = showDftInfoWidget;
+		maximumPowerAutomaticCheckbox = new WidgetCheckbox("Automatic",
+		                                                   "fft maximum power automatic",
+		                                                   maximumPowerAutomatic,
+		                                                   isAutomatic -> {
+		                                                       maximumPowerAutomatic = isAutomatic;
+		                                                       if(isAutomatic)
+		                                                           maximumPowerTextfield.disableWithMessage("Automatic");
+		                                                       else
+		                                                           maximumPowerTextfield.setEnabled(true);
+		                                                   });
+		
+		fftInfoCheckbox = new WidgetCheckbox("Show FFT Info",
+		                                     "fft show info",
+		                                     fftInfoVisible,
+		                                     newVisibility -> fftInfoVisible = newVisibility);
+		
+		xAxisTicksCheckbox = new WidgetCheckbox("Show Ticks",
+		                                        "x-axis show ticks",
+		                                        xAxisTicksVisible,
+		                                        newVisibility -> xAxisTicksVisible = newVisibility);
+		
+		xAxisTitleCheckbox = new WidgetCheckbox("Show Title",
+		                                        "x-axis show title",
+		                                        xAxisTitleVisible,
+		                                        newVisibility -> xAxisTitleVisible = newVisibility);
+		
+		yAxisTicksCheckbox = new WidgetCheckbox("Show Ticks",
+		                                        "y-axis show ticks",
+		                                        yAxisTicksVisible,
+		                                        newVisibility -> yAxisTicksVisible = newVisibility);
+		
+		yAxisTitleCheckbox = new WidgetCheckbox("Show Title",
+		                                        "y-axis show title",
+		                                        yAxisTitleVisible,
+		                                        newVisibility -> yAxisTitleVisible = newVisibility);
+		
+		widgets.add(datasetsWidget);
+		widgets.add(sampleCountTextfield);
+		widgets.add(legendCheckbox);
+		widgets.add(chartStyleButtons);
+		widgets.add(fftCountTextfield);
+		widgets.add(waveformRowCountTextfield);
+		widgets.add(minimumPowerTextfield);
+		widgets.add(minimumPowerAutomaticCheckbox);
+		widgets.add(maximumPowerTextfield);
+		widgets.add(maximumPowerAutomaticCheckbox);
+		widgets.add(fftInfoCheckbox);
+		widgets.add(xAxisTicksCheckbox);
+		widgets.add(xAxisTitleCheckbox);
+		widgets.add(yAxisTicksCheckbox);
+		widgets.add(yAxisTitleCheckbox);
+		
+	}
+	
+	@Override public void getConfigurationGui(JPanel gui) {
+		
+		JPanel dataPanel = Theme.newWidgetsPanel("Data");
+		datasetsWidget.appendToGui(dataPanel);
+		dataPanel.add(sampleCountTextfield, "span 4, split 2, grow x, grow y, sizegroup 0");
+		dataPanel.add(legendCheckbox, "grow x, grow y, sizegroup 0");
+		
+		JPanel fftPanel = Theme.newWidgetsPanel("FFTs");
+		chartStyleButtons.appendToGui(fftPanel);
+		fftPanel.add(fftCountTextfield, "grow x, grow y");
+		fftPanel.add(waveformRowCountTextfield, "grow x, grow y");
+		fftPanel.add(Box.createVerticalStrut(Theme.padding), "span 4");
+		fftPanel.add(minimumPowerTextfield, "split 2, grow x, grow y");
+		fftPanel.add(minimumPowerAutomaticCheckbox, "sizegroup 1");
+		fftPanel.add(maximumPowerTextfield, "split 2, grow x, grow y");
+		fftPanel.add(maximumPowerAutomaticCheckbox, "sizegroup 1");
+		fftPanel.add(Box.createVerticalStrut(Theme.padding), "span 4");
+		fftPanel.add(fftInfoCheckbox, "grow x, grow y");
+		
+		JPanel xAxisPanel = Theme.newWidgetsPanel("X-Axis");
+		xAxisPanel.add(xAxisTicksCheckbox, "split 2, grow x");
+		xAxisPanel.add(xAxisTitleCheckbox, "grow x");
+		
+		JPanel yAxisPanel = Theme.newWidgetsPanel("Y-Axis");
+		yAxisPanel.add(yAxisTicksCheckbox, "split 2, grow x");
+		yAxisPanel.add(yAxisTitleCheckbox, "grow x");
+		
+		gui.add(dataPanel);
+		gui.add(fftPanel);
+		gui.add(xAxisPanel);
+		gui.add(yAxisPanel);
 		
 	}
 	
@@ -224,7 +312,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		// calculate the DFTs
 		if(cache == null)
 			cache = new OpenGLFrequencyDomainCache();
-		cache.calculateDfts(endSampleNumber, duration, dftCount, datasets, chartMode);
+		cache.calculateDfts(endSampleNumber, duration, fftCount, datasets, chartStyle.toString());
 		
 		// calculate the domain
 		float plotMinX = cache.getMinHz();
@@ -236,7 +324,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		// for "Live View" and "Waveform View" the y-axis is power
 		float sampleRate = haveDatasets ? datasets.connection.getSampleRate() : 1;
 		float plotMinTime = 0;
-		float plotMaxTime = (float) (duration * dftCount) / sampleRate;
+		float plotMaxTime = (float) (duration * fftCount) / sampleRate;
 
 		float plotMinPower = haveTelemetry ? cache.getMinPower() : -12;
 		float plotMaxPower = haveTelemetry ? cache.getMaxPower() : 1;
@@ -247,18 +335,18 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		}
 		autoscalePower.update(plotMinPower, plotMaxPower);
 		
-		if(!autoscaleMinPower)
-			plotMinPower = (float) Math.log10(manualMinPower);
-		else if(autoscaleMinPower && !waterfallMode)
+		if(!minimumPowerAutomatic)
+			plotMinPower = (float) Math.log10(minimumPower);
+		else if(minimumPowerAutomatic && chartStyle != ChartStyle.WATERFALL)
 			plotMinPower = autoscalePower.getMin();
 		
-		if(!autoscaleMaxPower)
-			plotMaxPower = (float) Math.log10(manualMaxPower);
-		else if(autoscaleMaxPower && !waterfallMode)
+		if(!maximumPowerAutomatic)
+			plotMaxPower = (float) Math.log10(maximumPower);
+		else if(maximumPowerAutomatic && chartStyle != ChartStyle.WATERFALL)
 			plotMaxPower = autoscalePower.getMax();
 
-		float plotMinY = waterfallMode ? plotMinTime : plotMinPower;
-		float plotMaxY = waterfallMode ? plotMaxTime : plotMaxPower;
+		float plotMinY = chartStyle == ChartStyle.WATERFALL ? plotMinTime : plotMinPower;
+		float plotMaxY = chartStyle == ChartStyle.WATERFALL ? plotMaxTime : plotMaxPower;
 		float plotRange = plotMaxY - plotMinY;
 		
 		// calculate x and y positions of everything
@@ -269,7 +357,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		yPlotBottom = Theme.tilePadding;
 		plotHeight = yPlotTop - yPlotBottom;
 		
-		if(showLegend && haveDatasets) {
+		if(legendVisible && haveDatasets) {
 			xLegendBorderLeft = Theme.tilePadding;
 			yLegendBorderBottom = Theme.tilePadding;
 			yLegendTextBaseline = yLegendBorderBottom + Theme.legendTextPadding;
@@ -308,8 +396,8 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 			}
 		}
 		
-		if(showDftInfo) {
-			if(singleMode) {
+		if(fftInfoVisible) {
+			if(chartStyle == ChartStyle.SINGLE) {
 				
 				dftWindowLengthText = cache.getWindowLength() + " sample rectangular window";
 				yDftWindowLengthTextBaseline = Theme.tilePadding;
@@ -323,7 +411,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 					plotHeight = yPlotTop - yPlotBottom;
 				}
 				
-			} else if(multipleMode) {
+			} else if(chartStyle == ChartStyle.MULTIPLE) {
 				
 				int windowCount = cache.getActualWindowCount();
 				int windowLength = cache.getWindowLength();
@@ -344,7 +432,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 					plotHeight = yPlotTop - yPlotBottom;
 				}
 				
-			} else if(waterfallMode) {
+			} else if(chartStyle == ChartStyle.WATERFALL) {
 				
 				minPowerText = "Power Range: 1e" + Math.round(plotMinPower);
 				maxPowerText = "1e" + Math.round(plotMaxPower);
@@ -378,40 +466,40 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 			}
 		}
 		
-		if(showYaxisTitle) {
+		if(yAxisTitleVisible) {
 			xYaxisTitleTextTop = xPlotLeft;
 			xYaxisTitleTextBaseline = xYaxisTitleTextTop + OpenGL.largeTextHeight;
-			yAxisTitle = waterfallMode ? "Time (Seconds)" : "Power (Watts)";
+			yAxisTitle = (chartStyle == ChartStyle.WATERFALL) ? "Time (Seconds)" : "Power (Watts)";
 			yYaxisTitleTextLeft = yPlotBottom + (plotHeight / 2.0f) - (OpenGL.largeTextWidth(gl, yAxisTitle) / 2.0f);
 			
 			xPlotLeft = xYaxisTitleTextBaseline + Theme.tickTextPadding;
 			plotWidth = xPlotRight - xPlotLeft;
 		}
 		
-		if(showXaxisTitle) {
+		if(xAxisTitleVisible) {
 			yXaxisTitleTextBasline = Theme.tilePadding;
 			yXaxisTitleTextTop = yXaxisTitleTextBasline + OpenGL.largeTextHeight;
 			xAxisTitle = "Frequency (Hertz)";
 			
-			if(!showLegend && !showDftInfo)
+			if(!legendVisible && !fftInfoVisible)
 				xXaxisTitleTextLeft = xPlotLeft + (plotWidth / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			else if(showLegend && showDftInfo)
+			else if(legendVisible && fftInfoVisible)
 				xXaxisTitleTextLeft = xLegendBorderRight + ((xDftInfoTextLeft - xLegendBorderRight) / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			else if(showLegend)
+			else if(legendVisible)
 				xXaxisTitleTextLeft = xLegendBorderRight + ((width - Theme.tilePadding - xLegendBorderRight)  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			else if(showDftInfo)
+			else if(fftInfoVisible)
 				xXaxisTitleTextLeft = xPlotLeft + ((xDftInfoTextLeft - xPlotLeft) / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
 			
 			float temp = yXaxisTitleTextTop + Theme.tickTextPadding;
 			if(yPlotBottom < temp) {
 				yPlotBottom = temp;
 				plotHeight = yPlotTop - yPlotBottom;
-				if(showYaxisTitle)
+				if(yAxisTitleVisible)
 					yYaxisTitleTextLeft = yPlotBottom + (plotHeight / 2.0f) - (OpenGL.largeTextWidth(gl, yAxisTitle) / 2.0f);
 			}
 		}
 		
-		if(showXaxisScale) {
+		if(xAxisTicksVisible) {
 			yXaxisTickTextBaseline = yPlotBottom;
 			yXaxisTickTextTop = yXaxisTickTextBaseline + OpenGL.smallTextHeight;
 			yXaxisTickBottom = yXaxisTickTextTop + Theme.tickTextPadding;
@@ -419,12 +507,13 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 			
 			yPlotBottom = yXaxisTickTop;
 			plotHeight = yPlotTop - yPlotBottom;
-			if(showYaxisTitle)
+			if(yAxisTitleVisible)
 				yYaxisTitleTextLeft = yPlotBottom + (plotHeight / 2.0f) - (OpenGL.largeTextWidth(gl, yAxisTitle) / 2.0f);
 		}
 		
-		if(showYaxisScale) {
-			yDivisions = waterfallMode ? ChartUtils.getYdivisions125(plotHeight, plotMinY, plotMaxY) : ChartUtils.getLogYdivisions(plotHeight, plotMinY, plotMaxY);
+		if(yAxisTicksVisible) {
+			yDivisions = (chartStyle == ChartStyle.WATERFALL) ? ChartUtils.getYdivisions125(plotHeight, plotMinY, plotMaxY) :
+			                                                    ChartUtils.getLogYdivisions(plotHeight, plotMinY, plotMaxY);
 			float maxTextWidth = 0;
 			for(String text : yDivisions.values()) {
 				float textWidth = OpenGL.smallTextWidth(gl, text);
@@ -439,13 +528,13 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 			xPlotLeft = xYaxisTickRight;
 			plotWidth = xPlotRight - xPlotLeft;
 			
-			if(showXaxisTitle && !showLegend && !showDftInfo)
+			if(xAxisTitleVisible && !legendVisible && !fftInfoVisible)
 				xXaxisTitleTextLeft = xPlotLeft + (plotWidth / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			else if(showXaxisTitle && showLegend && showDftInfo)
+			else if(xAxisTitleVisible && legendVisible && fftInfoVisible)
 				xXaxisTitleTextLeft = xLegendBorderRight + ((xDftInfoTextLeft - xLegendBorderRight) / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			else if(showXaxisTitle && showLegend)
+			else if(xAxisTitleVisible && legendVisible)
 				xXaxisTitleTextLeft = xLegendBorderRight + ((width - Theme.tilePadding - xLegendBorderRight)  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			else if(showXaxisTitle && showDftInfo)
+			else if(xAxisTitleVisible && fftInfoVisible)
 				xXaxisTitleTextLeft = xPlotLeft + ((xDftInfoTextLeft - xPlotLeft) / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
 		}
 		
@@ -460,7 +549,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		OpenGL.drawQuad2D(gl, Theme.plotBackgroundColor, xPlotLeft, yPlotBottom, xPlotRight, yPlotTop);
 		
 		// draw the x-axis scale
-		if(showXaxisScale) {
+		if(xAxisTicksVisible) {
 			OpenGL.buffer.rewind();
 			for(Float xValue : xDivisions.keySet()) {
 				float x = (xValue - plotMinX) / domain * plotWidth + xPlotLeft;
@@ -482,7 +571,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		}
 		
 		// draw the y-axis scale
-		if(showYaxisScale) {
+		if(yAxisTicksVisible) {
 			OpenGL.buffer.rewind();
 			for(Float entry : yDivisions.keySet()) {
 				float y = (entry - plotMinY) / plotRange * plotHeight + yPlotBottom;
@@ -504,7 +593,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		}
 		
 		// draw the legend, if space is available
-		if(showLegend && haveDatasets && xLegendBorderRight < width - Theme.tilePadding) {
+		if(legendVisible && haveDatasets && xLegendBorderRight < width - Theme.tilePadding) {
 			OpenGL.drawQuad2D(gl, Theme.legendBackgroundColor, xLegendBorderLeft, yLegendBorderBottom, xLegendBorderRight, yLegendBorderTop);
 			
 			for(int i = 0; i < datasetsCount; i++) {
@@ -519,18 +608,18 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		}
 		
 		// draw the DFT info text if space is available
-		boolean spaceForDftInfoText = showLegend ? xDftInfoTextLeft > xLegendBorderRight + Theme.legendTextPadding : xDftInfoTextLeft > 0;
-		if(showDftInfo && spaceForDftInfoText && haveDatasets) {
-			if(singleMode) {
+		boolean spaceForDftInfoText = legendVisible ? xDftInfoTextLeft > xLegendBorderRight + Theme.legendTextPadding : xDftInfoTextLeft > 0;
+		if(fftInfoVisible && spaceForDftInfoText && haveDatasets) {
+			if(chartStyle == ChartStyle.SINGLE) {
 				
 				OpenGL.drawSmallText(gl, dftWindowLengthText, (int) xDftWindowLenghtTextLeft, (int) yDftWindowLengthTextBaseline, 0);
 				
-			} else if(multipleMode) {
+			} else if(chartStyle == ChartStyle.MULTIPLE) {
 				
 				OpenGL.drawSmallText(gl, dftWindowLengthText, (int) xDftWindowLenghtTextLeft, (int) yDftWindowLengthTextBaseline, 0);
 				OpenGL.drawSmallText(gl, dftWindowCountText, (int) xDftWindowCountTextLeft, (int) yDftWindowCountTextBaseline, 0);
 				
-			} else if(waterfallMode) {
+			} else if(chartStyle == ChartStyle.WATERFALL) {
 				
 				OpenGL.drawSmallText(gl, dftWindowLengthText, (int) xDftWindowLenghtTextLeft, (int) yDftWindowLengthTextBaseline, 0);
 				OpenGL.drawSmallText(gl, dftWindowCountText, (int) xDftWindowCountTextLeft, (int) yDftWindowCountTextBaseline, 0);
@@ -561,22 +650,22 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		}
 		
 		// draw the x-axis title if space is available
-		if(showXaxisTitle)
-			if((!showLegend && xXaxisTitleTextLeft > xPlotLeft) || (showLegend && xXaxisTitleTextLeft > xLegendBorderRight + Theme.legendTextPadding))
+		if(xAxisTitleVisible)
+			if((!legendVisible && xXaxisTitleTextLeft > xPlotLeft) || (legendVisible && xXaxisTitleTextLeft > xLegendBorderRight + Theme.legendTextPadding))
 				OpenGL.drawLargeText(gl, xAxisTitle, (int) xXaxisTitleTextLeft, (int) yXaxisTitleTextBasline, 0);
 		
 		// draw the y-axis title if space is available
-		if(showYaxisTitle && yYaxisTitleTextLeft > yPlotBottom)
+		if(yAxisTitleVisible && yYaxisTitleTextLeft > yPlotBottom)
 			OpenGL.drawLargeText(gl, yAxisTitle, (int) xYaxisTitleTextBaseline, (int) yYaxisTitleTextLeft, 90);
 		
 		
 		// draw the DFTs
 		if(haveTelemetry) {
-			if(singleMode)
+			if(chartStyle == ChartStyle.SINGLE)
 				cache.renderSingle(chartMatrix, (int) xPlotLeft, (int) yPlotBottom, (int) plotWidth, (int) plotHeight, plotMinPower, plotMaxPower, gl, datasets.normalDatasets);
-			else if(multipleMode)
+			else if(chartStyle == ChartStyle.MULTIPLE)
 				cache.renderMultiple(chartMatrix, (int) xPlotLeft, (int) yPlotBottom, (int) plotWidth, (int) plotHeight, plotMinPower, plotMaxPower, gl, datasets.normalDatasets, waveformRowCount);
-			else if(waterfallMode)
+			else if(chartStyle == ChartStyle.WATERFALL)
 				cache.renderWaterfall(chartMatrix, (int) xPlotLeft, (int) yPlotBottom, (int) plotWidth, (int) plotHeight, plotMinPower, plotMaxPower, gl, datasets.normalDatasets);
 		}
 		
@@ -595,7 +684,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 			Color[] colors = null;
 			int anchorY = 0;
 			
-			if(singleMode) {
+			if(chartStyle == ChartStyle.SINGLE) {
 				// for live view, get the power levels (one per dataset) for the mouseX frequency
 				float[] binValues = cache.getPowerLevelsForLiveViewBin(binN);
 				if(binValues != null) {
@@ -609,7 +698,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 					}
 					anchorY = (int) ((binValues[0] - plotMinY) / plotRange * plotHeight + yPlotBottom);
 				}
-			} else if(multipleMode) {
+			} else if(chartStyle == ChartStyle.MULTIPLE) {
 				// map mouseY to a power bin
 				int powerBinN = Math.round(((float) mouseY - yPlotBottom) / plotHeight * waveformRowCount - 0.5f);
 				if(powerBinN > waveformRowCount - 1)
@@ -630,9 +719,9 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 					}
 					anchorY = (int) (((float) powerBinN + 0.5f) / (float) waveformRowCount * plotHeight + yPlotBottom);
 				}
-			} else if(waterfallMode) {
+			} else if(chartStyle == ChartStyle.WATERFALL) {
 				// map mouseY to a time
-				int waterfallRowCount = dftCount;
+				int waterfallRowCount = fftCount;
 				int waterfallRowN = Math.round(((float) mouseY - yPlotBottom) / plotHeight * waterfallRowCount - 0.5f);
 				if(waterfallRowN > waterfallRowCount - 1)
 					waterfallRowN = waterfallRowCount - 1;
@@ -661,7 +750,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 			}
 
 			if(text != null && colors != null) {
-				if(datasetsCount > 1 && singleMode) {
+				if(datasetsCount > 1 && chartStyle == ChartStyle.SINGLE) {
 					OpenGL.buffer.rewind();
 					OpenGL.buffer.put(anchorX); OpenGL.buffer.put(yPlotTop);
 					OpenGL.buffer.put(anchorX); OpenGL.buffer.put(yPlotBottom);

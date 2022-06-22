@@ -1,19 +1,11 @@
-import java.awt.Component;
 import java.util.List;
 import java.util.Map;
+
+import javax.swing.JPanel;
 
 import com.jogamp.opengl.GL2ES3;
 import com.jogamp.opengl.GL3;
 
-/**
- * Renders the label showing the date, and/or an interactive timeline.
- * 
- * User settings:
- *     Playback controls (play, pause, rewind, etc.) can be displayed.
- *     The time can be displayed.
- *     A timeline can be displayed.
- *     Bitfield events can be displayed.
- */
 public class OpenGLTimelineChart extends PositionedChart {
 	
 	// timeline region
@@ -71,11 +63,11 @@ public class OpenGLTimelineChart extends PositionedChart {
 	
 	BitfieldEvents events;
 	
-	// control widgets
+	// user settings
 	WidgetCheckbox showControlsWidget;
 	WidgetCheckbox showTimeWidget;
 	WidgetCheckbox showTimelineWidget;
-	WidgetDatasets datasetsWidget;
+	WidgetDatasetCheckboxes datasetsWidget;
 	
 	@Override public String toString() {
 		
@@ -87,12 +79,11 @@ public class OpenGLTimelineChart extends PositionedChart {
 		
 		super(x1, y1, x2, y2);
 		
-		datasetsWidget = new WidgetDatasets(null,
-		                                    newBitfieldEdges  -> { datasets.setEdges(newBitfieldEdges);   events = null; },
-		                                    newBitfieldLevels -> { datasets.setLevels(newBitfieldLevels); events = null; },
-		                                    null,
-		                                    false,
-		                                    null);
+		datasetsWidget = new WidgetDatasetCheckboxes(null,
+		                                             newBitfieldEdges  -> { datasets.setEdges(newBitfieldEdges);   events = null; },
+		                                             newBitfieldLevels -> { datasets.setLevels(newBitfieldLevels); events = null; },
+		                                             null,
+		                                             false);
 		
 		showControlsWidget = new WidgetCheckbox("Show Controls", true, isSelected -> {
 		                                                                   showControls = isSelected;
@@ -107,18 +98,30 @@ public class OpenGLTimelineChart extends PositionedChart {
 		
 		showTimelineWidget = new WidgetCheckbox("Show Timeline", true, isSelected -> {
 		                                                                   showTimeline = isSelected;
-		                                                                   for(Component widget : datasetsWidget.widgets.keySet())
-		                                                                       widget.setVisible(showTimeline);
+		                                                                   datasetsWidget.setVisible(showTimeline);
 		                                                               });
 		
-		widgets = new Widget[4];
-		widgets[0] = showControlsWidget;
-		widgets[1] = showTimeWidget;
-		widgets[2] = showTimelineWidget;
-		widgets[3] = datasetsWidget;
+		widgets.add(showControlsWidget);
+		widgets.add(showTimeWidget);
+		widgets.add(showTimelineWidget);
+		widgets.add(datasetsWidget);
 		
 		if(OpenGLChartsView.instance.isPausedView())
 			userIsTimeshifting();
+		
+	}
+	
+	@Override public void getConfigurationGui(JPanel gui) {
+		
+		JPanel settingsPanel = Theme.newWidgetsPanel("Settings");
+		
+		showControlsWidget.appendToGui(settingsPanel);
+		showTimeWidget.appendToGui(settingsPanel);
+		showTimelineWidget.appendToGui(settingsPanel);
+		datasetsWidget.appendToGui(settingsPanel);
+		datasetsWidget.setVisible(showTimeline);
+		
+		gui.add(settingsPanel);
 		
 	}
 	

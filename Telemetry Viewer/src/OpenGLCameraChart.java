@@ -1,24 +1,16 @@
+import java.util.ArrayList;
+import java.util.List;
+
+import javax.swing.JPanel;
 import com.jogamp.opengl.GL2ES3;
 import com.jogamp.opengl.GL3;
 
-/**
- * Displays images from a camera.
- * 
- * User settings:
- *     Camera to use.
- *     Rotation and mirroring.
- *     A label can be displayed.
- */
 public class OpenGLCameraChart extends PositionedChart {
 	
-	ConnectionCamera camera = null;
 	long previousFrameTimestamp = 0;
 	
 	// image region on screen
 	int[] texHandle;
-	boolean mirrorX;
-	boolean mirrorY;
-	boolean rotateClockwise;
 	float xDisplayLeft;
 	float xDisplayRight;
 	float yDisplayTop;
@@ -27,18 +19,26 @@ public class OpenGLCameraChart extends PositionedChart {
 	float displayHeight;
 	
 	// label
-	boolean showLabel;
 	float labelWidth;
 	float xLabelLeft;
 	float xLabelRight;
 	float yLabelBaseline;
 	float yLabelTop;
 	
-	// control widgets
-	WidgetCamera cameraWidget;
+	// user settings
+	private WidgetComboboxString cameraWidget;
+	public ConnectionCamera camera = null;
+	
+	boolean mirrorX = false;
 	WidgetCheckbox mirrorXwidget;
+	
+	boolean mirrorY = false;
 	WidgetCheckbox mirrorYwidget;
+	
+	boolean rotateClockwise = false;
 	WidgetCheckbox rotatewidget;
+	
+	boolean showLabel = true;
 	WidgetCheckbox labelWidget;
 	
 	@Override public String toString() {
@@ -51,34 +51,83 @@ public class OpenGLCameraChart extends PositionedChart {
 		
 		super(x1, y1, x2, y2);
 		
-		cameraWidget = new WidgetCamera(cameraName -> {
-			for(ConnectionCamera c : ConnectionsController.cameraConnections)
-				if(c.name.equals(cameraName))
-					camera = c;
+		List<String> cameraNames = new ArrayList<String>();
+		ConnectionsController.cameraConnections.forEach(connection -> {
+			if(connection.connected || connection.getSampleCount() > 0)
+				cameraNames.add(connection.name);
 		});
+		if(cameraNames.isEmpty())
+			cameraNames.add("[No cameras available]");
+		
+		cameraWidget = new WidgetComboboxString("camera name",
+		                                        cameraNames,
+		                                        cameraNames.get(0),
+		                                        newCameraName -> {
+		                                            ConnectionsController.cameraConnections.forEach(connection -> {
+		                                                if(connection.name.equals(newCameraName))
+		                                                    camera = connection;
+		                                            });
+		                                            return true;
+		                                        });
 		
 		mirrorXwidget = new WidgetCheckbox("Mirror X-Axis \u2194",
-		                                   false,
-		                                   mirror -> mirrorX = mirror);
+		                                   mirrorX,
+		                                   isMirrored -> mirrorX = isMirrored);
 		
 		mirrorYwidget = new WidgetCheckbox("Mirror Y-Axis \u2195",
-		                                   false,
-		                                   mirror -> mirrorY = mirror);
+		                                   mirrorY,
+		                                   isMirrored -> mirrorY = isMirrored);
 		
 		rotatewidget = new WidgetCheckbox("Rotate Clockwise \u21B7",
-		                                   false,
-		                                   rotate -> rotateClockwise = rotate);
+		                                  rotateClockwise,
+		                                  isRotated -> rotateClockwise = isRotated);
 		
 		labelWidget = new WidgetCheckbox("Show Label",
-		                                 true,
-		                                 newShowLabel -> showLabel = newShowLabel);
+		                                 showLabel,
+		                                 isShown -> showLabel = isShown);
 		
-		widgets = new Widget[5];
-		widgets[0] = cameraWidget;
-		widgets[1] = mirrorXwidget;
-		widgets[2] = mirrorYwidget;
-		widgets[3] = rotatewidget;
-		widgets[4] = labelWidget;
+		widgets.add(cameraWidget);
+		widgets.add(mirrorXwidget);
+		widgets.add(mirrorYwidget);
+		widgets.add(rotatewidget);
+		widgets.add(labelWidget);
+		
+	}
+	
+	@Override public void getConfigurationGui(JPanel gui) {
+		
+		// regenerate the camera list because the available cameras may have changed
+		List<String> cameraNames = new ArrayList<String>();
+		ConnectionsController.cameraConnections.forEach(connection -> {
+			if(connection.connected || connection.getSampleCount() > 0)
+				cameraNames.add(connection.name);
+		});
+		boolean noCameras = false;
+		if(cameraNames.isEmpty()) {
+			cameraNames.add("[No cameras available]");
+			noCameras = true;
+		}
+		
+		cameraWidget = new WidgetComboboxString("camera name",
+		                                        cameraNames,
+		                                        camera == null ? cameraNames.get(0) : camera.name,
+		                                        newCameraName -> {
+		                                            ConnectionsController.cameraConnections.forEach(connection -> {
+		                                                if(connection.name.equals(newCameraName))
+		                                                    camera = connection;
+		                                            });
+		                                            return true;
+		                                        });
+		cameraWidget.setEnabled(!noCameras);
+		
+		JPanel cameraPanel = Theme.newWidgetsPanel("Camera");
+		cameraPanel.add(cameraWidget, "grow x");
+		cameraPanel.add(mirrorXwidget, "grow x");
+		cameraPanel.add(mirrorYwidget, "grow x");
+		cameraPanel.add(rotatewidget, "grow x");
+		cameraPanel.add(labelWidget, "grow x");
+		
+		gui.add(cameraPanel);
 		
 	}
 

@@ -1,36 +1,13 @@
+import javax.swing.JPanel;
 import com.jogamp.opengl.GL2ES3;
 import com.jogamp.opengl.GL3;
 
-/**
- * Renders a dial showing the value of the most recent sample.
- * 
- * User settings:
- *     Dataset to visualize.
- *     Dial minimum value can be fixed or autoscaled.
- *     Dial maximum value can be fixed or autoscaled.
- *     Sample count (this is used for autoscaling and for statistics.)
- *     Current reading label can be displayed.
- *     Dataset label can be displayed.
- *     Dial minimum and maximum labels can be displayed.
- *     Statistics (mean and standard deviation) can be displayed.
- */
 public class OpenGLDialChart extends PositionedChart {
 	
 	final int   dialResolution = 400; // how many quads to draw
 	final float dialThickness = 0.4f; // percentage of the radius
-	float       dialMin;
-	float       dialMax;
-	
-	// plot region
-	float xPlotLeft;
-	float xPlotRight;
-	float plotWidth;
-	float yPlotTop;
-	float yPlotBottom;
-	float plotHeight;
 	
 	// min max labels
-	boolean showMinMaxLabels;
 	float yMinMaxLabelsBaseline;
 	float yMinMaxLabelsTop;
 	String minLabel;
@@ -41,7 +18,6 @@ public class OpenGLDialChart extends PositionedChart {
 	float xMaxLabelLeft;
 	
 	// reading label
-	boolean showReadingLabel;
 	String readingLabel;
 	float readingLabelWidth;
 	float xReadingLabelLeft;
@@ -50,7 +26,6 @@ public class OpenGLDialChart extends PositionedChart {
 	float readingLabelRadius;
 	
 	// dataset label
-	boolean showDatasetLabel;
 	String datasetLabel;
 	float datasetLabelWidth;
 	float yDatasetLabelBaseline;
@@ -58,12 +33,23 @@ public class OpenGLDialChart extends PositionedChart {
 	float xDatasetLabelLeft;
 	float datasetLabelRadius;
 	
-	// control widgets
-	WidgetDatasets datasetWidget;
-	WidgetTextfieldsOptionalMinMax minMaxWidget;
-	WidgetCheckbox showReadingLabelWidget;
-	WidgetCheckbox showDatasetLabelWidget;
-	WidgetCheckbox showMinMaxLabelsWidget;
+	// user settings
+	private WidgetDatasetComboboxes datasetWidget;
+	
+	private boolean datasetLabelVisible = true;
+	private WidgetCheckbox datasetLabelCheckbox;
+	
+	private float dialMinimum = -1;
+	private WidgetTextfieldFloat dialMinimumTextfield;
+	
+	private float dialMaximum = 1;
+	private WidgetTextfieldFloat dialMaximumTextfield;
+	
+	private boolean readingLabelVisible = true;
+	private WidgetCheckbox readingLabelCheckbox;
+	
+	private boolean minMaxLabelsVisible = true;
+	private WidgetCheckbox minMaxLabelsCheckbox;
 	
 	@Override public String toString() {
 		
@@ -75,42 +61,74 @@ public class OpenGLDialChart extends PositionedChart {
 		
 		super(x1, y1, x2, y2);
 		
-		datasetWidget = new WidgetDatasets(newDatasets -> datasets.setNormals(newDatasets),
-		                                   null,
-		                                   null,
-		                                   null,
-		                                   false,
-		                                   new String[] {"Dataset"});
+		datasetLabelCheckbox = new WidgetCheckbox("Show Dataset Label",
+		                                          datasetLabelVisible,
+		                                          newVisibility -> datasetLabelVisible = newVisibility);
 		
-		minMaxWidget = new WidgetTextfieldsOptionalMinMax("Dial",
-		                                                  false,
-		                                                  -1,
-		                                                  1,
-		                                                  -Float.MAX_VALUE,
-		                                                  Float.MAX_VALUE,
-		                                                  (newAutoscaleMin, newManualMin) -> dialMin = newManualMin,
-		                                                  (newAutoscaleMax, newManualMax) -> dialMax = newManualMax);
+		dialMinimumTextfield = new WidgetTextfieldFloat("Minimum",
+		                                                "dial minimum",
+		                                                "",
+		                                                -Float.MAX_VALUE,
+		                                                Float.MAX_VALUE,
+		                                                dialMinimum,
+		                                                newMinimum -> {
+		                                                	dialMinimum = newMinimum;
+		                                                	if(dialMinimum > dialMaximum)
+		                                                		dialMaximumTextfield.setNumber(dialMinimum);
+		                                                });
 		
-		showReadingLabelWidget = new WidgetCheckbox("Show Reading Label",
-		                                            true,
-		                                            newShowReadingLabel -> showReadingLabel = newShowReadingLabel);
+		dialMaximumTextfield = new WidgetTextfieldFloat("Maximum",
+		                                                "dial maximum",
+		                                                "",
+		                                                -Float.MAX_VALUE,
+		                                                Float.MAX_VALUE,
+		                                                dialMaximum,
+		                                                newMaximum -> {
+		                                                	dialMaximum = newMaximum;
+		                                                	if(dialMaximum < dialMinimum)
+		                                                		dialMinimumTextfield.setNumber(dialMaximum);
+		                                                });
 		
-		showDatasetLabelWidget = new WidgetCheckbox("Show Dataset Label",
-		                                            true,
-		                                            newShowDatasetLabel -> showDatasetLabel = newShowDatasetLabel);
+		datasetWidget = new WidgetDatasetComboboxes(new String[] {"Dataset"},
+		                                            newDatasets -> {
+		                                                if(newDatasets.isEmpty()) // no telemetry connections
+		                                                    return;
+		                                                datasets.setNormals(newDatasets);
+		                                                dialMinimumTextfield.setUnit(datasets.getNormal(0).unit);
+		                                                dialMaximumTextfield.setUnit(datasets.getNormal(0).unit);
+		                                            });
 		
-		showMinMaxLabelsWidget = new WidgetCheckbox("Show Min/Max Labels",
-		                                            true,
-		                                            newShowMinMaxLabels -> showMinMaxLabels = newShowMinMaxLabels);
+		readingLabelCheckbox = new WidgetCheckbox("Show Reading Label",
+		                                          readingLabelVisible,
+		                                          newVisibility -> readingLabelVisible = newVisibility);
+		
+		minMaxLabelsCheckbox = new WidgetCheckbox("Show Min/Max Labels",
+		                                          minMaxLabelsVisible,
+		                                          newVisibility -> minMaxLabelsVisible = newVisibility);
 
-		widgets = new Widget[7];
-		widgets[0] = datasetWidget;
-		widgets[1] = null;
-		widgets[2] = minMaxWidget;
-		widgets[3] = null;
-		widgets[4] = showDatasetLabelWidget;
-		widgets[5] = showReadingLabelWidget;
-		widgets[6] = showMinMaxLabelsWidget;
+		widgets.add(datasetWidget);
+		widgets.add(datasetLabelCheckbox);
+		widgets.add(dialMinimumTextfield);
+		widgets.add(dialMaximumTextfield);
+		widgets.add(readingLabelCheckbox);
+		widgets.add(minMaxLabelsCheckbox);
+		
+	}
+	
+	@Override public void getConfigurationGui(JPanel gui) {
+		
+		JPanel dataPanel = Theme.newWidgetsPanel("Data");
+		datasetWidget.appendToGui(dataPanel);
+		dataPanel.add(datasetLabelCheckbox);
+		
+		JPanel dialPanel = Theme.newWidgetsPanel("Dial");
+		dialPanel.add(dialMinimumTextfield);
+		dialPanel.add(dialMaximumTextfield);
+		dialPanel.add(readingLabelCheckbox);
+		dialPanel.add(minMaxLabelsCheckbox);
+		
+		gui.add(dataPanel);
+		gui.add(dialPanel);
 		
 	}
 	
@@ -131,18 +149,18 @@ public class OpenGLDialChart extends PositionedChart {
 		float sample = lastSampleNumber > 0 ? datasets.getSample(dataset, lastSampleNumber) : 0;
 		
 		// calculate x and y positions of everything
-		xPlotLeft = Theme.tilePadding;
-		xPlotRight = width - Theme.tilePadding;
-		plotWidth = xPlotRight - xPlotLeft;
-		yPlotTop = height - Theme.tilePadding;
-		yPlotBottom = Theme.tilePadding;
-		plotHeight = yPlotTop - yPlotBottom;
+		float xPlotLeft = Theme.tilePadding;
+		float xPlotRight = width - Theme.tilePadding;
+		float plotWidth = xPlotRight - xPlotLeft;
+		float yPlotTop = height - Theme.tilePadding;
+		float yPlotBottom = Theme.tilePadding;
+		float plotHeight = yPlotTop - yPlotBottom;
 		
-		if(showMinMaxLabels) {
+		if(minMaxLabelsVisible) {
 			yMinMaxLabelsBaseline = Theme.tilePadding;
 			yMinMaxLabelsTop = yMinMaxLabelsBaseline + OpenGL.smallTextHeight;
-			minLabel = ChartUtils.formattedNumber(dialMin, 6);
-			maxLabel = ChartUtils.formattedNumber(dialMax, 6);
+			minLabel = ChartUtils.formattedNumber(dialMinimum, 6);
+			maxLabel = ChartUtils.formattedNumber(dialMaximum, 6);
 			minLabelWidth = OpenGL.smallTextWidth(gl, minLabel);
 			maxLabelWidth = OpenGL.smallTextWidth(gl, maxLabel);
 			
@@ -159,7 +177,7 @@ public class OpenGLDialChart extends PositionedChart {
 		if(circleOuterRadius < 0)
 			return handler;
 		
-		if(showReadingLabel && lastSampleNumber >= 0) {
+		if(readingLabelVisible && lastSampleNumber >= 0) {
 			readingLabel = ChartUtils.formattedNumber(sample, 6) + " " + dataset.unit;
 			readingLabelWidth = OpenGL.largeTextWidth(gl, readingLabel);
 			xReadingLabelLeft = xCircleCenter - (readingLabelWidth / 2);
@@ -171,7 +189,7 @@ public class OpenGLDialChart extends PositionedChart {
 				OpenGL.drawLargeText(gl, readingLabel, (int) xReadingLabelLeft, (int) yReadingLabelBaseline, 0);
 		}
 		
-		if(showMinMaxLabels && lastSampleNumber >= 0) {
+		if(minMaxLabelsVisible && lastSampleNumber >= 0) {
 			xMinLabelLeft = xCircleCenter - circleOuterRadius;
 			xMaxLabelLeft = xCircleCenter + circleOuterRadius - maxLabelWidth;
 			
@@ -181,10 +199,10 @@ public class OpenGLDialChart extends PositionedChart {
 			}
 		}
 		
-		if(showDatasetLabel && lastSampleNumber >= 0) {
+		if(datasetLabelVisible && lastSampleNumber >= 0) {
 			datasetLabel = dataset.name;
 			datasetLabelWidth = OpenGL.largeTextWidth(gl, datasetLabel);
-			yDatasetLabelBaseline = showReadingLabel ? yReadingLabelTop + Theme.tickTextPadding + Theme.legendTextPadding : yPlotBottom;
+			yDatasetLabelBaseline = readingLabelVisible ? yReadingLabelTop + Theme.tickTextPadding + Theme.legendTextPadding : yPlotBottom;
 			yDatasetLabelTop = yDatasetLabelBaseline + OpenGL.largeTextHeight;
 			xDatasetLabelLeft = xCircleCenter - (datasetLabelWidth / 2);
 			datasetLabelRadius = (float) Math.sqrt((datasetLabelWidth / 2) * (datasetLabelWidth / 2) + (yDatasetLabelTop - yCircleCenter) * (yDatasetLabelTop - yCircleCenter)) + Theme.legendTextPadding;
@@ -204,7 +222,7 @@ public class OpenGLDialChart extends PositionedChart {
 		}
 		
 		// draw the dial
-		float dialPercentage = (sample - dialMin) / (dialMax - dialMin);
+		float dialPercentage = (sample - dialMinimum) / (dialMaximum - dialMinimum);
 		OpenGL.buffer.rewind();
 		for(float angle = 0; angle < Math.PI; angle += Math.PI / dialResolution) {
 			

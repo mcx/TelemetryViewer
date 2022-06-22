@@ -486,17 +486,15 @@ public class OpenGLChartsView extends JPanel {
 						// if there is a maximized chart, only draw that chart
 						if(maximizedChart != null && maximizedChart != removingChart && chart != maximizedChart && !maximizing && !demaximizing) {
 							// no need to draw this chart, but process its trigger
-							for(Widget widget : chart.widgets)
-								if(widget instanceof WidgetTrigger) {
-									WidgetTrigger trigger = (WidgetTrigger) widget;
-									OpenGLTimeDomainChart c = (OpenGLTimeDomainChart) chart;
-									if(c.triggerEnabled && c.datasets.hasNormals()) {
-										if(chart.sampleCountMode)
-											trigger.checkForTriggerSampleCountMode(lastSampleNumber, zoomLevel, false);
-										else
-											trigger.checkForTriggerMillisecondsMode(endTimestamp, zoomLevel, false);
-									}
+							if(chart.trigger != null) {
+								OpenGLTimeDomainChart c = (OpenGLTimeDomainChart) chart;
+								if(c.triggerEnabled && c.datasets.hasNormals()) {
+									if(chart.sampleCountMode)
+										chart.trigger.checkForTriggerSampleCountMode(lastSampleNumber, zoomLevel, false);
+									else
+										chart.trigger.checkForTriggerMillisecondsMode(endTimestamp, zoomLevel, false);
 								}
+							}
 							continue;
 						}
 						
@@ -1102,11 +1100,8 @@ public class OpenGLChartsView extends JPanel {
 		
 		// clear any triggers
 		for(PositionedChart chart : ChartsController.getCharts())
-			for(Widget widget : chart.widgets)
-				if(widget instanceof WidgetTrigger) {
-					WidgetTrigger trigger = (WidgetTrigger) widget;
-					trigger.resetTrigger(true);
-				}
+			if(chart.trigger != null)
+				chart.trigger.resetTrigger(true);
 		
 	}
 	
