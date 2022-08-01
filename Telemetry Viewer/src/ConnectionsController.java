@@ -30,10 +30,43 @@ public class ConnectionsController {
 	public static List<ConnectionCamera>               cameraConnections = new ArrayList<ConnectionCamera>();
 	public static Map<ConnectionTelemetry, DatasetsInterface> interfaces = new HashMap<ConnectionTelemetry, DatasetsInterface>();
 	static {
-		addConnection(new ConnectionTelemetry());
+		addConnection();
 	}
 	
 	private static final String filenameSanitizer = "[^a-zA-Z0-9_\\.\\- ]"; // only allow letters, numbers, underscores, periods, hyphens and spaces.
+	
+	public static void addConnection() {
+		
+		List<String> potentialNames = new ArrayList<String>();
+		potentialNames.addAll(ConnectionTelemetryUART.getPortNames());
+		potentialNames.add(ConnectionTelemetry.Type.TCP.toString());
+		potentialNames.add(ConnectionTelemetry.Type.UDP.toString());
+		potentialNames.add(ConnectionTelemetry.Type.DEMO.toString());
+		potentialNames.add(ConnectionTelemetry.Type.STRESS_TEST.toString());
+		
+		// the webcam lib crashes on the raspberry pi when running a 64-bit os, so don't allow cameras in that case
+		if(!System.getProperty("os.name").equals("Linux") && !System.getProperty("os.arch").equals("AArch64"))
+			potentialNames.addAll(ConnectionCamera.getNames());
+		
+		allConnections.forEach(existingConnection -> {
+			String existingName = existingConnection.name;
+			if(!existingName.equals(ConnectionTelemetry.Type.TCP.toString()) &&
+			   !existingName.equals(ConnectionTelemetry.Type.UDP.toString()) &&
+			   !existingName.equals(ConnectionCamera.mjpegOverHttp) &&
+			   potentialNames.contains(existingName))
+				potentialNames.remove(existingName);
+		});
+		
+		String name = potentialNames.get(0); // first unused potential connection
+		
+		addConnection(name.startsWith(ConnectionTelemetry.Type.UART.toString())    ? new ConnectionTelemetryUART(name) :
+		              name.equals(ConnectionTelemetry.Type.TCP.toString())         ? new ConnectionTelemetryTCP() :
+		              name.equals(ConnectionTelemetry.Type.UDP.toString())         ? new ConnectionTelemetryUDP() :
+		              name.equals(ConnectionTelemetry.Type.DEMO.toString())        ? new ConnectionTelemetryDemo() :
+		              name.equals(ConnectionTelemetry.Type.STRESS_TEST.toString()) ? new ConnectionTelemetryStressTest() :
+		                                                                             new ConnectionCamera(name));
+		
+	}
 	
 	public static void addConnection(Connection newConnection) {
 		
@@ -231,15 +264,73 @@ public class ConnectionsController {
 		
 	}
 	
-	/**
-	 * @return    Names of all available connections (UARTs, TCP, UDP, Demo Mode, Stress Test Mode, Cameras, and Network Camera.)
-	 */
-	public static List<String> getNames() {
+	public static WidgetComboboxString getNamesCombobox(Connection thisConnection) {
 		
-		List<String> names = new ArrayList<String>();
-		names.addAll(ConnectionTelemetry.getNames());
-		names.addAll(ConnectionCamera.getNames());
-		return names;
+		List<String> connectionNames = new ArrayList<String>();
+		
+		connectionNames.addAll(ConnectionTelemetryUART.getPortNames());
+		connectionNames.add(ConnectionTelemetry.Type.TCP.toString());
+		connectionNames.add(ConnectionTelemetry.Type.UDP.toString());
+		connectionNames.add(ConnectionTelemetry.Type.DEMO.toString());
+		connectionNames.add(ConnectionTelemetry.Type.STRESS_TEST.toString());
+		
+		// the webcam lib crashes on the raspberry pi when running a 64-bit os, so don't allow cameras in that case
+		if(!System.getProperty("os.name").equals("Linux") && !System.getProperty("os.arch").equals("AArch64"))
+			connectionNames.addAll(ConnectionCamera.getNames());
+		
+		WidgetComboboxString namesCombobox = new WidgetComboboxString("connections",
+		                                                              connectionNames,
+		                                                              thisConnection.name,
+		                                                              proposedNewName -> {
+		                                                                  // accept and ignore if no change
+		                                                                  if(proposedNewName.equals(thisConnection.name))
+		                                                                      return true;
+		                                                                  
+		                                                                  // always accept TCP/UDP/MJPEG (multiple connections allowed)
+		                                                                  if(proposedNewName.equals(ConnectionTelemetry.Type.TCP.toString())) {
+		                                                                      replaceConnection(thisConnection, new ConnectionTelemetryTCP());
+		                                                                      return true;
+		                                                                  }
+		                                                                  if(proposedNewName.equals(ConnectionTelemetry.Type.UDP.toString())) {
+		                                                                      replaceConnection(thisConnection, new ConnectionTelemetryUDP());
+		                                                                      return true;
+		                                                                  }
+		                                                                  if(proposedNewName.startsWith(ConnectionCamera.mjpegOverHttp)) {
+		                                                                      replaceConnection(thisConnection, new ConnectionCamera(proposedNewName));
+		                                                                      return true;
+		                                                                  }
+		                                                                  
+		                                                                  // reject if already used (multiple connections not allowed)
+		                                                                  for(Connection other : ConnectionsController.allConnections)
+		                                                                      if(other.name.equals(proposedNewName))
+		                                                                          return false;
+		                                                                  
+		                                                                  // new connection is allowed
+		                                                                  if(proposedNewName.equals(ConnectionTelemetry.Type.STRESS_TEST.toString())) {
+		                                                                      replaceConnection(thisConnection, new ConnectionTelemetryStressTest());
+		                                                                      return true;
+		                                                                  }
+		                                                                  if(proposedNewName.equals(ConnectionTelemetry.Type.DEMO.toString())) {
+		                                                                      replaceConnection(thisConnection, new ConnectionTelemetryDemo());
+		                                                                      return true;
+		                                                                  }
+		                                                                  if(proposedNewName.startsWith(ConnectionTelemetry.Type.UART.toString())) {
+		                                                                	  if(thisConnection.name.startsWith(ConnectionTelemetry.Type.UART.toString()))
+		                                                                		  ((ConnectionTelemetryUART) thisConnection).setPortName(proposedNewName);
+		                                                                	  else
+		                                                                          replaceConnection(thisConnection, new ConnectionTelemetryUART(proposedNewName));
+		                                                                      return true;
+		                                                                  }
+		                                                                  if(ConnectionCamera.names.contains(proposedNewName)) {
+		                                                                      replaceConnection(thisConnection, new ConnectionCamera(proposedNewName));
+		                                                                      return true;
+		                                                                  }
+		                                                                  
+		                                                                  // should not get here
+		                                                                  return false;
+		                                                              });
+		
+		return namesCombobox;
 		
 	}
 	
@@ -285,7 +376,7 @@ public class ConnectionsController {
 		
 		// if not importing a settings file, disconnect and remove existing samples/frames
 		if(settingsFileCount == 0) {
-			for(Connection connection : ConnectionsController.allConnections) {
+			for(Connection connection : allConnections) {
 				connection.disconnect(null);
 				connection.removeAllData();
 			}
@@ -297,22 +388,22 @@ public class ConnectionsController {
 			for(String filepath : filepaths)
 				if(filepath.endsWith(".txt"))
 					if(!importSettingsFile(filepath, csvFileCount + mkvFileCount == 0)) {
-						ConnectionsController.removeAllConnections();
-						ConnectionsController.addConnection(new ConnectionTelemetry());
+						removeAllConnections();
+						addConnection();
 						return;
 					}
 		}
 		
 		for(String filepath : filepaths) {
 			if(filepath.endsWith(".csv")) {
-				for(int connectionN = 0; connectionN < ConnectionsController.allConnections.size(); connectionN++) {
-					Connection connection = ConnectionsController.allConnections.get(connectionN);
+				for(int connectionN = 0; connectionN < allConnections.size(); connectionN++) {
+					Connection connection = allConnections.get(connectionN);
 					if(filepath.endsWith(" - connection " + connectionN + " - " + connection.name.replaceAll(filenameSanitizer, "") + ".csv"))
 						imports.put(connection, filepath);
 				}
 			} else if(filepath.endsWith(".mkv")) {
-				for(int connectionN = 0; connectionN < ConnectionsController.allConnections.size(); connectionN++) {
-					Connection connection = ConnectionsController.allConnections.get(connectionN);
+				for(int connectionN = 0; connectionN < allConnections.size(); connectionN++) {
+					Connection connection = allConnections.get(connectionN);
 					if(filepath.endsWith(" - connection " + connectionN + " - " + connection.name.replaceAll(filenameSanitizer, "_") + ".mkv"))
 						imports.put(connection, filepath);
 				}
@@ -338,7 +429,7 @@ public class ConnectionsController {
 			SettingsController.setAntialiasingLevel(16);
 			
 			ConnectionCamera connection = new ConnectionCamera(cameraName);
-			ConnectionsController.addConnection(connection);
+			addConnection(connection);
 			imports.put(connection, filepaths[0]);
 			
 			OpenGLCameraChart cameraChart = new OpenGLCameraChart(0, 0, 5, 4);
@@ -382,7 +473,7 @@ public class ConnectionsController {
 			
 			// when importing an MKV file by itself, "finish" importing it, then rewind, then play (so the timeline shows the entire amount of time)
 			if(moviePlayerMode) {
-				ConnectionsController.cameraConnections.get(0).finishImporting();
+				cameraConnections.get(0).finishImporting();
 				OpenGLChartsView.instance.setPausedView(firstTimestamp, null, 0, false);
 				OpenGLTimelineChart timeline = (OpenGLTimelineChart) ChartsController.getCharts().get(1);
 				timeline.playing = true;
@@ -395,7 +486,7 @@ public class ConnectionsController {
 			new Thread(() -> {
 				while(true) {
 					boolean allDone = true;
-					for(Connection connection : ConnectionsController.allConnections)
+					for(Connection connection : allConnections)
 						if(connection.receiverThread != null && connection.receiverThread.isAlive())
 							allDone = false;
 					if(allDone) {
@@ -446,13 +537,13 @@ public class ConnectionsController {
 			}
 	
 			for(ConnectionTelemetry connection : telemetryToExport) {
-				int connectionN = ConnectionsController.allConnections.indexOf(connection);
+				int connectionN = allConnections.indexOf(connection);
 				String filename = filepath + " - connection " + connectionN + " - " + connection.name.replaceAll(filenameSanitizer, "");
 				connection.exportDataFile(filename, completedSampleCount);
 			}
 	
 			for(ConnectionCamera connection : camerasToExport) {
-				int connectionN = ConnectionsController.allConnections.indexOf(connection);
+				int connectionN = allConnections.indexOf(connection);
 				String filename = filepath + " - connection " + connectionN + " - " + connection.name.replaceAll(filenameSanitizer, "_");
 				connection.exportDataFile(filename, completedSampleCount);
 			}
@@ -528,8 +619,10 @@ public class ConnectionsController {
 			
 			file.println(allConnections.size() + " Connections:");
 			file.println("");
-			for(Connection connection : allConnections)
+			for(Connection connection : allConnections) {
 				connection.exportSettings(file);
+				file.println("");
+			}
 			
 			file.println(ChartsController.getCharts().size() + " Charts:");
 			
@@ -625,16 +718,22 @@ public class ConnectionsController {
 			ChartUtils.parseExact(lines.remove(), "");
 			
 			for(int i = 0; i < connectionsCount; i++) {
-				Connection newConnection = lines.peek().trim().equals("connection type = Camera") ? new ConnectionCamera() :
-				                                                                                    new ConnectionTelemetry();
+				String type = ChartUtils.parseString (lines.remove(), "connection type = %s");
+				Connection newConnection = type.equals("Camera")                                        ? new ConnectionCamera() :
+				                           type.equals(ConnectionTelemetry.Type.TCP.toString())         ? new ConnectionTelemetryTCP() :
+				                           type.equals(ConnectionTelemetry.Type.UDP.toString())         ? new ConnectionTelemetryUDP() :
+				                           type.equals(ConnectionTelemetry.Type.DEMO.toString())        ? new ConnectionTelemetryDemo() :
+				                           type.equals(ConnectionTelemetry.Type.STRESS_TEST.toString()) ? new ConnectionTelemetryStressTest() :
+				                                                                                          new ConnectionTelemetryUART(ConnectionTelemetry.Type.UART.toString());
+				addConnection(newConnection);
 				newConnection.importSettings(lines);
 				if(connect)
 					newConnection.connect(false);
-				addConnection(newConnection);
 			}
 			if(connectionsCount == 0)
-				addConnection(new ConnectionTelemetry());
+				addConnection();
 
+			ChartUtils.parseExact(lines.remove(), "");
 			int chartsCount = ChartUtils.parseInteger(lines.remove(), "%d Charts:");
 			if(chartsCount == 0) {
 				NotificationsController.showHintUntil("Add a chart by clicking on a tile, or by clicking-and-dragging across multiple tiles.", () -> !ChartsController.getCharts().isEmpty(), true);

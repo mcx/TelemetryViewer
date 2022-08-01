@@ -565,7 +565,7 @@ public class ChartUtils {
 	}
 	
 	/**
-	 * Takes a string of text and attempts to extract an float from the beginning or end of it.
+	 * Takes a string of text and attempts to extract a float from the beginning or end of it.
 	 * Throws an AssertionException if the text does not match the format string or does not start/end with a float value.
 	 * 
 	 * @param text            Line of text to examine.
@@ -1397,73 +1397,6 @@ public class ChartUtils {
 			}
 			
 		}
-		
-	}
-	
-	/**
-	 * Converts a String of text to a byte[], optionally appending a CR and/or LF.
-	 * 
-	 * @param textString    Input string.
-	 * @param lf            True to append a \n.
-	 * @param cr            True to append a \r.
-	 * @return              Resulting byte[].
-	 */
-	public static byte[] convertTextStringToBytes(String textString, boolean lf, boolean cr) {
-		
-		if(!cr && !lf) {
-			return textString.getBytes();
-		} else if(cr && lf) {
-			byte[] temp = textString.getBytes();
-			byte[] bytes = new byte[temp.length + 2];
-			System.arraycopy(temp, 0, bytes, 0, temp.length);
-			bytes[bytes.length - 2] = (byte) '\r';
-			bytes[bytes.length - 1] = (byte) '\n';
-			return bytes;
-		} else {
-			byte[] temp = textString.getBytes();
-			byte[] bytes = new byte[temp.length + 1];
-			System.arraycopy(temp, 0, bytes, 0, temp.length);
-			bytes[bytes.length - 1] = (byte) (cr ? '\r' : '\n');
-			return bytes;
-		}
-		
-	}
-	
-	/**
-	 * Converts a String of hex bytes (example: "12 34 AB CD") to a byte[].
-	 * 
-	 * @param hexString    Hex text with spaces between each byte. The spaces are required!
-	 * @return             Corresponding byte[].
-	 */
-	public static byte[] convertHexStringToBytes(String hexString) {
-		
-		if(hexString.length() == 0)
-			return new byte[0];
-		
-		String[] hexBytes = hexString.trim().split(" ");
-		byte[] bytes = new byte[hexBytes.length];
-		for(int i = 0; i < hexBytes.length; i++)
-			bytes[i] = (byte) Integer.parseInt(hexBytes[i], 16);
-		return bytes;
-		
-	}
-	
-	/**
-	 * Converts a String of binary bytes (Example: "00000001 10101010") to a byte[].
-	 * 
-	 * @param binString    Binary text with spaces between each byte. The spaces are required!
-	 * @return             Corresponding byte[].
-	 */
-	public static byte[] convertBinStringToBytes(String binString) {
-		
-		if(binString.length() == 0)
-			return new byte[0];
-		
-		String[] binaryBytes = binString.trim().split(" ");
-		byte[] bytes = new byte[binaryBytes.length];
-		for(int i = 0; i < binaryBytes.length; i++)
-			bytes[i] = (byte) Integer.parseInt(binaryBytes[i], 2);
-		return bytes;
 		
 	}
 	

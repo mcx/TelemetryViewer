@@ -1,5 +1,6 @@
 import java.awt.Toolkit;
 import java.io.PrintWriter;
+import java.util.Queue;
 import java.util.concurrent.atomic.AtomicLong;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
@@ -24,7 +25,7 @@ public abstract class Connection {
 	/**
 	 * @return    A GUI with widgets for controlling this connection.
 	 */
-	public abstract JPanel getUpdatedGui();
+	public abstract JPanel getUpdatedConnectionGui();
 	
 	/**
 	 * Connects and listens for incoming telemetry.
@@ -39,7 +40,7 @@ public abstract class Connection {
 	 * @param lines              Lines of text from the settings file.
 	 * @throws AssertionError    If the settings file does not contain a valid configuration.
 	 */
-	public abstract void importSettings(ConnectionsController.QueueOfLines lines) throws AssertionError;
+	public abstract void importSettings(Queue<String> lines) throws AssertionError;
 	
 	/**
 	 * Saves the configuration to a settings file.

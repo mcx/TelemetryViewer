@@ -198,7 +198,7 @@ public class SettingsView extends JPanel {
 		// if visible, also repopulate the panel with transmit GUIs
 		if(visible)
 			ConnectionsController.telemetryConnections.forEach(connection -> {
-				JPanel txGui = connection.getTransmitPanel();
+				JPanel txGui = connection.getUpdatedTransmitGUI();
 				if(txGui != null) {
 					panel.add(txGui, "growx, span 2, gapbottom " + 4*Theme.padding);
 					txGuis.add(txGui);
@@ -221,17 +221,30 @@ public class SettingsView extends JPanel {
 	}
 	
 	/**
+	 * Redraws the SettingsView if it is visible.
+	 * This method should be called whenever a UART Transmit GUI might need to be redrawn.
+	 */
+	public void redraw() {
+		
+		if(isVisible())
+			setVisible(true);
+		
+	}
+	
+	/**
 	 * Ensures this panel is sized correctly.
 	 */
 	@Override public Dimension getPreferredSize() {
 		
-		txGuis.forEach(gui -> gui.setVisible(false));
 		panel.setPreferredSize(null);
 		scrollablePanel.setPreferredSize(null);
-		Dimension emptySize = scrollablePanel.getPreferredSize();
-		txGuis.forEach(gui -> gui.setVisible(true));
-		Dimension fullSize = scrollablePanel.getPreferredSize();
-		Dimension size = new Dimension(Integer.max(emptySize.width, fullSize.width), emptySize.height);
+		Dimension size = scrollablePanel.getPreferredSize();
+		
+		// ignore the height of the TX GUIs
+		txGuis.forEach(gui -> {
+			size.height -= gui.getPreferredSize().height;
+			size.height -= 5*Theme.padding;
+		});
 		
 		if(!isVisible) {
 			

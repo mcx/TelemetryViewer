@@ -96,7 +96,10 @@ public class ConfigureView extends JPanel {
 		activeChart = chart;
 		activeChartIsNew = false;
 		
+		widgetsPanel.setVisible(false); // hiding during removeAll() massively speeds up removeAll()
 		widgetsPanel.removeAll();
+		widgetsPanel.setVisible(true);
+		
 		chart.getConfigurationGui(widgetsPanel);
 		
 		JButton doneButton = new JButton("Done");
@@ -145,7 +148,10 @@ public class ConfigureView extends JPanel {
 			chartTypePanel.add(button);
 		}
 		
+		widgetsPanel.setVisible(false); // hiding during removeAll() massively speeds up removeAll()
 		widgetsPanel.removeAll();
+		widgetsPanel.setVisible(true);
+		
 		widgetsPanel.add(chartTypePanel);
 		chart.getConfigurationGui(widgetsPanel);
 		

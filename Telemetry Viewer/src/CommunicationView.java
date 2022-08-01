@@ -188,7 +188,7 @@ public class CommunicationView extends JPanel {
 		});
 		
 		connectionButton = new JButton("New Connection");
-		connectionButton.addActionListener(event -> ConnectionsController.addConnection(new ConnectionTelemetry()));
+		connectionButton.addActionListener(event -> ConnectionsController.addConnection());
 		
 		// show the components
 		redraw();
@@ -217,7 +217,7 @@ public class CommunicationView extends JPanel {
 			add(helpButton);
 			add(connectionButton);
 			for(int i = 0; i < ConnectionsController.allConnections.size(); i++)
-				add(ConnectionsController.allConnections.get(i).getUpdatedGui(), "align right, cell 5 " + i);
+				add(ConnectionsController.allConnections.get(i).getUpdatedConnectionGui(), "align right, cell 5 " + i);
 			
 			boolean importing = ConnectionsController.importing;
 			boolean exporting = ConnectionsController.exporting;
@@ -226,7 +226,7 @@ public class CommunicationView extends JPanel {
 				connectionButton.setText("New Connection");
 				for(ActionListener listener : connectionButton.getActionListeners())
 					connectionButton.removeActionListener(listener);
-				connectionButton.addActionListener(event -> ConnectionsController.addConnection(new ConnectionTelemetry()));
+				connectionButton.addActionListener(event -> ConnectionsController.addConnection());
 			} else if(importing) {
 				// allow the user to finish or cancel if currently importing
 				connectionButton.setText(ConnectionsController.realtimeImporting ? "Finish Importing" : "Cancel Importing");
@@ -252,7 +252,7 @@ public class CommunicationView extends JPanel {
 			repaint();
 		
 			// also redraw the SettingsView because it contains the transmit GUIs
-			SettingsView.instance.setVisible(SettingsView.instance.isVisible());
+			SettingsView.instance.redraw();
 			
 		});
 		

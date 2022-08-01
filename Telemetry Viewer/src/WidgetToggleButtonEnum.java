@@ -60,7 +60,7 @@ public class WidgetToggleButtonEnum<T> implements Widget {
 		
 		for(JToggleButton button : buttons)
 			if(button.getText().equals(newValue.toString()))
-				button.setSelected(true);
+				button.doClick();
 		
 	}
 

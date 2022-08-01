@@ -29,6 +29,7 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Stack;
 import java.util.AbstractMap.SimpleEntry;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -172,7 +173,7 @@ public class ConnectionCamera extends Connection {
 		
 	}
 
-	@Override public JPanel getUpdatedGui() {
+	@Override public JPanel getUpdatedConnectionGui() {
 		
 		JPanel panel = new JPanel();
 		panel.setLayout(new MigLayout("hidemode 3, gap " + Theme.padding  + ", insets 0 " + Theme.padding + " 0 0"));
@@ -205,39 +206,7 @@ public class ConnectionCamera extends Connection {
 		});
 		
 		// connections list
-		JComboBox<String> connectionNamesCombobox = new JComboBox<String>();
-		for(String name : ConnectionsController.getNames())
-			connectionNamesCombobox.addItem(name);
-		connectionNamesCombobox.setMaximumRowCount(connectionNamesCombobox.getItemCount());
-		connectionNamesCombobox.setSelectedItem(isMjpeg ? mjpegOverHttp : name);
-		if(!connectionNamesCombobox.getSelectedItem().equals(isMjpeg ? mjpegOverHttp : name)) {
-			connectionNamesCombobox.addItem(name);
-			connectionNamesCombobox.setSelectedItem(name);
-		}
-		if(ConnectionsController.importing) {
-			String importName = "Importing [" + (isMjpeg ? mjpegOverHttp : name) + "]";
-			connectionNamesCombobox.addItem(importName);
-			connectionNamesCombobox.setSelectedItem(importName);
-		}
-		connectionNamesCombobox.setMinimumSize(connectionNamesCombobox.getPreferredSize());
-		connectionNamesCombobox.addActionListener(event -> {
-			
-			String newConnectionName = connectionNamesCombobox.getSelectedItem().toString();
-			if(newConnectionName.equals(isMjpeg ? mjpegOverHttp : name))
-				return;
-			
-			// ignore change if the connection already exists, but allow multiple TCP/UDP/Demo Mode/MJPEG over HTTP connections
-			for(Connection connection : ConnectionsController.allConnections)
-				if(connection.name.equals(newConnectionName) && !newConnectionName.equals("TCP") && !newConnectionName.equals("UDP") && !newConnectionName.equals("Demo Mode") && !newConnectionName.equals(mjpegOverHttp)) {
-					connectionNamesCombobox.setSelectedItem(name);
-					return;
-				}
-
-			// change to the new connection
-			ConnectionsController.replaceConnection(ConnectionCamera.this, names.contains(newConnectionName) ? new ConnectionCamera(newConnectionName) :
-			                                                                                                   new ConnectionTelemetry(newConnectionName));
-			
-		});
+		JComboBox<String> connectionNamesCombobox = ConnectionsController.getNamesCombobox(this);
 		
 		// connect/disconnect button
 		@SuppressWarnings("serial")
@@ -713,7 +682,7 @@ public class ConnectionCamera extends Connection {
 		
 	}
 
-	@Override public void importSettings(ConnectionsController.QueueOfLines lines) throws AssertionError {
+	@Override public void importSettings(Queue<String> lines) throws AssertionError {
 
 		ChartUtils.parseExact(lines.remove(), "connection type = Camera");
 		
