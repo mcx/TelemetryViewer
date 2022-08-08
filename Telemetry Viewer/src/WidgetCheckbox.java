@@ -49,6 +49,13 @@ public class WidgetCheckbox extends JCheckBox implements Widget {
 		
 	}
 	
+	@Override public void setSelected(boolean isSelected) {
+		
+		super.setSelected(isSelected);
+		handler.accept(isSelected());
+		
+	}
+	
 	@Override public void appendToGui(JPanel gui) {
 		
 		gui.add(new JLabel(""), "");

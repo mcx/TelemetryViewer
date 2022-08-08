@@ -148,6 +148,326 @@ public abstract class PositionedChart {
 	 */
 	public abstract EventHandler drawChart(GL2ES3 gl, float[] chartMatrix, int width, int height, long endTimestamp, int endSampleNumber, double zoomLevel, int mouseX, int mouseY);
 	
+	/**
+	 * @param glColor    Optional color to show to the left of the text. Use null to not show a color.
+	 * @param text       Text to show. Must not be null.
+	 */
+	protected record TooltipEntry(float[] glColor, String text) {}
+	
+	/**
+	 * Draws a tooltip. An anchor point specifies where the tooltip should point to.
+	 * 
+	 * @param gl              The OpenGL context.
+	 * @param entries         List of entries (text + optional color) to draw on the tooltip.
+	 * @param anchorX         X location to point to.
+	 * @param anchorY         Y location to point to.
+	 * @param topLeftX        Allowed bounding box's top-left x coordinate.
+	 * @param topLeftY        Allowed bounding box's top-left y coordinate.
+	 * @param bottomRightX    Allowed bounding box's bottom-right x coordinate.
+	 * @param bottomRightY    Allowed bounding box's bottom-right y coordinate.
+	 */
+	protected static void drawTooltip(GL2ES3 gl, List<TooltipEntry> entries, float anchorX, float anchorY, float topLeftX, float topLeftY, float bottomRightX, float bottomRightY) {
+			
+		final int NORTH      = 0;
+		final int SOUTH      = 1;
+		final int WEST       = 2;
+		final int EAST       = 3;
+		final int NORTH_WEST = 4;
+		final int NORTH_EAST = 5;
+		final int SOUTH_WEST = 6;
+		final int SOUTH_EAST = 7;
+		
+		float padding = 6f * ChartsController.getDisplayScalingFactor();
+		
+		float textHeight = OpenGL.smallTextHeight;
+		float maxWidth = 0;
+		for(TooltipEntry entry : entries)
+			maxWidth = Float.max(maxWidth, (entry.glColor == null) ? OpenGL.smallTextWidth(gl, entry.text) : 
+			                                                         OpenGL.smallTextWidth(gl, entry.text) + textHeight + Theme.tooltipTextPadding);
+		
+		float boxWidth = maxWidth + (2 * padding);
+		float boxHeight = entries.size() * (textHeight + padding) + padding;
+		
+		// decide which orientation to draw the tooltip in, or return if there is not enough space
+		int orientation = NORTH;
+		if(anchorY + padding + boxHeight <= topLeftY) {
+			// there is space above the anchor, so use NORTH or NORTH_WEST or NORTH_EAST if there is enough horizontal space
+			if(anchorX - (boxWidth / 2f) >= topLeftX && anchorX + (boxWidth / 2f) <= bottomRightX)
+				orientation = NORTH;
+			else if(anchorX - boxWidth >= topLeftX && anchorX <= bottomRightX)
+				orientation = NORTH_WEST;
+			else if(anchorX >= topLeftX && anchorX + boxWidth <= bottomRightX)
+				orientation = NORTH_EAST;
+			else
+				return;
+		} else if(anchorY + (boxHeight / 2f) <= topLeftY && anchorY - (boxHeight / 2f) >= bottomRightY) {
+			// there is some space above and below the anchor, so use WEST or EAST if there is enough horizontal space
+			if(anchorX - padding - boxWidth >= topLeftX)
+				orientation = WEST;
+			else if(anchorX + padding + boxWidth <= bottomRightX)
+				orientation = EAST;
+			else
+				return;
+		} else if(anchorY - padding - boxHeight >= bottomRightY) {
+			// there is space below the anchor, so use SOUTH or SOUTH_WEST or SOUTH_EAST if there is enough horizontal space
+			if(anchorX - (boxWidth / 2f) >= topLeftX && anchorX + (boxWidth / 2f) <= bottomRightX)
+				orientation = SOUTH;
+			else if(anchorX - boxWidth >= topLeftX && anchorX <= bottomRightX)
+				orientation = SOUTH_WEST;
+			else if(anchorX >= topLeftX && anchorX + boxWidth <= bottomRightX)
+				orientation = SOUTH_EAST;
+			else
+				return;
+		} else {
+			// there is not enough space anywhere
+			return;
+		}
+		
+		// draw the tooltip
+		if(orientation == NORTH) {
+			
+			OpenGL.drawTriangle2D(gl, Theme.tooltipBackgroundColor, anchorX,                  anchorY,
+			                                                        anchorX + (padding / 2f), anchorY + padding,
+			                                                        anchorX - (padding / 2f), anchorY + padding);
+			OpenGL.drawQuad2D(gl, Theme.tooltipBackgroundColor, anchorX - (boxWidth / 2f), anchorY + padding,
+			                                                    anchorX + (boxWidth / 2f), anchorY + padding + boxHeight);
+			
+			OpenGL.buffer.rewind();
+			OpenGL.buffer.put(anchorX - (boxWidth / 2f)); OpenGL.buffer.put(anchorY + padding + boxHeight);
+			OpenGL.buffer.put(anchorX - (boxWidth / 2f)); OpenGL.buffer.put(anchorY + padding);
+			OpenGL.buffer.put(anchorX - (padding / 2f));  OpenGL.buffer.put(anchorY + padding);
+			OpenGL.buffer.put(anchorX);                   OpenGL.buffer.put(anchorY);
+			OpenGL.buffer.put(anchorX + (padding / 2f));  OpenGL.buffer.put(anchorY + padding);
+			OpenGL.buffer.put(anchorX + (boxWidth / 2f)); OpenGL.buffer.put(anchorY + padding);
+			OpenGL.buffer.put(anchorX + (boxWidth / 2f)); OpenGL.buffer.put(anchorY + padding + boxHeight);
+			OpenGL.buffer.rewind();
+			OpenGL.drawLinesXy(gl, GL3.GL_LINE_LOOP, Theme.tooltipBorderColor, OpenGL.buffer, 7);
+			
+			// draw the text and color boxes
+			for(int i = 0; i < entries.size(); i++) {
+				TooltipEntry entry = entries.get(i);
+				float textX = (entry.glColor == null) ? anchorX - (boxWidth / 2f) + (boxWidth - OpenGL.smallTextWidth(gl, entry.text)) / 2 :
+				                                        anchorX - (boxWidth / 2f) + padding + textHeight + Theme.tooltipTextPadding;
+				float textY = anchorY + padding + boxHeight - ((i + 1) * (padding + textHeight));
+				OpenGL.drawSmallText(gl, entry.text, (int) textX, (int) textY, 0);
+				if(entry.glColor != null)
+					OpenGL.drawQuad2D(gl, entry.glColor, textX - Theme.tooltipTextPadding - textHeight, textY,
+					                                     textX - Theme.tooltipTextPadding,              textY + textHeight);
+			}
+			
+		} else if(orientation == SOUTH) {
+			
+			OpenGL.drawTriangle2D(gl, Theme.tooltipBackgroundColor, anchorX,                  anchorY, 
+			                                                        anchorX - (padding / 2f), anchorY - padding,
+			                                                        anchorX + (padding / 2f), anchorY - padding);
+			OpenGL.drawQuad2D(gl, Theme.tooltipBackgroundColor, anchorX - (boxWidth / 2f), anchorY - padding - boxHeight,
+			                                                    anchorX + (boxWidth / 2f), anchorY - padding);
+			
+			OpenGL.buffer.rewind();
+			OpenGL.buffer.put(anchorX - (boxWidth / 2f)); OpenGL.buffer.put(anchorY - padding);
+			OpenGL.buffer.put(anchorX - (boxWidth / 2f)); OpenGL.buffer.put(anchorY - padding - boxHeight);
+			OpenGL.buffer.put(anchorX + (boxWidth / 2f)); OpenGL.buffer.put(anchorY - padding - boxHeight);
+			OpenGL.buffer.put(anchorX + (boxWidth / 2f)); OpenGL.buffer.put(anchorY - padding);
+			OpenGL.buffer.put(anchorX + (padding / 2f));  OpenGL.buffer.put(anchorY - padding);
+			OpenGL.buffer.put(anchorX);                   OpenGL.buffer.put(anchorY);
+			OpenGL.buffer.put(anchorX - (padding / 2f));  OpenGL.buffer.put(anchorY - padding);
+			OpenGL.buffer.rewind();
+			OpenGL.drawLinesXy(gl, GL3.GL_LINE_LOOP, Theme.tooltipBorderColor, OpenGL.buffer, 7);
+			
+			// draw the text and color boxes
+			for(int i = 0; i < entries.size(); i++) {
+				TooltipEntry entry = entries.get(i);
+				float textX = (entry.glColor == null) ? anchorX - (boxWidth / 2f) + (boxWidth - OpenGL.smallTextWidth(gl, entry.text)) / 2 :
+				                                        anchorX - (boxWidth / 2f) + padding + textHeight + Theme.tooltipTextPadding;
+				float textY = anchorY - padding - ((i + 1) * (padding + textHeight));
+				OpenGL.drawSmallText(gl, entry.text, (int) textX, (int) textY, 0);
+				if(entry.glColor != null)
+					OpenGL.drawQuad2D(gl, entry.glColor, textX - Theme.tooltipTextPadding - textHeight, textY,
+					                                     textX - Theme.tooltipTextPadding,              textY + textHeight);
+			}
+			
+		} else if(orientation == WEST) {
+			
+			OpenGL.drawTriangle2D(gl, Theme.tooltipBackgroundColor, anchorX, anchorY,
+			                                                        anchorX - padding, anchorY + (padding / 2f),
+			                                                        anchorX - padding, anchorY - (padding / 2f));
+			OpenGL.drawQuad2D(gl, Theme.tooltipBackgroundColor, anchorX - padding - boxWidth, anchorY - (boxHeight / 2f),
+			                                                    anchorX - padding,            anchorY + (boxHeight / 2f));
+			
+			OpenGL.buffer.rewind();
+			OpenGL.buffer.put(anchorX - padding - boxWidth); OpenGL.buffer.put(anchorY + (boxHeight / 2f));
+			OpenGL.buffer.put(anchorX - padding - boxWidth); OpenGL.buffer.put(anchorY - (boxHeight / 2f));
+			OpenGL.buffer.put(anchorX - padding);            OpenGL.buffer.put(anchorY - (boxHeight / 2f));
+			OpenGL.buffer.put(anchorX - padding);            OpenGL.buffer.put(anchorY - (padding / 2f));
+			OpenGL.buffer.put(anchorX);                      OpenGL.buffer.put(anchorY);
+			OpenGL.buffer.put(anchorX - padding);            OpenGL.buffer.put(anchorY + (padding / 2f));
+			OpenGL.buffer.put(anchorX - padding);            OpenGL.buffer.put(anchorY + (boxHeight / 2f));
+			OpenGL.buffer.rewind();
+			OpenGL.drawLinesXy(gl, GL3.GL_LINE_LOOP, Theme.tooltipBorderColor, OpenGL.buffer, 7);
+			
+			// draw the text and color boxes
+			for(int i = 0; i < entries.size(); i++) {
+				TooltipEntry entry = entries.get(i);
+				float textX = (entry.glColor == null) ? anchorX - padding - boxWidth + (boxWidth - OpenGL.smallTextWidth(gl, entry.text)) / 2 :
+				                                        anchorX - boxWidth + textHeight + Theme.tooltipTextPadding;
+				float textY = anchorY + (boxHeight / 2f) - ((i + 1) * (padding + textHeight));
+				OpenGL.drawSmallText(gl, entry.text, (int) textX, (int) textY, 0);
+				if(entry.glColor != null)
+					OpenGL.drawQuad2D(gl, entry.glColor, textX - Theme.tooltipTextPadding - textHeight, textY,
+					                                     textX - Theme.tooltipTextPadding,              textY + textHeight);
+			}
+			
+		} else if(orientation == EAST) {
+			
+			OpenGL.drawTriangle2D(gl, Theme.tooltipBackgroundColor, anchorX,           anchorY,
+			                                                        anchorX + padding, anchorY - (padding / 2f),
+			                                                        anchorX + padding, anchorY + (padding / 2f));
+			OpenGL.drawQuad2D(gl, Theme.tooltipBackgroundColor, anchorX + padding,            anchorY - (boxHeight / 2f),
+			                                                    anchorX + padding + boxWidth, anchorY + (boxHeight / 2f));
+			
+			OpenGL.buffer.rewind();
+			OpenGL.buffer.put(anchorX + padding);            OpenGL.buffer.put(anchorY + (boxHeight / 2f));
+			OpenGL.buffer.put(anchorX + padding);            OpenGL.buffer.put(anchorY + (padding / 2f));
+			OpenGL.buffer.put(anchorX);                      OpenGL.buffer.put(anchorY);
+			OpenGL.buffer.put(anchorX + padding);            OpenGL.buffer.put(anchorY - (padding / 2f));
+			OpenGL.buffer.put(anchorX + padding);            OpenGL.buffer.put(anchorY - (boxHeight / 2f));
+			OpenGL.buffer.put(anchorX + padding + boxWidth); OpenGL.buffer.put(anchorY - (boxHeight / 2f));
+			OpenGL.buffer.put(anchorX + padding + boxWidth); OpenGL.buffer.put(anchorY + (boxHeight / 2f));
+			OpenGL.buffer.rewind();
+			OpenGL.drawLinesXy(gl, GL3.GL_LINE_LOOP, Theme.tooltipBorderColor, OpenGL.buffer, 7);
+			
+			// draw the text and color boxes
+			for(int i = 0; i < entries.size(); i++) {
+				TooltipEntry entry = entries.get(i);
+				float textX = (entry.glColor == null) ? anchorX + padding + (boxWidth - OpenGL.smallTextWidth(gl, entry.text)) / 2 :
+				                                        anchorX + (2f * padding) + textHeight + Theme.tooltipTextPadding;
+				float textY = anchorY + (boxHeight / 2f) - ((i + 1) * (padding + textHeight));
+				OpenGL.drawSmallText(gl, entry.text, (int) textX, (int) textY, 0);
+				if(entry.glColor != null)
+					OpenGL.drawQuad2D(gl, entry.glColor, textX - Theme.tooltipTextPadding - textHeight, textY,
+					                                     textX - Theme.tooltipTextPadding,              textY + textHeight);
+			}
+			
+		} else if(orientation == NORTH_WEST) {
+			
+			OpenGL.drawTriangle2D(gl, Theme.tooltipBackgroundColor, anchorX,                     anchorY,
+			                                                        anchorX,                     anchorY + padding,
+			                                                        anchorX - (0.85f * padding), anchorY + padding);
+			OpenGL.drawQuad2D(gl, Theme.tooltipBackgroundColor, anchorX - boxWidth, anchorY + padding,
+			                                                    anchorX,            anchorY + padding + boxHeight);
+			
+			OpenGL.buffer.rewind();
+			OpenGL.buffer.put(anchorX - boxWidth);          OpenGL.buffer.put(anchorY + padding + boxHeight);
+			OpenGL.buffer.put(anchorX - boxWidth);          OpenGL.buffer.put(anchorY + padding);
+			OpenGL.buffer.put(anchorX - (0.85f * padding)); OpenGL.buffer.put(anchorY + padding);
+			OpenGL.buffer.put(anchorX);                     OpenGL.buffer.put(anchorY);
+			OpenGL.buffer.put(anchorX);                     OpenGL.buffer.put(anchorY + padding + boxHeight);
+			OpenGL.buffer.rewind();
+			OpenGL.drawLinesXy(gl, GL3.GL_LINE_LOOP, Theme.tooltipBorderColor, OpenGL.buffer, 5);
+			
+			// draw the text and color boxes
+			for(int i = 0; i < entries.size(); i++) {
+				TooltipEntry entry = entries.get(i);
+				float textX = (entry.glColor == null) ? anchorX - boxWidth + (boxWidth - OpenGL.smallTextWidth(gl, entry.text)) / 2 :
+				                                        anchorX - boxWidth + padding + textHeight + Theme.tooltipTextPadding;
+				float textY = anchorY + padding + boxHeight - ((i + 1) * (padding + textHeight));
+				OpenGL.drawSmallText(gl, entry.text, (int) textX, (int) textY, 0);
+				if(entry.glColor != null)
+					OpenGL.drawQuad2D(gl, entry.glColor, textX - Theme.tooltipTextPadding - textHeight, textY,
+					                                     textX - Theme.tooltipTextPadding,              textY + textHeight);
+			}
+			
+		} else if(orientation == NORTH_EAST) {
+			
+			OpenGL.drawTriangle2D(gl, Theme.tooltipBackgroundColor, anchorX,                     anchorY + padding,
+			                                                        anchorX,                     anchorY,
+			                                                        anchorX + (0.85f * padding), anchorY + padding);
+			OpenGL.drawQuad2D(gl, Theme.tooltipBackgroundColor, anchorX,            anchorY + padding,
+			                                                    anchorX + boxWidth, anchorY + padding + boxHeight);
+			
+			OpenGL.buffer.rewind();
+			OpenGL.buffer.put(anchorX);                     OpenGL.buffer.put(anchorY + padding + boxHeight);
+			OpenGL.buffer.put(anchorX);                     OpenGL.buffer.put(anchorY);
+			OpenGL.buffer.put(anchorX + (0.85f * padding)); OpenGL.buffer.put(anchorY + padding);
+			OpenGL.buffer.put(anchorX + boxWidth);          OpenGL.buffer.put(anchorY + padding);
+			OpenGL.buffer.put(anchorX + boxWidth);          OpenGL.buffer.put(anchorY + padding + boxHeight);
+			OpenGL.buffer.rewind();
+			OpenGL.drawLinesXy(gl, GL3.GL_LINE_LOOP, Theme.tooltipBorderColor, OpenGL.buffer, 5);
+			
+			// draw the text and color boxes
+			for(int i = 0; i < entries.size(); i++) {
+				TooltipEntry entry = entries.get(i);
+				float textX = (entry.glColor == null) ? anchorX + (boxWidth - OpenGL.smallTextWidth(gl, entry.text)) / 2 :
+				                                        anchorX + padding + textHeight + Theme.tooltipTextPadding;
+				float textY = anchorY + padding + boxHeight - ((i + 1) * (padding + textHeight));
+				OpenGL.drawSmallText(gl, entry.text, (int) textX, (int) textY, 0);
+				if(entry.glColor != null)
+					OpenGL.drawQuad2D(gl, entry.glColor, textX - Theme.tooltipTextPadding - textHeight, textY,
+					                                     textX - Theme.tooltipTextPadding,              textY + textHeight);
+			}
+			
+		} else if(orientation == SOUTH_WEST) {
+			
+			OpenGL.drawTriangle2D(gl, Theme.tooltipBackgroundColor, anchorX,                     anchorY,
+			                                                        anchorX - (0.85f * padding), anchorY - padding,
+			                                                        anchorX,                     anchorY - padding);
+			OpenGL.drawQuad2D(gl, Theme.tooltipBackgroundColor, anchorX - boxWidth, anchorY - padding - boxHeight,
+			                                                    anchorX,            anchorY - padding);
+			
+			OpenGL.buffer.rewind();
+			OpenGL.buffer.put(anchorX - boxWidth);          OpenGL.buffer.put(anchorY - padding);
+			OpenGL.buffer.put(anchorX - boxWidth);          OpenGL.buffer.put(anchorY - padding - boxHeight);
+			OpenGL.buffer.put(anchorX);                     OpenGL.buffer.put(anchorY - padding - boxHeight);
+			OpenGL.buffer.put(anchorX);                     OpenGL.buffer.put(anchorY);
+			OpenGL.buffer.put(anchorX - (0.85f * padding)); OpenGL.buffer.put(anchorY - padding);
+			OpenGL.buffer.rewind();
+			OpenGL.drawLinesXy(gl, GL3.GL_LINE_LOOP, Theme.tooltipBorderColor, OpenGL.buffer, 5);
+			
+			// draw the text and color boxes
+			for(int i = 0; i < entries.size(); i++) {
+				TooltipEntry entry = entries.get(i);
+				float textX = (entry.glColor == null) ? anchorX - boxWidth + (boxWidth - OpenGL.smallTextWidth(gl, entry.text)) / 2 :
+				                                        anchorX - boxWidth + padding + textHeight + Theme.tooltipTextPadding;
+				float textY = anchorY - padding - ((i + 1) * (padding + textHeight));
+				OpenGL.drawSmallText(gl, entry.text, (int) textX, (int) textY, 0);
+				if(entry.glColor != null)
+					OpenGL.drawQuad2D(gl, entry.glColor, textX - Theme.tooltipTextPadding - textHeight, textY,
+					                                     textX - Theme.tooltipTextPadding,              textY + textHeight);
+			}
+			
+		} else if(orientation == SOUTH_EAST) {
+			
+			OpenGL.drawTriangle2D(gl, Theme.tooltipBackgroundColor, anchorX,                     anchorY,
+			                                                        anchorX,                     anchorY - padding,
+			                                                        anchorX + (0.85f * padding), anchorY - padding);
+			OpenGL.drawQuad2D(gl, Theme.tooltipBackgroundColor, anchorX,            anchorY - padding - boxHeight,
+			                                                    anchorX + boxWidth, anchorY - padding);
+			
+			OpenGL.buffer.rewind();
+			OpenGL.buffer.put(anchorX);                     OpenGL.buffer.put(anchorY);
+			OpenGL.buffer.put(anchorX);                     OpenGL.buffer.put(anchorY - padding - boxHeight);
+			OpenGL.buffer.put(anchorX + boxWidth);          OpenGL.buffer.put(anchorY - padding - boxHeight);
+			OpenGL.buffer.put(anchorX + boxWidth);          OpenGL.buffer.put(anchorY - padding);
+			OpenGL.buffer.put(anchorX + (0.85f * padding)); OpenGL.buffer.put(anchorY - padding);
+			OpenGL.buffer.rewind();
+			OpenGL.drawLinesXy(gl, GL3.GL_LINE_LOOP, Theme.tooltipBorderColor, OpenGL.buffer, 5);
+			
+			// draw the text and color boxes
+			for(int i = 0; i < entries.size(); i++) {
+				TooltipEntry entry = entries.get(i);
+				float textX = (entry.glColor == null) ? anchorX + (boxWidth - OpenGL.smallTextWidth(gl, entry.text)) / 2 :
+				                                        anchorX + padding + textHeight + Theme.tooltipTextPadding;
+				float textY = anchorY - padding - ((i + 1) * (padding + textHeight));
+				OpenGL.drawSmallText(gl, entry.text, (int) textX, (int) textY, 0);
+				if(entry.glColor != null)
+					OpenGL.drawQuad2D(gl, entry.glColor, textX - Theme.tooltipTextPadding - textHeight, textY,
+					                                     textX - Theme.tooltipTextPadding,              textY + textHeight);
+			}
+			
+		}
+		
+	}
+	
 	public abstract void getConfigurationGui(JPanel gui);
 	
 	final public void importFrom(Queue<String> lines) {

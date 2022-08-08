@@ -1,4 +1,3 @@
-import java.awt.Color;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -633,16 +632,12 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 			Plot.TooltipInfo tooltip = plot.getTooltip(mouseX - (int) xPlotLeft, plotWidth);
 			if(tooltip.draw) {
 				String[] tooltipLines = tooltip.label.split("\n");
-				String[] text = new String[datasetsCount + tooltipLines.length];
-				Color[] colors = new Color[datasetsCount + tooltipLines.length];
-				for(int i = 0; i < tooltipLines.length; i++) {
-					text[i] = tooltipLines[i];
-					colors[i] = null;
-				}
+				List<TooltipEntry> entries = new ArrayList<TooltipEntry>(datasetsCount + tooltipLines.length);
+				for(String line : tooltipLines)
+					entries.add(new TooltipEntry(null, line));
 				for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
 					Dataset dataset = allDatasets.get(datasetN);
-					text[datasetN + tooltipLines.length] = datasets.getSampleAsString(dataset, tooltip.sampleNumber);
-					colors[datasetN + tooltipLines.length] = dataset.color;
+					entries.add(new TooltipEntry(dataset.glColor, datasets.getSampleAsString(dataset, tooltip.sampleNumber)));
 				}
 				float anchorX = tooltip.pixelX + xPlotLeft;
 				if(anchorX >= 0 && datasetsCount > 1) {
@@ -651,10 +646,11 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 					OpenGL.buffer.put(anchorX); OpenGL.buffer.put(yPlotBottom);
 					OpenGL.buffer.rewind();
 					OpenGL.drawLinesXy(gl, GL3.GL_LINES, Theme.tooltipVerticalBarColor, OpenGL.buffer, 2);
-					ChartUtils.drawTooltip(gl, text, colors, anchorX, mouseY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
+					drawTooltip(gl, entries, anchorX, mouseY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
 				} else if(anchorX >= 0) {
 					float anchorY = (datasets.getSample(allDatasets.get(0), tooltip.sampleNumber) - plotMinY) / plotRange * plotHeight + yPlotBottom;
-					ChartUtils.drawTooltip(gl, text, colors, anchorX, anchorY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
+					anchorY = Math.max(anchorY, yPlotBottom);
+					drawTooltip(gl, entries, anchorX, anchorY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
 				}
 			}
 		}

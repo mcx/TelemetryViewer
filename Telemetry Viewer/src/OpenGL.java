@@ -1073,6 +1073,88 @@ public class OpenGL {
 	}
 	
 	/**
+	 * Creates an empty non-multisampled texture intended for drawing a 2D histogram.
+	 * This texture only has a red channel (not RGBA!) composed of int32's.
+	 * 
+	 * @param gl               The OpenGL context.
+	 * @param textureHandle    The texture handle will be saved here.
+	 * @param width            Width, in pixels.
+	 * @param height           Height, in pixels.
+	 */
+	public static void createHistogramTexture(GL2ES3 gl, int[] textureHandle, int width, int height) {
+		
+		gl.glGenTextures(1, textureHandle, 0);
+		gl.glBindTexture(GL3.GL_TEXTURE_2D, textureHandle[0]);
+		gl.glTexImage2D(GL3.GL_TEXTURE_2D, 0, GL3.GL_R32I, width, height, 0, GL3.GL_RED_INTEGER, GL3.GL_INT, null);
+		gl.glTexParameteri(GL3.GL_TEXTURE_2D, GL3.GL_TEXTURE_MIN_FILTER, GL3.GL_NEAREST);
+		gl.glTexParameteri(GL3.GL_TEXTURE_2D, GL3.GL_TEXTURE_MAG_FILTER, GL3.GL_NEAREST);
+		
+	}
+	
+	/**
+	 * Replaces the contents of a non-multisampled histogram texture.
+	 * This texture only has a red channel (not RGBA!) composed of int32's.
+	 * 
+	 * @param gl               The OpenGL context.
+	 * @param textureHandle    Handle to the texture.
+	 * @param width            Width, in pixels.
+	 * @param height           Height, in pixels.
+	 * @param pixels           ByteBuffer of pixel data.
+	 */
+	public static void writeHistogramTexture(GL2ES3 gl, int[] textureHandle, int width, int height, ByteBuffer pixels) {
+
+		gl.glBindTexture(GL3.GL_TEXTURE_2D, textureHandle[0]);
+		gl.glTexImage2D(GL3.GL_TEXTURE_2D, 0, GL3.GL_R32I, width, height, 0, GL3.GL_RED_INTEGER, GL3.GL_INT, pixels);
+		
+	}
+	
+	/**
+	 * Helper function that draws a texture onto an axis-aligned quad.
+	 * 
+	 * @param gl               The OpenGL context.
+	 * @param textureHandle    Handle to the texture.
+	 * @param color            The color, as a float[] {r,g,b,a}.
+	 * @param fullScale        Number that corresponds to the highest value in the histogram.
+	 * @param gamma            Gamma to use when rendering the histogram. This can be used to make rare events more obvious in the histogram.
+	 * @param lowerLeftX       Lower-left x location.
+	 * @param lowerLeftY       Lower-left y location.
+	 * @param width            Width of the quad.
+	 * @param height           Height of the quad.
+	 * @param offset           Used to stretch the texture so its pixels are half-way through the left and right edge of the quad.
+	 *                         (This is used by the DFT chart so the first and last bins get centered on the left and right edges.)
+	 */
+	public static void drawHistogram(GL2ES3 gl, int[] textureHandle, float[] color, float fullScale, float gamma, float lowerLeftX, float lowerLeftY, float width, float height, float offset) {
+		
+		buffer.rewind();
+		buffer.put(lowerLeftX);         buffer.put(lowerLeftY + height); // x,y
+		buffer.put(0 + offset);         buffer.put(1);                   // u,v
+		buffer.put(lowerLeftX);         buffer.put(lowerLeftY);
+		buffer.put(0 + offset);         buffer.put(0);
+		buffer.put(lowerLeftX + width); buffer.put(lowerLeftY + height);
+		buffer.put(1 - offset);         buffer.put(1);
+		buffer.put(lowerLeftX + width); buffer.put(lowerLeftY);
+		buffer.put(1 - offset);         buffer.put(0);
+		buffer.rewind();
+		
+		// send data to the GPU
+		gl.glUseProgram(HistogramRenderer.programHandle);
+		gl.glBindVertexArray(HistogramRenderer.vaoHandle);
+		gl.glBindBuffer(GL3.GL_ARRAY_BUFFER, HistogramRenderer.vboHandle);
+		gl.glBufferData(GL3.GL_ARRAY_BUFFER, 4 * 4 * 4, buffer, GL3.GL_STATIC_DRAW);
+		gl.glUniformMatrix4fv(HistogramRenderer.matrixHandle, 1, false, currentMatrix, 0);
+		gl.glUniform4fv(HistogramRenderer.colorHandle, 1, color, 0);
+		gl.glUniform1f(HistogramRenderer.fullScaleHandle, fullScale);
+		gl.glUniform1f(HistogramRenderer.gammaHandle, gamma);
+		gl.glBindTexture(GL3.GL_TEXTURE_2D, textureHandle[0]);
+		
+		// draw
+		gl.glBlendFunc(GL3.GL_ONE, GL3.GL_ONE_MINUS_SRC_ALPHA);
+		gl.glDrawArrays(GL3.GL_TRIANGLE_STRIP, 0, 4);
+		gl.glBlendFunc(GL3.GL_SRC_ALPHA, GL3.GL_ONE_MINUS_SRC_ALPHA);
+		
+	}
+	
+	/**
 	 * Creates an off-screen framebuffer and corresponding multisample texture to use with it.
 	 * The texture is configured for RGBA uint8, with min/mag filter set to nearest.
 	 * 
@@ -1646,6 +1728,16 @@ public class OpenGL {
 		static int vboHandle;
 	}
 	
+	private static class HistogramRenderer {
+		static int programHandle;
+		static int matrixHandle;
+		static int colorHandle;
+		static int fullScaleHandle;
+		static int gammaHandle;
+		static int vaoHandle;
+		static int vboHandle;
+	}
+	
 	private static class TrianglesXYSTmultisample {
 		static int programHandle;
 		static int matrixHandle;
@@ -1966,6 +2058,24 @@ public class OpenGL {
 			"	fragColor = texture(tex, texCoord);\n",
 			"}\n"
 		};
+		String[] fragmentShaderHistogram = new String[] {
+				versionLine,
+				"#ifdef GL_ES\n" +
+				"precision mediump float;\n" + 
+				"precision mediump int;\n" + 
+				"precision mediump isampler2D;\n" +
+				"#endif\n" +
+				"in vec2 texCoord;\n",
+				"uniform isampler2D tex;\n",
+				"uniform vec4 color;\n",
+				"uniform float fullScale;\n",
+				"uniform float gamma;\n",
+				"out vec4 fragColor;\n",
+				"void main(void) {\n",
+				"	float a = pow(float(texture(tex, texCoord).r) / fullScale, gamma);\n",
+				"	fragColor = vec4(color.r * a, color.g * a, color.b * a, a);\n",
+				"}\n"
+			};
 		int msaaLevel = SettingsController.getAntialiasingLevel();
 		String[] fragmentShaderTex2DMS = new String[] {
 			versionLine,
@@ -2495,6 +2605,40 @@ public class OpenGL {
 		
 		// get handles for the uniforms
 		TrianglesXYST.matrixHandle = gl.glGetUniformLocation(TrianglesXYST.programHandle, "matrix");
+		
+		/*
+		 * "HistogramRenderer" is for rendering 2D histograms from a regular (not multisample) texture that only contains a red channel (not RGBA!)
+		 * One VBO of floats specifies (x1,y1,s1,t1,...) data.
+		 * One uniform mat4  specifies the matrix.
+		 * One uniform vec4  specifies the color.
+		 * One uniform float specifies the full-scale value of the histogram.
+		 * One uniform float specifies the gamma to use when rendering the histogram.
+		 */
+		HistogramRenderer.programHandle = makeProgram(gl, vertexShaderVboXyst, null, fragmentShaderHistogram);
+		
+		// VAO
+		gl.glGenVertexArrays(1, handle, 0);
+		gl.glBindVertexArray(handle[0]);
+		HistogramRenderer.vaoHandle = handle[0];
+		
+		// VBO
+		gl.glGenBuffers(1, handle, 0);
+		gl.glBindBuffer(GL3.GL_ARRAY_BUFFER, handle[0]);
+		HistogramRenderer.vboHandle = handle[0];
+		
+		// use the VBO for (x,y,s,t) data
+		index = gl.glGetAttribLocation(HistogramRenderer.programHandle, "xy");
+		gl.glVertexAttribPointer(index, 2, GL3.GL_FLOAT, false, 4*4, 0);
+		gl.glEnableVertexAttribArray(index);
+		index = gl.glGetAttribLocation(HistogramRenderer.programHandle, "st");
+		gl.glVertexAttribPointer(index, 2, GL3.GL_FLOAT, false, 4*4, 2*4);
+		gl.glEnableVertexAttribArray(index);
+		
+		// get handles for the uniforms
+		HistogramRenderer.matrixHandle = gl.glGetUniformLocation(HistogramRenderer.programHandle, "matrix");
+		HistogramRenderer.colorHandle = gl.glGetUniformLocation(HistogramRenderer.programHandle, "color");
+		HistogramRenderer.fullScaleHandle = gl.glGetUniformLocation(HistogramRenderer.programHandle, "fullScale");
+		HistogramRenderer.gammaHandle = gl.glGetUniformLocation(HistogramRenderer.programHandle, "gamma");
 		
 		/*
 		 * "TrianglesXYSTmultisample" is for rendering 2D triangles with a multisample texture.

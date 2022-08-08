@@ -1,5 +1,6 @@
-import java.awt.Color;
 import java.nio.FloatBuffer;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import javax.swing.Box;
 import javax.swing.JLabel;
@@ -927,14 +928,10 @@ public class OpenGLHistogramChart extends PositionedChart {
 				binN = binCount - 1;
 			float min = minX + (binSize *  binN);      // inclusive
 			float max = minX + (binSize * (binN + 1)); // exclusive
-			String[] text = new String[datasetsCount + 1];
-			Color[] colors = new Color[datasetsCount + 1];
-			text[0] = ChartUtils.formattedNumber(min, 5) + " to " + ChartUtils.formattedNumber(max, 5) + " " + datasets.getNormal(0).unit;
-			colors[0] = new Color(Theme.tooltipBackgroundColor[0], Theme.tooltipBackgroundColor[1], Theme.tooltipBackgroundColor[2], Theme.tooltipBackgroundColor[3]);
-			for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
-				text[datasetN + 1] = bins[datasetN][binN] + " samples (" + ChartUtils.formattedNumber((double) bins[datasetN][binN] / (double) sampleCount * 100f, 4) + "%)";
-				colors[datasetN + 1] = datasets.getNormal(datasetN).color;
-			}
+			List<TooltipEntry> entries = new ArrayList<TooltipEntry>(datasetsCount + 1);
+			entries.add(new TooltipEntry(null, ChartUtils.formattedNumber(min, 5) + " to " + ChartUtils.formattedNumber(max, 5) + " " + datasets.getNormal(0).unit));
+			for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
+				entries.add(new TooltipEntry(datasets.getNormal(datasetN).glColor, bins[datasetN][binN] + " samples (" + ChartUtils.formattedNumber((double) bins[datasetN][binN] / (double) sampleCount * 100f, 4) + "%)"));
 			float xBarCenter = ((binSize *  binN) + (binSize * (binN + 1))) / 2f / range * plotWidth + xPlotLeft;
 			if(datasetsCount > 1) {
 				OpenGL.buffer.rewind();
@@ -942,10 +939,11 @@ public class OpenGLHistogramChart extends PositionedChart {
 				OpenGL.buffer.put(xBarCenter); OpenGL.buffer.put(yPlotBottom);
 				OpenGL.buffer.rewind();
 				OpenGL.drawLinesXy(gl, GL3.GL_LINES, Theme.tooltipVerticalBarColor, OpenGL.buffer, 2);
-				ChartUtils.drawTooltip(gl, text, colors, (int) xBarCenter, mouseY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
+				drawTooltip(gl, entries, (int) xBarCenter, mouseY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
 			} else {
 				int anchorY = (int) (((float) bins[0][binN] - minYfreq) / yFreqRange * plotHeight + yPlotBottom);
-				ChartUtils.drawTooltip(gl, text, colors, (int) xBarCenter, anchorY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);				
+				anchorY = Math.max(anchorY, (int) yPlotBottom);
+				drawTooltip(gl, entries, (int) xBarCenter, anchorY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);				
 			}
 		}
 		

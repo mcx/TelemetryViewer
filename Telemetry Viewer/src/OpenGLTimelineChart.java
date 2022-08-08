@@ -1,3 +1,4 @@
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -435,32 +436,32 @@ public class OpenGLTimelineChart extends PositionedChart {
 					// only telemetry connections exist, so find the closest sample number
 					ConnectionsController.SampleDetails details = ConnectionsController.getClosestSampleDetailsFor(mouseTimestamp);
 					
-					String[] text = new String[twoLineTimestamps ? 3 : 2];
 					mouseTimestamp = details.timestamp;
-					text[0] = "Sample " + details.sampleNumber;
+					List<TooltipEntry> entries = new ArrayList<TooltipEntry>(twoLineTimestamps ? 3 : 2);
+					entries.add(new TooltipEntry(null, "Sample " + details.sampleNumber));
 					if(twoLineTimestamps) {
 						String[] timestampLine = SettingsController.formatTimestampToMilliseconds(mouseTimestamp).split("\n");
-						text[1] = timestampLine[0];
-						text[2] = timestampLine[1];
+						entries.add(new TooltipEntry(null, timestampLine[0]));
+						entries.add(new TooltipEntry(null, timestampLine[1]));
 					} else {
-						text[1] = SettingsController.formatTimestampToMilliseconds(mouseTimestamp);
+						entries.add(new TooltipEntry(null, SettingsController.formatTimestampToMilliseconds(mouseTimestamp)));
 					}
 					float tooltipX = (float) (mouseTimestamp - minTimestamp) / (float) (maxTimestamp - minTimestamp) * timelineWidth + xTimelineLeft;
-					ChartUtils.drawTooltip(gl, text, null, tooltipX, (yTimelineTop + yTimelineBottom)/2, 0, height, width, 0);
+					drawTooltip(gl, entries, tooltipX, (yTimelineTop + yTimelineBottom)/2, 0, height, width, 0);
 					
 				} else {
 					
 					// cameras exist, so find the closest timestamp
 					float tooltipX = (float) (mouseTimestamp - minTimestamp) / (float) (maxTimestamp - minTimestamp) * timelineWidth + xTimelineLeft;
-					String[] text = new String[twoLineTimestamps ? 2 : 1];
+					List<TooltipEntry> entries = new ArrayList<TooltipEntry>(twoLineTimestamps ? 2 : 1);
 					if(twoLineTimestamps) {
 						String[] timestampLine = SettingsController.formatTimestampToMilliseconds(mouseTimestamp).split("\n");
-						text[0] = timestampLine[0];
-						text[1] = timestampLine[1];
+						entries.add(new TooltipEntry(null, timestampLine[0]));
+						entries.add(new TooltipEntry(null, timestampLine[1]));
 					} else {
-						text[0] = SettingsController.formatTimestampToMilliseconds(mouseTimestamp);
+						entries.add(new TooltipEntry(null, SettingsController.formatTimestampToMilliseconds(mouseTimestamp)));
 					}
-					ChartUtils.drawTooltip(gl, text, null, tooltipX, (yTimelineTop + yTimelineBottom)/2, 0, height, width, 0);
+					drawTooltip(gl, entries, tooltipX, (yTimelineTop + yTimelineBottom)/2, 0, height, width, 0);
 					
 				}
 
