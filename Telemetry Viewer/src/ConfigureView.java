@@ -10,7 +10,6 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JTextField;
 import javax.swing.JToggleButton;
-import javax.swing.SwingUtilities;
 import javax.swing.border.EmptyBorder;
 
 import net.miginfocom.swing.MigLayout;
@@ -23,7 +22,6 @@ public class ConfigureView extends JPanel {
 	private JPanel widgetsPanel;
 	private JPanel buttonsPanel;
 	private JScrollPane scrollableRegion;
-	private boolean testSizeAgain = true;
 	
 	private PositionedChart activeChart = null;
 	private boolean activeChartIsNew = false;
@@ -40,11 +38,20 @@ public class ConfigureView extends JPanel {
 		scrollableRegion = new JScrollPane(widgetsPanel, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
 		scrollableRegion.setBorder(null);
 		scrollableRegion.getVerticalScrollBar().setUnitIncrement(10);
-		buttonsPanel = new JPanel();
+		buttonsPanel = new JPanel() {
+			@Override public Dimension getPreferredSize() {
+				Dimension size = super.getPreferredSize();
+				int maxButtonWidth = 0;
+				for(Component c : getComponents())
+					maxButtonWidth = Math.max(maxButtonWidth, c.getPreferredSize().width);
+				size.width = 3 * maxButtonWidth;
+				return size;
+			}
+		};
 		buttonsPanel.setLayout(new MigLayout("insets 0", "[33%!][grow][33%!]")); // 3 equal columns
 		buttonsPanel.setBorder(new EmptyBorder(Theme.padding * 2, Theme.padding, Theme.padding, Theme.padding)); // extra padding above
 		
-		setLayout(new MigLayout("wrap 1, insets 0")); // 1 column, no border
+		setLayout(new MigLayout("wrap 1, insets 0, gapy " + Theme.padding)); // 1 column, no border
 		add(scrollableRegion, "growx");
 		add(buttonsPanel, "growx");
 		
@@ -56,32 +63,23 @@ public class ConfigureView extends JPanel {
 	 * Calculate the preferred size of this panel, taking into account the width of the vertical scroll bar.
 	 */
 	@Override public Dimension getPreferredSize() {
-	
-		widgetsPanel.setPreferredSize(null);
-		Dimension size = widgetsPanel.getPreferredSize();
 		
-		// resize the widgets region if the scrollbar is visible
-		if(scrollableRegion.getVerticalScrollBar().isVisible())
-			size.width += scrollableRegion.getVerticalScrollBar().getPreferredSize().width;
-		scrollableRegion.setPreferredSize(size);
-		
-		buttonsPanel.setPreferredSize(null);
-		size = buttonsPanel.getPreferredSize();
-		int maxButtonWidth = 0;
-		for(Component c : buttonsPanel.getComponents()) {
-			int w = c.getPreferredSize().width;
-			if(w > maxButtonWidth)
-				maxButtonWidth = w;
+		// resize the widgets region if the scrollbar is needed
+		Dimension scrollSize = widgetsPanel.getPreferredSize();
+		if(getSize().height < scrollSize.height + Theme.padding + buttonsPanel.getSize().height) {
+			scrollSize.width += scrollableRegion.getVerticalScrollBar().getPreferredSize().width;
+			scrollableRegion.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
+		} else {
+			scrollableRegion.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_NEVER);
 		}
-		size.width = 3*maxButtonWidth;
-		buttonsPanel.setPreferredSize(size);
 		
-		// due to the event queue, the scroll bar may be about to appear or disappear, but the above if() can't see the future
-		// work around this by triggering another getPreferredSize() at the end of the event queue.
-		if(testSizeAgain)
-			SwingUtilities.invokeLater(() -> revalidate());
-		testSizeAgain = !testSizeAgain;
+		// revalidate if the size changed
+		Dimension oldScrollSize = scrollableRegion.getPreferredSize();
+		if(!scrollSize.equals(oldScrollSize))
+			revalidate();
 		
+		// apply change
+		scrollableRegion.setPreferredSize(scrollSize);
 		return super.getPreferredSize();
 		
 	}
