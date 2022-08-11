@@ -54,6 +54,18 @@ public class WidgetComboboxString extends JComboBox<String> implements Widget {
 		
 	}
 	
+	@Override public void setSelectedItem(Object anObject) {
+		boolean found = false;
+		for(int i = 0; i < getItemCount(); i++)
+			if(getItemAt(i).equals(anObject))
+				found = true;
+		if(!found)
+			addItem(anObject.toString());
+		super.setSelectedItem(anObject);
+		for(ActionListener listener : getActionListeners())
+			listener.actionPerformed(null);
+	}
+	
 	/**
 	 * Keep track of the old validated text when disabling, so it can be restored when enabling.
 	 */

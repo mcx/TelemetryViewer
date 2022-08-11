@@ -441,6 +441,8 @@ public class ConnectionsController {
 		}
 		
 		if(csvFileCount + mkvFileCount != imports.size()) {
+			if(settingsFileCount == 1)
+				allConnections.forEach(connection -> connection.disconnect(null));
 			NotificationsController.showFailureForMilliseconds("Data file does not correspond with an existing connection.", 5000, true);
 			return;
 		}

@@ -42,7 +42,9 @@ public class ConnectionTelemetryUART extends ConnectionTelemetry {
 			return;
 		name = newName;
 		namesCombobox.setSelectedItem(name);
-		namesCombobox.removeItem(Type.UART.toString()); // in case the object was created without a port name
+		
+		if(!name.equals(Type.UART.toString()))
+			namesCombobox.removeItem(Type.UART.toString()); // in case the object was created without a port name
 		
 		SettingsView.instance.redraw(); // so the transmit panel shows the new port name
 	}

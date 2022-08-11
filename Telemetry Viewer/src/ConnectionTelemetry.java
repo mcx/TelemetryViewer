@@ -1,15 +1,20 @@
 import java.awt.Color;
 import java.awt.Dimension;
+import java.io.BufferedReader;
 import java.io.FileInputStream;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.nio.FloatBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Enumeration;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Queue;
 import java.util.Scanner;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -329,7 +334,48 @@ public abstract class ConnectionTelemetry extends Connection {
 		OpenGLChartsView.instance.switchToLiveView();
 		
 	}
+	
+	private record ParsedData(int packetCount,      // number of valid parsed telemetry packets
+	                          int byteCount,        // number of bytes parsed
+	                          long[] timestamps,    // timestamp from each packet
+	                          float[][] samples) {} // [datasetN][sampleN]
+	
+	private class ImportWorker implements Callable<ParsedData> {
+		
+		private final int datasetsCount;
+		private final List<String> lines;
+		private long[] timestamps;
+		private float[][] samples;
+		private int packetCount;
+		private int byteCount;
+		
+		public ImportWorker(int datasetCount, List<String> lines) {
+			this.datasetsCount = datasetCount;
+			this.lines = lines;
+			timestamps = new long[lines.size()];
+			samples = new float[datasetCount][lines.size()];
+			packetCount = 0;
+		}
 
+		@Override public ParsedData call() throws Exception {
+			try {
+				lines.forEach(line -> {
+					String[] columns = line.split(",");
+					timestamps[packetCount] = Long.parseLong(columns[1]);
+					for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
+						samples[datasetN][packetCount] = Float.parseFloat(columns[datasetN + 2]);
+					packetCount++;
+					byteCount += line.length() + 2; // assuming each char is 1 byte, and EOL is 2 bytes
+				});
+			} catch(NumberFormatException e) {
+				// ending early
+			}
+			
+			return new ParsedData(packetCount, byteCount, timestamps, samples);
+		}
+		
+	}
+	
 	/**
 	 * Reads CSV samples from a file, instead of a live connection.
 	 * 
@@ -344,98 +390,106 @@ public abstract class ConnectionTelemetry extends Connection {
 		
 		receiverThread = new Thread(() -> {
 			
-			try {
-				
-				// open the file
-				Scanner file = new Scanner(new FileInputStream(path), "UTF-8");
+			try (FileReader file = new FileReader(path, StandardCharsets.UTF_8); BufferedReader buffer = new BufferedReader(file)) {
 				
 				connected = true;
 				previousSampleCountTimestamp = 0;
 				previousSampleCount = 0;
 				CommunicationView.instance.redraw();
+				int sampleNumber = getSampleCount();
+				List<Dataset> datasets = this.datasets.getList(); // cache a list of the datasets
+				int datasetsCount = datasets.size();
 				
 				// sanity checks
-				if(!file.hasNextLine()) {
+				String line = buffer.readLine();
+				if(line == null) {
 					SwingUtilities.invokeLater(() -> disconnect("The CSV file is empty."));
-					file.close();
 					return;
 				}
 				
-				String header = file.nextLine();
-				completedByteCount.addAndGet((long) (header.length() + 2)); // assuming each char is 1 byte, and EOL is 2 bytes.
-				String[] tokens = header.split(",");
-				int columnCount = tokens.length;
-				if(columnCount != datasets.getCount() + 2) {
+				String[] columns = line.split(",");
+				if(columns.length != datasetsCount + 2) {
 					SwingUtilities.invokeLater(() -> disconnect("The CSV file header does not match the current data structure."));
-					file.close();
 					return;
 				}
 				
 				boolean correctColumnLabels = true;
-				if(!tokens[0].startsWith("Sample Number"))  correctColumnLabels = false;
-				if(!tokens[1].startsWith("UNIX Timestamp")) correctColumnLabels = false;
-				for(int i = 0; i < datasets.getCount(); i++) {
-					Dataset d = datasets.getByIndex(i);
-					String expectedLabel = d.name + " (" + d.unit + ")";
-					if(!tokens[2+i].equals(expectedLabel))
+				if(!columns[0].startsWith("Sample Number"))  correctColumnLabels = false;
+				if(!columns[1].startsWith("UNIX Timestamp")) correctColumnLabels = false;
+				for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
+					Dataset d = datasets.get(datasetN);
+					if(!columns[datasetN + 2].equals(d.name + " (" + d.unit + ")"))
 						correctColumnLabels = false;
 				}
 				if(!correctColumnLabels) {
 					SwingUtilities.invokeLater(() -> disconnect("The CSV file header does not match the current data structure."));
-					file.close();
 					return;
 				}
+				completedByteCount.addAndGet((long) (line.length() + 2)); // assuming each char is 1 byte, and EOL is 2 bytes
 
-				if(!file.hasNextLine()) {
-					SwingUtilities.invokeLater(() -> disconnect("The CSV file does not contain any samples."));
-					file.close();
-					return;
-				}
+				// parse and import the packets
+				final int THREAD_COUNT = Runtime.getRuntime().availableProcessors();
+				final int LINES_PER_THREAD = 1024;
+				ExecutorService pool = Executors.newFixedThreadPool(THREAD_COUNT);
+				Queue<Future<ParsedData>> futures = new LinkedList<Future<ParsedData>>();
 				
-				// parse the lines of data
-				String line = file.nextLine();
-				completedByteCount.addAndGet((long) (line.length() + 2));
-				int sampleNumber = getSampleCount();
 				while(true) {
-					tokens = line.split(",");
-					if(ConnectionsController.realtimeImporting) {
-						if(Thread.interrupted()) {
-							ConnectionsController.realtimeImporting = false;
-							CommunicationView.instance.redraw();
-						} else {
-							long delay = (Long.parseLong(tokens[1]) - firstTimestamp) - (System.currentTimeMillis() - beginImportingTimestamp);
-							if(delay > 0)
-								try {
-									Thread.sleep(delay);
-								} catch(Exception e) {
+					
+					for(int threadN = 0; threadN < THREAD_COUNT; threadN++) {
+						List<String> lines = new ArrayList<String>(LINES_PER_THREAD);
+						for(int lineN = 0; lineN < LINES_PER_THREAD; lineN++) {
+							line = buffer.readLine();
+							if(line == null)
+								break;
+							lines.add(line);
+						}
+						futures.add(pool.submit(new ImportWorker(datasetsCount, lines)));
+					}
+					
+					while(!futures.isEmpty()) {
+						ParsedData data = futures.remove().get();
+						for(int packetN = 0; packetN < data.packetCount; packetN++) {
+							if(ConnectionsController.realtimeImporting) {
+								if(Thread.interrupted()) {
 									ConnectionsController.realtimeImporting = false;
 									CommunicationView.instance.redraw();
+								} else {
+									long delay = (data.timestamps[packetN] - firstTimestamp) - (System.currentTimeMillis() - beginImportingTimestamp);
+									if(delay > 0)
+										try {
+											Thread.sleep(delay);
+										} catch(Exception e) {
+											ConnectionsController.realtimeImporting = false;
+											CommunicationView.instance.redraw();
+										}
 								}
+							} else if(Thread.interrupted()) {
+								throw new InterruptedException(); // not real-time, and interrupted again, so abort
+							}
+							for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
+								datasets.get(datasetN).setConvertedSample(sampleNumber, data.samples[datasetN][packetN]);
+							sampleNumber++;
+							incrementSampleCountWithTimestamp(1, data.timestamps[packetN]);
 						}
-					} else if(Thread.interrupted()) {
-						break; // not real-time, and interrupted again, so abort
+						completedByteCount.addAndGet(data.byteCount);
+						if(data.packetCount != data.timestamps.length)
+							throw new Exception(); // an error occurred while parsing
 					}
-					for(int columnN = 2; columnN < columnCount; columnN++)
-						datasets.getByIndex(columnN - 2).setConvertedSample(sampleNumber, Float.parseFloat(tokens[columnN]));
-					sampleNumber++;
-					incrementSampleCountWithTimestamp(1, Long.parseLong(tokens[1]));
 					
-					if(file.hasNextLine()) {
-						line = file.nextLine();
-						completedByteCount.addAndGet((long) (line.length() + 2));
-					} else {
-						break;
-					}
+					if(line == null)
+						break; // reached end of file
+					
 				}
 				
 				// done
 				SwingUtilities.invokeLater(() -> disconnect(null));
-				file.close();
 				
 			} catch (IOException e) {
 				SwingUtilities.invokeLater(() -> disconnect("Unable to open the CSV Log file."));
+			} catch (InterruptedException e) {
+				SwingUtilities.invokeLater(() -> disconnect(null));
 			} catch (Exception e) {
-				SwingUtilities.invokeLater(() -> disconnect("Unable to parse the CSV Log file."));
+				SwingUtilities.invokeLater(() -> disconnect("Error while parsing the CSV Log file."));
 			}
 			
 		});
