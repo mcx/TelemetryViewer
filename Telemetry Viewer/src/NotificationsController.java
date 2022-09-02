@@ -93,7 +93,7 @@ public class NotificationsController {
 	 */
 	public static List<Notification> getNotifications() {
 		
-		notifications.removeIf(item -> item.expiresAtTimestamp && item.expirationTimestamp + Theme.animationMilliseconds <= System.currentTimeMillis());
+		notifications.removeIf(item -> item.expiresAtTimestamp && System.currentTimeMillis() >= item.expirationTimestamp + Theme.animationMilliseconds);
 		notifications.removeIf(item -> item.expiresAtEvent && item.event.getAsBoolean() == true);
 		notifications.forEach(item -> {
 			if(item.isProgressBar && item.currentAmount.get() >= item.totalAmount) {

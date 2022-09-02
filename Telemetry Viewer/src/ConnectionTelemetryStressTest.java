@@ -22,16 +22,22 @@ public class ConnectionTelemetryStressTest extends ConnectionTelemetry {
 		protocol = Protocol.BINARY;
 		
 		// sample rate
-		sampleRate = Integer.MAX_VALUE;
-		sampleRateAutomatic = false;
+		sampleRate = 0;
+		sampleRateAutomatic = true;
 		sampleRateTextfield = new WidgetTextfieldInt("Sample Rate",
 		                                             "samples rate (hz)",
 		                                             "Hz",
-		                                             sampleRate,
-		                                             sampleRate,
-		                                             sampleRate,
-		                                             newRate -> {});
-		sampleRateTextfield.setToolTipText("<html>Number of telemetry packets sent to the PC each second.</html>");
+		                                             sampleRateMinimum,
+		                                             sampleRateMaximum,
+		                                             sampleRateAutomatic ? 0 : sampleRate,
+		                                             true,
+		                                             0,
+		                                             "Automatic",
+		                                             newRate -> {
+		                                                 setSampleRate(newRate);
+		                                                 setSampleRateAutomatic(newRate == 0);
+		                                             });
+		sampleRateTextfield.setToolTipText("Number of telemetry packets sent to the PC each second.");
 		sampleRateTextfield.disableWithMessage("Maximum");
 		
 		// communication protocol
@@ -52,7 +58,25 @@ public class ConnectionTelemetryStressTest extends ConnectionTelemetry {
 		settingsGui.add(removeButton);
 		
 		// define the data structure
+		DatasetsController.BinaryFieldProcessor processor = null;
+		for(DatasetsController.BinaryFieldProcessor p : DatasetsController.binaryFieldProcessors)
+			if(p.toString().equals("int16 LSB First"))
+				processor = p;
 		
+		datasets.removeAll();
+		datasets.insertSyncWord((byte) 0xAA);
+		datasets.insert(1, processor, "a", Color.RED,   "", 1, 1);
+		datasets.insert(3, processor, "b", Color.GREEN, "", 1, 1);
+		datasets.insert(5, processor, "c", Color.BLUE,  "", 1, 1);
+		datasets.insert(7, processor, "d", Color.CYAN,  "", 1, 1);
+		
+		DatasetsController.BinaryChecksumProcessor checksumProcessor = null;
+		for(DatasetsController.BinaryChecksumProcessor p : DatasetsController.binaryChecksumProcessors)
+			if(p.toString().equals("uint16 Checksum LSB First"))
+				checksumProcessor = p;
+		datasets.insertChecksum(9, checksumProcessor);
+		
+		setDataStructureDefined(true);
 		
 	}
 
@@ -87,13 +111,9 @@ public class ConnectionTelemetryStressTest extends ConnectionTelemetry {
 			ConnectionsController.previouslyImported = false;
 		}
 		
+		datasets.removeAllData();
 		previousSampleCountTimestamp = 0;
 		previousSampleCount = 0;
-		
-		if(showGui) {
-			setDataStructureDefined(false);
-			CommunicationView.instance.redraw();	
-		}
 		
 		SettingsController.setTileColumns(6);
 		SettingsController.setTileRows(6);
@@ -110,27 +130,7 @@ public class ConnectionTelemetryStressTest extends ConnectionTelemetry {
 		SettingsController.setTooltipVisibility(true);
 		SettingsController.setAntialiasingLevel(1);
 		
-		DatasetsController.BinaryFieldProcessor processor = null;
-		for(DatasetsController.BinaryFieldProcessor p : DatasetsController.binaryFieldProcessors)
-			if(p.toString().equals("int16 LSB First"))
-				processor = p;
-		
-		datasets.removeAll();
-		datasets.insertSyncWord((byte) 0xAA);
-		datasets.insert(1, processor, "a", Color.RED,   "", 1, 1);
-		datasets.insert(3, processor, "b", Color.GREEN, "", 1, 1);
-		datasets.insert(5, processor, "c", Color.BLUE,  "", 1, 1);
-		datasets.insert(7, processor, "d", Color.CYAN,  "", 1, 1);
-		
-		DatasetsController.BinaryChecksumProcessor checksumProcessor = null;
-		for(DatasetsController.BinaryChecksumProcessor p : DatasetsController.binaryChecksumProcessors)
-			if(p.toString().equals("uint16 Checksum LSB First"))
-				checksumProcessor = p;
-		datasets.insertChecksum(9, checksumProcessor);
-		
-		setDataStructureDefined(true);
-		CommunicationView.instance.redraw();
-		
+		ChartsController.removeAllCharts();
 		PositionedChart chart = ChartsController.createAndAddChart("Time Domain", 0, 0, 5, 5);
 		List<String> chartSettings = new ArrayList<String>();
 		chartSettings.add("datasets = connection 0 location 1");
@@ -200,9 +200,10 @@ public class ConnectionTelemetryStressTest extends ConnectionTelemetry {
 					
 					stream.write(array, array.length);
 					bytesSent += array.length;
-					long end = System.currentTimeMillis();
-					if(end - start > 3000) {
-						String text = String.format("%1.1f Mbps (%1.1f Mpackets/sec)", (bytesSent / (double)(end-start) * 1000.0 * 8.0 / 1000000), (bytesSent / 11 / (double)(end-start) * 1000.0) / 1000000.0);
+					long millisecondsElapsed = System.currentTimeMillis() - start;
+					if(millisecondsElapsed > 3000) {
+						String text = String.format("%1.1f Mbps (%1.1f Mpackets/sec)", (double) bytesSent / (double) millisecondsElapsed / 125.0,
+						                                                               (double) bytesSent / (double) millisecondsElapsed / 11000.0);
 						NotificationsController.showVerboseForMilliseconds(text, 3000 - Theme.animationMilliseconds, true);
 						bytesSent = 0;
 						start = System.currentTimeMillis();

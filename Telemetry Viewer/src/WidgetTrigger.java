@@ -289,11 +289,11 @@ public class WidgetTrigger implements Widget {
 			return triggeredEndTimestamp;
 		
 		// determine which samples to test
-		long chartDomain = (long) Math.ceil(chart.duration * zoomLevel);
+		long plotDomain = Math.round(chart.duration * zoomLevel);
 		double preTriggerPercent = triggerPrePostRatio / 100.0;
 		double postTriggerPercent = 1.0 - preTriggerPercent;
 		int maxSampleNumber = datasets.getClosestSampleNumberAtOrBefore(endTimestamp, triggerChannel.connection.getSampleCount() - 1);
-		long startTimestamp = datasets.getTimestamp(maxSampleNumber) - chartDomain;
+		long startTimestamp = datasets.getTimestamp(maxSampleNumber) - plotDomain;
 		int minSampleNumber = datasets.getClosestSampleNumberAtOrBefore(startTimestamp, maxSampleNumber);
 		if(minSampleNumber > previousMaxSampleNumber && previousMaxSampleNumber != -1)
 			minSampleNumber = previousMaxSampleNumber;
@@ -331,8 +331,8 @@ public class WidgetTrigger implements Widget {
 				triggeredSampleNumber = sampleNumber;
 				triggeredTimestamp = datasets.getTimestamp(sampleNumber);
 				triggered = true;
-				nextTriggerableTimestamp = triggeredTimestamp + (long) Math.round(chartDomain * postTriggerPercent);
-				long millisecondsAfterTrigger = (long) Math.round(chartDomain * postTriggerPercent);
+				nextTriggerableTimestamp = triggeredTimestamp + (long) Math.round(plotDomain * postTriggerPercent);
+				long millisecondsAfterTrigger = (long) Math.round(plotDomain * postTriggerPercent);
 				triggeredMinSampleNumber = minSampleNumber;
 				triggeredEndTimestamp = triggeredTimestamp + millisecondsAfterTrigger;
 				if(triggerAffects == Affects.EVERY_CHART)

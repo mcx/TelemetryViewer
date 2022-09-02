@@ -361,7 +361,7 @@ public class OpenGLTimelineChart extends PositionedChart {
 			timelineHeight = yTimelineTop - yTimelineBottom;
 			markerWidth = 6 * ChartsController.getDisplayScalingFactor();
 			
-			// only draw the timelife if there's space for it
+			// only draw the timeline if there's space for it
 			if(yTimelineTop > height || (showTime && yTimelineTop > yTimeBaseline2) || (showControls && yTimelineTop > yButtonsBottom))
 				return handler;
 			

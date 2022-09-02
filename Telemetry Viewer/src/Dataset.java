@@ -295,14 +295,14 @@ public class Dataset {
 		 */
 		public class State implements Comparable<State> {
 			
-			String label;                            // Example: "Bit 7 = 1" (shown in the PacketBinary.BitfieldPanel.Visualization)
-			int value;                               // Example: "1"
-			String name;                             // Example: "Some Fault Occurred" (shown on markers on the charts)
-			Color color;                             // shown in the PacketBinary.BitfieldPanel
-			float[] glColor;                         // shown on markers on the charts
-			ConnectionTelemetry connection;          // owner of this State
-			Dataset dataset;                         // owner of this State
-			Bitfield bitfield;                       // owner of this State
+			String label;                   // Example: "Bit 7 = 1" (shown in the PacketBinary.BitfieldPanel.Visualization)
+			int value;                      // Example: "1"
+			String name;                    // Example: "Some Fault Occurred" (shown on markers on the charts)
+			Color color;                    // shown in the PacketBinary.BitfieldPanel
+			float[] glColor;                // shown on markers on the charts
+			ConnectionTelemetry connection; // owner of this State
+			Dataset dataset;                // owner of this State
+			Bitfield bitfield;              // owner of this State
 			
 			List<Integer> edgesCache = new ArrayList<Integer>(); // cache of the sample numbers for each transition to this state
 			int lastSampleNumberInCache = -1;
@@ -333,14 +333,15 @@ public class Dataset {
 				if(maxSampleNumber <= lastSampleNumberInCache || maxSampleNumber == 0)
 					return;
 				
-				int minSampleNumber = lastSampleNumberInCache;
-				if(minSampleNumber < 0)
-					minSampleNumber = 0;
+				int sampleNumber = lastSampleNumberInCache;
+				if(sampleNumber < 0)
+					sampleNumber = 0;
 				
-				int previousValue = (int) dataset.getSample(minSampleNumber, samplesCache);
+				int previousValue = (int) dataset.getSample(sampleNumber, samplesCache);
 				int previousState = (previousValue >> bitfield.LSBit) & bitfield.bitmask;
+				sampleNumber++;
 				
-				for(int sampleNumber = minSampleNumber + 1; sampleNumber <= maxSampleNumber; sampleNumber++) {
+				while(sampleNumber <= maxSampleNumber) {
 					int currentValue = (int) dataset.getSample(sampleNumber, samplesCache);
 					if(currentValue != previousValue) {
 						int currentState = (currentValue >> bitfield.LSBit) & bitfield.bitmask;
@@ -349,6 +350,7 @@ public class Dataset {
 						previousState = currentState;
 					}
 					previousValue = currentValue;
+					sampleNumber++;
 				}
 				
 				lastSampleNumberInCache = maxSampleNumber;

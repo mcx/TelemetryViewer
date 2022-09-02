@@ -480,11 +480,7 @@ public class DatasetsController {
 		if(checksumProcessor == null) // no checksum
 			return true;
 		
-		if(checksumProcessor.testChecksum(packet, offset, packetLength, syncWordByteCount)) // checksum passed
-			return true;
-		
-		// checksum failed
-		return false;
+		return checksumProcessor.testChecksum(packet, offset, packetLength, syncWordByteCount);
 		
 	}
 	

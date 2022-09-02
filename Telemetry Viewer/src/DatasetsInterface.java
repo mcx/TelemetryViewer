@@ -173,8 +173,7 @@ public class DatasetsInterface {
 	 */
 	public float getSample(Dataset dataset, int sampleNumber) {
 		
-		StorageFloats.Cache cache = cacheFor(dataset);
-		return dataset.getSample(sampleNumber, cache);
+		return dataset.getSample(sampleNumber, cacheFor(dataset));
 		
 	}
 	
@@ -187,8 +186,7 @@ public class DatasetsInterface {
 	 */
 	public String getSampleAsString(Dataset dataset, int sampleNumber) {
 		
-		StorageFloats.Cache cache = cacheFor(dataset);
-		return dataset.getSampleAsString(sampleNumber, cache);
+		return dataset.getSampleAsString(sampleNumber, cacheFor(dataset));
 		
 	}
 	
@@ -202,8 +200,7 @@ public class DatasetsInterface {
 	 */
 	public float[] getSamplesArray(Dataset dataset, int minSampleNumber, int maxSampleNumber) {
 		
-		StorageFloats.Cache cache = cacheFor(dataset);
-		return dataset.getSamplesArray(minSampleNumber, maxSampleNumber, cache);
+		return dataset.getSamplesArray(minSampleNumber, maxSampleNumber, cacheFor(dataset));
 		
 	}
 
@@ -217,8 +214,7 @@ public class DatasetsInterface {
 	 */
 	public FloatBuffer getSamplesBuffer(Dataset dataset, int minSampleNumber, int maxSampleNumber) {
 		
-		StorageFloats.Cache cache = cacheFor(dataset);
-		return dataset.getSamplesBuffer(minSampleNumber, maxSampleNumber, cache);
+		return dataset.getSamplesBuffer(minSampleNumber, maxSampleNumber, cacheFor(dataset));
 		
 	}
 	
@@ -261,11 +257,9 @@ public class DatasetsInterface {
 
 		normalDatasets.forEach(dataset -> {
 			if(!dataset.isBitfield) {
-				StorageFloats.MinMax range = dataset.getRange((int) minSampleNumber, (int) maxSampleNumber, cacheFor(dataset));
-				if(range.min < minMax[0])
-					minMax[0] = range.min;
-				if(range.max > minMax[1])
-					minMax[1] = range.max;
+				StorageFloats.MinMax range = dataset.getRange(minSampleNumber, maxSampleNumber, cacheFor(dataset));
+				minMax[0] = Math.min(minMax[0], range.min);
+				minMax[1] = Math.max(minMax[1], range.max);
 			}
 		});
 		
@@ -297,11 +291,9 @@ public class DatasetsInterface {
 		float[] minMax = new float[] {Float.MAX_VALUE, -Float.MAX_VALUE};
 
 		if(!dataset.isBitfield) {
-			StorageFloats.MinMax range = dataset.getRange((int) minSampleNumber, (int) maxSampleNumber, cacheFor(dataset));
-			if(range.min < minMax[0])
-				minMax[0] = range.min;
-			if(range.max > minMax[1])
-				minMax[1] = range.max;
+			StorageFloats.MinMax range = dataset.getRange(minSampleNumber, maxSampleNumber, cacheFor(dataset));
+			minMax[0] = Math.min(minMax[0], range.min);
+			minMax[1] = Math.max(minMax[1], range.max);
 		}
 		
 		if(minMax[0] == Float.MAX_VALUE && minMax[1] == -Float.MAX_VALUE) {
@@ -325,8 +317,7 @@ public class DatasetsInterface {
 	public void forEachNormal(BiConsumer<Dataset, StorageFloats.Cache> consumer) {
 		for(int i = 0; i < normalDatasets.size(); i++) {
 			Dataset dataset = normalDatasets.get(i);
-			StorageFloats.Cache cache = sampleCaches.get(dataset);
-			consumer.accept(dataset, cache);
+			consumer.accept(dataset, sampleCaches.get(dataset));
 		}
 	}
 	

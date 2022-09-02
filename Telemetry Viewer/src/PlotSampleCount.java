@@ -33,25 +33,27 @@ public class PlotSampleCount extends Plot {
 	/**
 	 * Step 1: (Required) Calculate the domain and range of the plot.
 	 * 
-	 * @param endTimestamp      Ignored. This is only used by PlotMilliseconds.
-	 * @param endSampleNumber   Sample number corresponding with the right edge of a time-domain plot. NOTE: this sample might not exist yet!
-	 * @param zoomLevel         Current zoom level. 1.0 = no zoom.
+	 * @param maxX              Sample number at the right edge of the plot. Must be >= 0, and it may be in the future!
 	 * @param datasets          Normal/edge/level datasets to acquire from.
-	 * @param duration          The sample count, before applying the zoom factor.
+	 * @param duration          Number of samples to display. Must be >= 2.
 	 * @param cachedMode        True to enable the cache.
 	 * @param showTimestamps    Ignored. This is only used by PlotMilliseconds.
 	 */
-	@Override void initialize(long endTimestamp, long endSampleNumber, double zoomLevel, DatasetsInterface datasets, long duration, boolean cachedMode, boolean showTimestamps) {
+	@Override void initialize(long maxX, DatasetsInterface datasets, long duration, boolean cachedMode, boolean showTimestamps) {
 		
 		this.datasets = datasets;
 		this.cachedMode = cachedMode;
 		xAxisTitle = "Sample Number";
 		
-		// calculate the domain, ensuring it's >= 2
-		plotDomain = Math.round(duration * zoomLevel);
-		if(plotDomain < 2)
-			plotDomain = 2;
-		plotMaxX = endSampleNumber;
+		// sanity check
+		if(maxX < 0)
+			maxX = 0;
+		if(duration < 2)
+			duration = 2;
+		
+		// calculate the domain, ensuring it's >= 2 samples
+		plotDomain = duration;
+		plotMaxX = maxX;
 		plotMinX = plotMaxX - plotDomain + 1;
 		
 		// storing the domain as (domain - 1) because (domain - 1) is used for all of the math related to the domain
@@ -59,7 +61,7 @@ public class PlotSampleCount extends Plot {
 		
 		// exit if there are no samples to display
 		long trueLastSampleNumber = datasets.hasAnyType() ? datasets.connection.getSampleCount() - 1 : -1;
-		if(trueLastSampleNumber < 0 || endSampleNumber < 0) {
+		if(trueLastSampleNumber < 0 || maxX < 0) {
 			maxSampleNumber = -1;
 			minSampleNumber = -1;
 			plotSampleCount = 0;
@@ -69,12 +71,11 @@ public class PlotSampleCount extends Plot {
 		}
 		
 		// determine which samples to display
-		maxSampleNumber = Long.min(endSampleNumber, trueLastSampleNumber);
+		maxSampleNumber = Long.min(maxX, trueLastSampleNumber);
 		minSampleNumber = maxSampleNumber - plotDomain;
 		
 		if(minSampleNumber < plotMinX)
 			minSampleNumber = plotMinX;
-		
 		if(minSampleNumber < 0)
 			minSampleNumber = 0;
 		
@@ -180,7 +181,7 @@ public class PlotSampleCount extends Plot {
 				firstSampleNumber = previousMaxSampleNumber;
 			} else if(firstSampleNumber < previousMinSampleNumber) {
 				// moving backwards in time
-				lastSampleNumber = previousMinSampleNumber + calculateSamplesNeededAtEdge(plotWidth);
+				lastSampleNumber = Guava.saturatedAdd(previousMinSampleNumber, calculateSamplesNeededAtEdge(plotWidth));
 			} else if(firstSampleNumber == previousMinSampleNumber && lastSampleNumber > previousMaxSampleNumber) {
 				// moving forward in time while x=0 is still on screen
 				firstSampleNumber = previousMaxSampleNumber;
@@ -564,8 +565,8 @@ public class PlotSampleCount extends Plot {
 			// acquire extra samples before and after, because adjacent samples affect the edges of this region
 			long extraSamplesNeeded = calculateSamplesNeededAtEdge(plotWidth);
 			xOffset -= extraSamplesNeeded;
-			firstSampleNumber -= extraSamplesNeeded;
-			lastSampleNumber += extraSamplesNeeded;
+			firstSampleNumber = Guava.saturatedSubtract(firstSampleNumber, extraSamplesNeeded);
+			lastSampleNumber  = Guava.saturatedAdd(lastSampleNumber, extraSamplesNeeded);
 			if(firstSampleNumber < 0) {
 				xOffset -= firstSampleNumber;
 				firstSampleNumber = 0;

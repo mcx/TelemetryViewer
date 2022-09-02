@@ -179,7 +179,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		                                              "sample count",
 		                                              "Samples",
 		                                              10,
-		                                              1048576,
+		                                              Integer.MAX_VALUE / 16,
 		                                              ConnectionsController.getDefaultChartDuration(),
 		                                              newDuration -> duration = newDuration);
 		
@@ -806,35 +806,37 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 					yBinCount = (int) plotHeight / 2;
 				actualYaxisBins = yBinCount;
 				
-				histogram = new int[datasetsCount][yBinCount][xBinCount];
-				ByteBuffer bytes = Buffers.newDirectByteBuffer(yBinCount * xBinCount * 4); // pixelCount * one int32 per pixel
-				IntBuffer ints = bytes.asIntBuffer();
-				
-				for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
-					for(int windowN = 0; windowN < fft.windows.size(); windowN++) {
-						float[] dft = fft.windows.get(windowN).get(datasetN);
-						for(int xBin = 0; xBin < fft.binCount; xBin++) {
-							int yBin = (int) ((dft[xBin] - plotMinPower) / (plotMaxPower - plotMinPower) * yBinCount);
-							if(yBin >= 0 && yBin < yBinCount)
-								histogram[datasetN][yBin][xBin / fftBinsPerPlotBin]++;
+				if(xBinCount > 0 && yBinCount > 0) {
+					histogram = new int[datasetsCount][yBinCount][xBinCount];
+					ByteBuffer bytes = Buffers.newDirectByteBuffer(yBinCount * xBinCount * 4); // pixelCount * one int32 per pixel
+					IntBuffer ints = bytes.asIntBuffer();
+					
+					for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
+						for(int windowN = 0; windowN < fft.windows.size(); windowN++) {
+							float[] dft = fft.windows.get(windowN).get(datasetN);
+							for(int xBin = 0; xBin < fft.binCount; xBin++) {
+								int yBin = (int) ((dft[xBin] - plotMinPower) / (plotMaxPower - plotMinPower) * yBinCount);
+								if(yBin >= 0 && yBin < yBinCount)
+									histogram[datasetN][yBin][xBin / fftBinsPerPlotBin]++;
+							}
 						}
+						
+						float fullScale = 0;
+						for(int y = 0; y < yBinCount; y++)
+							for(int x = 0; x < xBinCount; x++)
+								fullScale = Math.max(fullScale, histogram[datasetN][y][x]);
+						
+						ints.rewind();
+						for(int y = 0; y < yBinCount; y++)
+							ints.put(histogram[datasetN][y]);
+						
+						if(histogramTexHandle == null) {
+							histogramTexHandle = new int[1];
+							OpenGL.createHistogramTexture(gl, histogramTexHandle, xBinCount, yBinCount);
+						}
+						OpenGL.writeHistogramTexture(gl, histogramTexHandle, xBinCount, yBinCount, bytes.rewind());
+						OpenGL.drawHistogram(gl, histogramTexHandle, datasets.normalDatasets.get(datasetN).glColor, fullScale, (float) gamma / 100f, (int) xPlotLeft, (int) yPlotBottom, (int) plotWidth, (int) plotHeight, 1f/xBinCount/2f);
 					}
-					
-					float fullScale = 0;
-					for(int y = 0; y < yBinCount; y++)
-						for(int x = 0; x < xBinCount; x++)
-							fullScale = Math.max(fullScale, histogram[datasetN][y][x]);
-					
-					ints.rewind();
-					for(int y = 0; y < yBinCount; y++)
-						ints.put(histogram[datasetN][y]);
-					
-					if(histogramTexHandle == null) {
-						histogramTexHandle = new int[1];
-						OpenGL.createHistogramTexture(gl, histogramTexHandle, xBinCount, yBinCount);
-					}
-					OpenGL.writeHistogramTexture(gl, histogramTexHandle, xBinCount, yBinCount, bytes.rewind());
-					OpenGL.drawHistogram(gl, histogramTexHandle, datasets.normalDatasets.get(datasetN).glColor, fullScale, (float) gamma / 100f, (int) xPlotLeft, (int) yPlotBottom, (int) plotWidth, (int) plotHeight, 1f/xBinCount/2f);
 				}
 				
 			} else if(chartStyle == ChartStyle.WATERFALL) {
@@ -847,60 +849,61 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 					binCount = (int) Math.ceil((double) fft.binCount / (double) fftBinsPerPlotBin);
 				}
 				
-				ByteBuffer bytes = Buffers.newDirectByteBuffer(binCount * fftCount * 4 * 4); // pixelCount * four float32 per pixel
-				FloatBuffer pixels = bytes.asFloatBuffer();
-				
-				// populate the pixels, simulating glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
-				for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
-					float newR = datasets.normalDatasets.get(datasetN).glColor[0];
-					float newG = datasets.normalDatasets.get(datasetN).glColor[1];
-					float newB = datasets.normalDatasets.get(datasetN).glColor[2];
+				if(binCount > 0) {
+					ByteBuffer bytes = Buffers.newDirectByteBuffer(binCount * fftCount * 4 * 4); // pixelCount * four float32 per pixel
+					FloatBuffer pixels = bytes.asFloatBuffer();
 					
-					for(int windowN = 0; windowN < fft.windows.size(); windowN++) {
+					// populate the pixels, simulating glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
+					for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
+						float newR = datasets.normalDatasets.get(datasetN).glColor[0];
+						float newG = datasets.normalDatasets.get(datasetN).glColor[1];
+						float newB = datasets.normalDatasets.get(datasetN).glColor[2];
 						
-						int fftN = fft.windows.size() - 1 - windowN;						
-						float[] dft = fft.windows.get(fftN).get(datasetN);
-						
-						for(int binN = 0; binN < fft.binCount; binN += fftBinsPerPlotBin) {
-							int index = ((binN / fftBinsPerPlotBin) + (windowN * binCount)) * 4; // 4 floats per pixel
+						for(int windowN = 0; windowN < fft.windows.size(); windowN++) {
 							
-							float r = pixels.get(index + 0);
-							float g = pixels.get(index + 1);
-							float b = pixels.get(index + 2);
-							float a = pixels.get(index + 3);
+							int fftN = fft.windows.size() - 1 - windowN;						
+							float[] dft = fft.windows.get(fftN).get(datasetN);
 							
-							float newA = 0;
-							if(fftBinsPerPlotBin == 1) {
-								newA = (dft[binN] - plotMinPower) / (plotMaxPower - plotMinPower);
-							} else {
-								int firstBin = binN;
-								int lastBin = Math.min(binN + fftBinsPerPlotBin, fft.binCount - 1);
-								for(int bin = firstBin; bin <= lastBin; bin++)
-									newA += (dft[bin] - plotMinPower) / (plotMaxPower - plotMinPower);
-								newA /= lastBin - firstBin + 1;
+							for(int binN = 0; binN < fft.binCount; binN += fftBinsPerPlotBin) {
+								int index = ((binN / fftBinsPerPlotBin) + (windowN * binCount)) * 4; // 4 floats per pixel
+								
+								float r = pixels.get(index + 0);
+								float g = pixels.get(index + 1);
+								float b = pixels.get(index + 2);
+								float a = pixels.get(index + 3);
+								
+								float newA = 0;
+								if(fftBinsPerPlotBin == 1) {
+									newA = (dft[binN] - plotMinPower) / (plotMaxPower - plotMinPower);
+								} else {
+									int firstBin = binN;
+									int lastBin = Math.min(binN + fftBinsPerPlotBin, fft.binCount - 1);
+									for(int bin = firstBin; bin <= lastBin; bin++)
+										newA += (dft[bin] - plotMinPower) / (plotMaxPower - plotMinPower);
+									newA /= lastBin - firstBin + 1;
+								}
+								
+								r = (newR * newA) + (r * (1f - newA));
+								g = (newG * newA) + (g * (1f - newA));
+								b = (newB * newA) + (b * (1f - newA));
+								a = (newA * 1f)   + (a * (1f - newA));
+								
+								pixels.put(index + 0, r);
+								pixels.put(index + 1, g);
+								pixels.put(index + 2, b);
+								pixels.put(index + 3, a);
 							}
 							
-							r = (newR * newA) + (r * (1f - newA));
-							g = (newG * newA) + (g * (1f - newA));
-							b = (newB * newA) + (b * (1f - newA));
-							a = (newA * 1f)   + (a * (1f - newA));
-							
-							pixels.put(index + 0, r);
-							pixels.put(index + 1, g);
-							pixels.put(index + 2, b);
-							pixels.put(index + 3, a);
 						}
-						
 					}
+					
+					if(waterfallTexHandle == null) {
+						waterfallTexHandle = new int[1];
+						OpenGL.createTexture(gl, waterfallTexHandle, binCount, fftCount, GL3.GL_RGBA, GL3.GL_FLOAT, false);
+					}
+					OpenGL.writeTexture(gl, waterfallTexHandle, binCount, fftCount, GL3.GL_RGBA, GL3.GL_FLOAT, bytes);
+					OpenGL.drawTexturedBox(gl, waterfallTexHandle, false, (int) xPlotLeft, (int) yPlotBottom, (int) plotWidth, (int) plotHeight, 1f/binCount/2f, false);
 				}
-				
-				if(waterfallTexHandle == null) {
-					waterfallTexHandle = new int[1];
-					OpenGL.createTexture(gl, waterfallTexHandle, binCount, fftCount, GL3.GL_RGBA, GL3.GL_FLOAT, false);
-				}
-				OpenGL.writeTexture(gl, waterfallTexHandle, binCount, fftCount, GL3.GL_RGBA, GL3.GL_FLOAT, bytes);
-				OpenGL.drawTexturedBox(gl, waterfallTexHandle, false, (int) xPlotLeft, (int) yPlotBottom, (int) plotWidth, (int) plotHeight, 1f/binCount/2f, false);
-				
 			}
 		}
 		

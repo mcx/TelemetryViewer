@@ -27,7 +27,7 @@ public class ChartUtils {
 		Map<Float, String> yValues = new HashMap<Float, String>();
 		
 		// sanity check
-		if(plotHeight < 1)
+		if(plotHeight < 1 || minY >= maxY)
 			return yValues;
 		
 		// calculate the best vertical division size
@@ -95,7 +95,7 @@ public class ChartUtils {
 		Map<Float, String> yValues = new HashMap<Float, String>();
 		
 		// sanity check
-		if(plotHeight < 1)
+		if(plotHeight < 1 || minY >= maxY)
 			return yValues;
 		
 		// calculate the best vertical division size
@@ -152,7 +152,7 @@ public class ChartUtils {
 		Map<Integer, String> xValues = new HashMap<Integer, String>();
 		
 		// sanity check
-		if(plotWidth < 1)
+		if(plotWidth < 1 || minX >= maxX)
 			return xValues;
 		
 		// calculate the best horizontal division size
@@ -207,7 +207,7 @@ public class ChartUtils {
 		Map<Float, String> xValues = new HashMap<Float, String>();
 		
 		// sanity check
-		if(plotWidth < 1)
+		if(plotWidth < 1 || minX >= maxX)
 			return xValues;
 		
 		for(int maxDivisionsCount = 1; maxDivisionsCount < 100; maxDivisionsCount++) {
@@ -292,7 +292,7 @@ public class ChartUtils {
 		Map<Float, String> divisions = new HashMap<Float, String>();
 		
 		// sanity check
-		if(width < 1 || minTimestamp > maxTimestamp)
+		if(width < 1 || minTimestamp >= maxTimestamp)
 			return divisions;
 		
 		// determine how many divisions can fit on screen

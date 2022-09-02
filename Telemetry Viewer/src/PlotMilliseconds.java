@@ -41,29 +41,29 @@ public class PlotMilliseconds extends Plot {
 	/**
 	 * Step 1: (Required) Calculate the domain and range of the plot.
 	 * 
-	 * @param endTimestamp      Timestamp corresponding with the right edge of a time-domain plot. NOTE: this might be in the future!
-	 * @param endSampleNumber   Sample number corresponding with the right edge of a time-domain plot. NOTE: this sample might not exist yet!
-	 * @param zoomLevel         Current zoom level. 1.0 = no zoom.
+	 * @param maxX              Timestamp at the right edge of the plot. Must be >= 0, and it may be in the future!
 	 * @param datasets          Normal/edge/level datasets to acquire from.
-	 * @param duration          The number of milliseconds to acquire, before applying the zoom factor.
+	 * @param duration          Number of milliseconds to display. Must be >= 1.
 	 * @param cachedMode        True to enable the cache.
 	 * @param showTimestamps    True if the x-axis shows timestamps, false if the x-axis shows elapsed time.
 	 */
-	@Override public void initialize(long endTimestamp, long endSampleNumber, double zoomLevel, DatasetsInterface datasets, long duration, boolean cachedMode, boolean showTimestamps) {
+	@Override public void initialize(long maxX, DatasetsInterface datasets, long duration, boolean cachedMode, boolean showTimestamps) {
 		
 		this.datasets = datasets;
 		this.cachedMode = cachedMode;
 		xAxisMode = showTimestamps ? Mode.SHOWS_TIMESTAMPS : Mode.SHOWS_SECONDS;
 		xAxisTitle = showTimestamps ? "Time" : "Time Elapsed (Seconds)";
 		
-		// calculate the domain, ensuring it's >= 1ms
-		plotDomain = (long) Math.ceil(duration * zoomLevel);
-		plotMaxX = endTimestamp;
+		// sanity check
+		if(maxX < 0)
+			maxX = 0;
+		if(duration < 1)
+			duration = 1;
+		
+		// calculate the domain
+		plotDomain = duration;
+		plotMaxX = maxX;
 		plotMinX = plotMaxX - plotDomain;
-		if(plotMinX == plotMaxX) {
-			plotMinX = plotMaxX - 1;
-			plotDomain = plotMaxX - plotMinX;
-		}
 
 		// determine which samples to acquire
 		connection = datasets.connection;
@@ -164,13 +164,13 @@ public class PlotMilliseconds extends Plot {
 		                    (xAxisMode == Mode.SHOWS_MINUTES) ? String.format("%02d:%02d.%03d",             minutes, seconds, milliseconds) :
 		                                                        String.format("%02d.%03d",                           seconds, milliseconds);
 		
-		float maxLabelWidth = Float.max(OpenGL.smallTextWidth(gl, leftLabel), OpenGL.smallTextWidth(gl, rightLabel));
+		float maxLabelWidth = Float.max(OpenGL.smallTextWidth(gl, leftLabel),
+		                                OpenGL.smallTextWidth(gl, rightLabel));
 		float padding = maxLabelWidth / 2f;
 		int divisionCount = (int) (plotWidth / (maxLabelWidth + padding));
 		
 		// determine where the divisions should occur
-		long millisecondsOnScreen = plotMaxX - plotMinX;
-		long millisecondsPerDivision = (long) Math.ceil((double) millisecondsOnScreen / (double) divisionCount);
+		long millisecondsPerDivision = (long) Math.ceil((double) plotDomain / (double) divisionCount);
 		if(millisecondsPerDivision == 0)
 			millisecondsPerDivision = 1;
 		
@@ -233,7 +233,7 @@ public class PlotMilliseconds extends Plot {
 		for(int divisionN = 0; divisionN < divisionCount; divisionN++) {
 			long millisecondsElapsed = firstDivisionMillisecondsElapsed + (divisionN * millisecondsPerDivision);
 			negative = millisecondsElapsed < 0;
-			float pixelX = (float) (millisecondsElapsed - leftMillisecondsElapsed) / (float) millisecondsOnScreen * plotWidth;
+			float pixelX = (float) (millisecondsElapsed - leftMillisecondsElapsed) / (float) plotDomain * plotWidth;
 			if(negative) millisecondsElapsed *= -1;
 			hours = millisecondsElapsed / 3600000; millisecondsElapsed %= 3600000;
 			minutes = millisecondsElapsed / 60000; millisecondsElapsed %= 60000;
@@ -427,15 +427,15 @@ public class PlotMilliseconds extends Plot {
 		final int bufferSizeMinusOne = 100 - 1; // 10 was too small
 		
 		int extraSamplesNeeded = 0;
-		long sampleN = sampleNumber;
+		int sampleN = (int) sampleNumber;
 		while(sampleN >= 0) {
 			if(sampleN < bufferSizeMinusOne) {
 				extraSamplesNeeded++;
-				if(datasets.getTimestamp((int) sampleN) < requiredTimestamp)
+				if(datasets.getTimestamp(sampleN) < requiredTimestamp)
 					return extraSamplesNeeded;
 				sampleN--;
 			} else {
-				FloatBuffer buffer = datasets.getTimestampsBuffer((int) (sampleN - bufferSizeMinusOne), (int) sampleN, requiredTimestamp);
+				FloatBuffer buffer = datasets.getTimestampsBuffer(sampleN - bufferSizeMinusOne, sampleN, requiredTimestamp);
 				for(int i = bufferSizeMinusOne; i >= 0; i--) {
 					extraSamplesNeeded++;
 					if(buffer.get(i) < 0)
@@ -465,15 +465,16 @@ public class PlotMilliseconds extends Plot {
 		final int bufferSizeMinusOne = 100 - 1; // 10 was too small
 		
 		int extraSamplesNeeded = 0;
-		long sampleN = sampleNumber;
+		int sampleN = (int) sampleNumber;
 		while(sampleN <= maxSampleNumber) {
-			if(sampleN + bufferSizeMinusOne > maxSampleNumber) {
+			int lastSampleInBuffer = Guava.saturatedAdd(sampleN, bufferSizeMinusOne);
+			if(lastSampleInBuffer > maxSampleNumber) {
 				extraSamplesNeeded++;
-				if(datasets.getTimestamp((int) sampleN) > requiredTimestamp)
+				if(datasets.getTimestamp(sampleN) > requiredTimestamp)
 					return extraSamplesNeeded;
 				sampleN++;
 			} else {
-				FloatBuffer buffer = datasets.getTimestampsBuffer((int) sampleN, (int) (sampleN + bufferSizeMinusOne), requiredTimestamp);
+				FloatBuffer buffer = datasets.getTimestampsBuffer(sampleN, lastSampleInBuffer, requiredTimestamp);
 				for(int i = 0; i <= bufferSizeMinusOne; i++) {
 					extraSamplesNeeded++;
 					if(buffer.get(i) > 0)

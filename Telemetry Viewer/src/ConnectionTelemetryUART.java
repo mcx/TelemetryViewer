@@ -51,7 +51,7 @@ public class ConnectionTelemetryUART extends ConnectionTelemetry {
 	
 	// transmit settings
 	protected Queue<byte[]> transmitQueue = new ConcurrentLinkedQueue<byte[]>();
-	protected long previousRepititionTimestamp = 0;
+	protected long nextRepititionTimestamp = 0;
 	
 	private TransmitDataType transmitDatatype = TransmitDataType.TEXT;
 	private WidgetComboboxEnum<TransmitDataType> transmitDatatypeCombobox;
@@ -210,7 +210,7 @@ public class ConnectionTelemetryUART extends ConnectionTelemetry {
 		                                                        // also reset transmit settings
 		                                                        transmitQueue.clear();
 		                                                        transmitSavedPackets.clear();
-		                                                        previousRepititionTimestamp = 0;
+		                                                        nextRepititionTimestamp = 0;
 		                                                        transmitDatatypeCombobox.setSelectedItem(ConnectionTelemetry.TransmitDataType.TEXT);
 		                                                        transmitDataTextfield.setUserText((protocol == Protocol.TC66) ? "getva" : "");
 		                                                        transmitAppendCRcheckbox.setSelected(false);
@@ -425,8 +425,8 @@ public class ConnectionTelemetryUART extends ConnectionTelemetry {
 //						NotificationsController.showDebugMessage(message);
 					}
 					
-					if(transmitRepeatedly && previousRepititionTimestamp + transmitRepeatedlyMilliseconds <= System.currentTimeMillis()) {
-						previousRepititionTimestamp = System.currentTimeMillis();
+					if(transmitRepeatedly && System.currentTimeMillis() >= nextRepititionTimestamp) {
+						nextRepititionTimestamp = System.currentTimeMillis() + transmitRepeatedlyMilliseconds;
 						uart.write(transmitDataBytes);
 						
 //						String message = "Transmitted: ";

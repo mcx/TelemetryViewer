@@ -3,6 +3,7 @@ import java.io.PrintWriter;
 import java.util.Queue;
 
 import javax.swing.JPanel;
+import javax.swing.SwingUtilities;
 
 public class ConnectionTelemetryDemo extends ConnectionTelemetry {
 	
@@ -26,7 +27,7 @@ public class ConnectionTelemetryDemo extends ConnectionTelemetry {
 		                                             sampleRate,
 		                                             sampleRate,
 		                                             newRate -> {});
-		sampleRateTextfield.setToolTipText("<html>Number of telemetry packets sent to the PC each second.</html>");
+		sampleRateTextfield.setToolTipText("Number of telemetry packets sent to the PC each second.");
 		sampleRateTextfield.setEnabled(false);
 		
 		// communication protocol
@@ -108,6 +109,11 @@ public class ConnectionTelemetryDemo extends ConnectionTelemetry {
 			int startSampleNumber = getSampleCount();
 			int sampleNumber = startSampleNumber;
 			
+			if(sampleNumber == Integer.MAX_VALUE) {
+				SwingUtilities.invokeLater(() -> disconnect("Reached maximum sample count. Disconnected.")); // invokeLater to prevent deadlock
+				return;
+			}
+			
 			double oscillatingFrequency = 100; // Hz
 			boolean oscillatingHigher = true;
 			int samplesForCurrentFrequency = (int) Math.round(1.0 / oscillatingFrequency * 10000.0);
@@ -124,6 +130,11 @@ public class ConnectionTelemetryDemo extends ConnectionTelemetry {
 					
 					sampleNumber++;
 					incrementSampleCount(1);
+					
+					if(sampleNumber == Integer.MAX_VALUE) {
+						SwingUtilities.invokeLater(() -> disconnect("Reached maximum sample count. Disconnected.")); // invokeLater to prevent deadlock
+						return;
+					}
 
 					currentFrequencySampleCount++;
 					if(currentFrequencySampleCount == samplesForCurrentFrequency) {

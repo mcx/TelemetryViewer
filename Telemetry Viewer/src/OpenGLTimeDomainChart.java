@@ -58,7 +58,7 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 	AutoScale autoscale;
 	
 	Plot plot;
-	List<Dataset> allDatasets; // normal and bitfields
+	List<Dataset> allDatasets = new ArrayList<Dataset>(); // normal and bitfields
 	
 	// trigger
 	boolean triggerEnabled = false;
@@ -110,7 +110,7 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 	}
 	
 	/**
-	 * Updates the List of all datasets, and creates new corresponding caches.
+	 * Updates the List of all datasets.
 	 */
 	private void updateAllDatasetsList() {
 		
@@ -235,6 +235,8 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		                                                        (newDurationType, newDuration) -> {
 		                                                            sampleCountMode  = newDurationType == WidgetDatasetCheckboxes.AxisType.SAMPLE_COUNT;
 		                                                            isTimestampsMode = newDurationType == WidgetDatasetCheckboxes.AxisType.TIMESTAMPS;
+		                                                            if(sampleCountMode)
+		                                                            	newDuration = Math.min(newDuration, Integer.MAX_VALUE / 16);
 		                                                            duration = (int) (long) newDuration;
 		                                                            plot = sampleCountMode ? new PlotSampleCount() : new PlotMilliseconds();
 		                                                            if(triggerWidget != null)
@@ -316,10 +318,9 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 			}
 		}
 		
-		boolean haveDatasets = allDatasets != null && !allDatasets.isEmpty();
-		int datasetsCount = haveDatasets ? allDatasets.size() : 0;
+		int datasetsCount = allDatasets.size();
 		
-		plot.initialize(endTimestamp, endSampleNumber, zoomLevel, datasets, duration, cached, isTimestampsMode);
+		plot.initialize(sampleCountMode ? endSampleNumber : endTimestamp, datasets, Math.round(duration * zoomLevel), cached, isTimestampsMode);
 		
 		// calculate the plot range
 		StorageFloats.MinMax requiredRange = plot.getRange();
@@ -358,7 +359,7 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 			}
 		}
 		
-		if(legendVisible && haveDatasets) {
+		if(legendVisible && datasetsCount > 0) {
 			xLegendBorderLeft = Theme.tilePadding;
 			yLegendBorderBottom = Theme.tilePadding;
 			yLegendTextBaseline = yLegendBorderBottom + Theme.legendTextPadding;
@@ -414,7 +415,7 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		if(yAxisTitleVisible) {
 			xYaxisTitleTextTop = xPlotLeft;
 			xYaxisTitleTextBaseline = xYaxisTitleTextTop + OpenGL.largeTextHeight;
-			yAxisTitle = haveDatasets ? allDatasets.get(0).unit : "";
+			yAxisTitle = (datasetsCount > 0) ? allDatasets.get(0).unit : "";
 			yYaxisTitleTextLeft = yPlotBottom + (plotHeight / 2.0f) - (OpenGL.largeTextWidth(gl, yAxisTitle) / 2.0f);
 			
 			xPlotLeft = xYaxisTitleTextBaseline + Theme.tickTextPadding;
@@ -512,7 +513,7 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		}
 		
 		// draw the legend, if space is available
-		if(legendVisible && haveDatasets && xLegendBorderRight < width - Theme.tilePadding) {
+		if(legendVisible && datasetsCount > 0 && xLegendBorderRight < width - Theme.tilePadding) {
 			OpenGL.drawQuad2D(gl, Theme.legendBackgroundColor, xLegendBorderLeft, yLegendBorderBottom, xLegendBorderRight, yLegendBorderTop);
 			
 			for(int i = 0; i < datasetsCount; i++) {
@@ -628,7 +629,7 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		}
 		
 		// draw the tooltip if the mouse is in the plot region and not over something clickable
-		if(!allDatasets.isEmpty() && SettingsController.getTooltipVisibility() && mouseX >= xPlotLeft && mouseX <= xPlotRight && mouseY >= yPlotBottom && mouseY <= yPlotTop && handler == null) {
+		if(datasetsCount > 0 && SettingsController.getTooltipVisibility() && mouseX >= xPlotLeft && mouseX <= xPlotRight && mouseY >= yPlotBottom && mouseY <= yPlotTop && handler == null) {
 			Plot.TooltipInfo tooltip = plot.getTooltip(mouseX - (int) xPlotLeft, plotWidth);
 			if(tooltip.draw) {
 				String[] tooltipLines = tooltip.label.split("\n");

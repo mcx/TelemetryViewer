@@ -58,8 +58,8 @@ public class OpenGLStatisticsChart extends PositionedChart {
 		sampleCountTextfield = new WidgetTextfieldInt("",
 		                                              "duration",
 		                                              "Samples",
-		                                              10,
-		                                              1048576,
+		                                              1,
+		                                              Integer.MAX_VALUE / 16,
 		                                              ConnectionsController.getDefaultChartDuration(),
 		                                              newDuration -> durationSampleCount = newDuration);
 		
@@ -165,14 +165,12 @@ public class OpenGLStatisticsChart extends PositionedChart {
 			return handler;
 		}
 
-		int sampleCount = 0;
 		if(firstSampleNumber < 0)
 			firstSampleNumber = 0;
 		if(firstSampleNumber > lastSampleNumber)
 			firstSampleNumber = lastSampleNumber;
-		sampleCount = lastSampleNumber - firstSampleNumber + 1;
-		if(lastSampleNumber < 0)
-			sampleCount = 0;
+		int sampleCount = lastSampleNumber - firstSampleNumber + 1;
+
 		String durationLabel = sampleCountMode             ? "(" + sampleCount + " Samples)" :
 		                       showAs.equals("Timestamps") ? "(" + SettingsController.formatTimestampToMilliseconds(datasets.getTimestamp(firstSampleNumber)).replace('\n', ' ') + " to " + SettingsController.formatTimestampToMilliseconds(datasets.getTimestamp(lastSampleNumber)).replace('\n', ' ') + ")" :
 		                                                     "(" + (datasets.getTimestamp(lastSampleNumber) - datasets.getTimestamp(firstSampleNumber)) + " ms)";
@@ -204,19 +202,18 @@ public class OpenGLStatisticsChart extends PositionedChart {
 			for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
 				Dataset dataset = datasets.getNormal(datasetN);
 				float[] samples = datasets.getSamplesArray(dataset, firstSampleNumber, lastSampleNumber);
-				float[] range   = datasets.getRange(dataset, firstSampleNumber, lastSampleNumber);
-				
 				double[] doubles = new double[samples.length];
 				for(int i = 0; i < samples.length; i++)
 					doubles[i] = (double) samples[i];
+				
 				DescriptiveStatistics stats = new DescriptiveStatistics(doubles);
 				
 				int column = datasetN + 1;
 				line = 0;
 				text[column][line++] = dataset.name;
 				if(currentValuesVisible)      text[column][line++] = ChartUtils.formattedNumber(samples[samples.length - 1], 5) + " " + dataset.unit;
-				if(minimumsVisible)           text[column][line++] = ChartUtils.formattedNumber(range[0], 5) + " " + dataset.unit;
-				if(maximumsVisible)           text[column][line++] = ChartUtils.formattedNumber(range[1], 5) + " " + dataset.unit;
+				if(minimumsVisible)           text[column][line++] = ChartUtils.formattedNumber(stats.getMin(), 5) + " " + dataset.unit;
+				if(maximumsVisible)           text[column][line++] = ChartUtils.formattedNumber(stats.getMax(), 5) + " " + dataset.unit;
 				if(meansVisible)              text[column][line++] = ChartUtils.formattedNumber(stats.getMean(), 5) + " " + dataset.unit;
 				if(mediansVisible)            text[column][line++] = ChartUtils.formattedNumber(stats.getPercentile(50), 5) + " " + dataset.unit;
 				if(standardDeviationsVisible) text[column][line++] = ChartUtils.formattedNumber(stats.getStandardDeviation(), 5) + " " + dataset.unit;
@@ -297,7 +294,7 @@ public class OpenGLStatisticsChart extends PositionedChart {
 		if(mediansVisible)            occupiedHeight += Theme.tilePadding + OpenGL.smallTextHeight;
 		if(standardDeviationsVisible) occupiedHeight += Theme.tilePadding + OpenGL.smallTextHeight;
 		if(percentileVisible)         occupiedHeight += Theme.tilePadding + OpenGL.smallTextHeight;
-		if(sampleCountVisible)           occupiedHeight += 2 * (Theme.tilePadding + OpenGL.smallTextHeight);
+		if(sampleCountVisible)        occupiedHeight += 2 * (Theme.tilePadding + OpenGL.smallTextHeight);
 		occupiedHeight += Theme.tilePadding;
 		int occupiedWidth = (int) columnWidth[0];
 		for(int i = 1; i < columnWidth.length; i++) {

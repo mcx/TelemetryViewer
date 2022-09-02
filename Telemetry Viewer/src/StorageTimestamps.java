@@ -367,8 +367,9 @@ public class StorageTimestamps {
 				lastSampleNumber = sampleCount - 1;
 			
 			// grow the cache to 300% if it can't hold 200% the requested range
-			if(cacheSize < 2 * (lastSampleNumber - firstSampleNumber + 1)) {
-				cacheSize = 3 * (lastSampleNumber - firstSampleNumber + 1);
+			int newSampleCount = lastSampleNumber - firstSampleNumber + 1;
+			if(cacheSize < 2 * newSampleCount) {
+				cacheSize = 3 * newSampleCount;
 				cacheBytes = Buffers.newDirectByteBuffer(cacheSize * BYTES_PER_TIMESTAMP);
 				cacheLongs = cacheBytes.asLongBuffer();
 				startOfCache = 0;
@@ -376,14 +377,15 @@ public class StorageTimestamps {
 			}
 			
 			// flush cache if necessary
-			if(firstSampleNumber < startOfCache || lastSampleNumber >= startOfCache + cacheSize) {
+			long endOfCache = Guava.saturatedAdd(startOfCache, cacheSize) - 1;
+			if(firstSampleNumber < startOfCache || lastSampleNumber > endOfCache) {
 				startOfCache = firstSampleNumber - (cacheSize / 3); // reserve a third of the cache before the currently requested range, so the user can rewind a little without needing to flush the cache
 				if(startOfCache < 0)
 					startOfCache = 0;
 				cachedCount = 0;
 				// try to fill the new cache with adjacent samples too
 				firstSampleNumber = startOfCache;
-				lastSampleNumber = startOfCache + cacheSize - 1;
+				lastSampleNumber = Guava.saturatedAdd(startOfCache, cacheSize - 1);
 				int max = connection.getSampleCount() - 1;
 				if(lastSampleNumber > max)
 					lastSampleNumber = max;

@@ -146,10 +146,12 @@ public class ConnectionsController {
 	 */
 	public static int getDefaultChartDuration() {
 		
-		int duration = 10000;
-		if(!telemetryConnections.isEmpty() && telemetryConnections.get(0).getSampleRate() < Integer.MAX_VALUE / 10)
-			duration = telemetryConnections.get(0).getSampleRate() * 10;
-		return duration;
+		if(telemetryConnections.isEmpty()) {
+			return 10000;
+		} else {
+			int sampleCount = Guava.saturatedMultiply(telemetryConnections.get(0).getSampleRate(), 10);
+			return Math.min(sampleCount, Integer.MAX_VALUE / 16);
+		}
 		
 	}
 	
@@ -738,7 +740,7 @@ public class ConnectionsController {
 			ChartUtils.parseExact(lines.remove(), "");
 			int chartsCount = ChartUtils.parseInteger(lines.remove(), "%d Charts:");
 			if(chartsCount == 0) {
-				NotificationsController.showHintUntil("Add a chart by clicking on a tile, or by clicking-and-dragging across multiple tiles.", () -> !ChartsController.getCharts().isEmpty(), true);
+				NotificationsController.showHintUntil("Add a chart by clicking on a tile, or click-and-dragging across multiple tiles.", () -> !ChartsController.getCharts().isEmpty(), true);
 				return true;
 			}
 

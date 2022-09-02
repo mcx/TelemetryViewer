@@ -161,7 +161,7 @@ public class OpenGLHistogramChart extends PositionedChart {
 		                                        "sample count",
 		                                        "Samples",
 		                                        2,
-		                                        Integer.MAX_VALUE,
+		                                        Integer.MAX_VALUE / 16,
 		                                        ConnectionsController.getDefaultChartDuration(),
 		                                        newDuration -> duration = newDuration);
 		
@@ -511,8 +511,6 @@ public class OpenGLHistogramChart extends PositionedChart {
 		int firstSampleNumber = lastSampleNumber - (int) (duration * zoomLevel) + 1;
 		if(firstSampleNumber < 0)
 			firstSampleNumber = 0;
-		if(firstSampleNumber > lastSampleNumber)
-			firstSampleNumber = lastSampleNumber + 1;
 		
 		int sampleCount = lastSampleNumber - firstSampleNumber + 1;
 		int datasetsCount = datasets.normalsCount();
@@ -710,12 +708,8 @@ public class OpenGLHistogramChart extends PositionedChart {
 		if(yAxisTicksVisible) {
 			// the left y-axis is for Relative Frequency unless only Frequency will be shown
 			float maxTextWidth = 0;
-			for(String text : (yAxisScale == YAxisScale.RELATIVE_FREQUENCY || yAxisScale == YAxisScale.BOTH) ? yDivisionsRelativeFrequency.values() : yDivisionsFrequency.values()) {
-				float textWidth = OpenGL.smallTextWidth(gl, text);
-				if(textWidth > maxTextWidth)
-					maxTextWidth = textWidth;
-					
-			}
+			for(String text : (yAxisScale == YAxisScale.FREQUENCY) ? yDivisionsFrequency.values() : yDivisionsRelativeFrequency.values())
+				maxTextWidth = Math.max(maxTextWidth, OpenGL.smallTextWidth(gl, text));
 			
 			xYaxisLeftTickTextRight = xPlotLeft + maxTextWidth;
 			xYaxisLeftTickLeft = xYaxisLeftTickTextRight + Theme.tickTextPadding;
@@ -729,15 +723,11 @@ public class OpenGLHistogramChart extends PositionedChart {
 			
 			// the right y-axis is always for Frequency
 			if(yAxisScale == YAxisScale.BOTH) {
-				float MaxTextWidth = 0;
-				for(String text : yDivisionsFrequency.values()) {
-					float textWidth = OpenGL.smallTextWidth(gl, text);
-					if(textWidth > MaxTextWidth)
-						MaxTextWidth = textWidth;
-						
-				}
+				maxTextWidth = 0;
+				for(String text : yDivisionsFrequency.values())
+					maxTextWidth = Math.max(maxTextWidth, OpenGL.smallTextWidth(gl, text));
 				
-				xYaxisRightTickTextLeft = xPlotRight - MaxTextWidth;
+				xYaxisRightTickTextLeft = xPlotRight - maxTextWidth;
 				xYaxisRightTickRight = xYaxisRightTickTextLeft - Theme.tickTextPadding;
 				xYaxisRightTickLeft = xYaxisRightTickRight - Theme.tickLength;
 				
@@ -808,28 +798,7 @@ public class OpenGLHistogramChart extends PositionedChart {
 			}
 			
 			// relative frequency is drawn on the left unless only frequency is to be drawn
-			if(yAxisScale == YAxisScale.RELATIVE_FREQUENCY || yAxisScale == YAxisScale.BOTH) {
-				
-				OpenGL.buffer.rewind();
-				for(Float entry : yDivisionsRelativeFrequency.keySet()) {
-					float y = (entry - minYrelFreq) / yRelFreqRange * plotHeight + yPlotBottom;
-					OpenGL.buffer.put(xPlotLeft);  OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.divisionLinesColor);
-					OpenGL.buffer.put(xPlotRight); OpenGL.buffer.put(y); OpenGL.buffer.put(yAxisScale == YAxisScale.BOTH ? Theme.divisionLinesFadedColor : Theme.divisionLinesColor);
-
-					OpenGL.buffer.put(xYaxisLeftTickLeft);  OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.tickLinesColor);
-					OpenGL.buffer.put(xYaxisLeftTickRight); OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.tickLinesColor);
-				}
-				OpenGL.buffer.rewind();
-				int vertexCount = yDivisionsRelativeFrequency.keySet().size() * 4;
-				OpenGL.drawLinesXyrgba(gl, GL3.GL_LINES, OpenGL.buffer, vertexCount);
-				
-				for(Map.Entry<Float,String> entry : yDivisionsRelativeFrequency.entrySet()) {
-					float x = xYaxisLeftTickTextRight - OpenGL.smallTextWidth(gl, entry.getValue());
-					float y = (entry.getKey() - minYrelFreq) / yRelFreqRange * plotHeight + yPlotBottom - (OpenGL.smallTextHeight / 2.0f);
-					OpenGL.drawSmallText(gl, entry.getValue(), (int) x, (int) y, 0);
-				}
-			
-			} else {
+			if(yAxisScale == YAxisScale.FREQUENCY) {
 				
 				OpenGL.buffer.rewind();
 				for(Float entry : yDivisionsFrequency.keySet()) {
@@ -847,6 +816,27 @@ public class OpenGLHistogramChart extends PositionedChart {
 				for(Map.Entry<Float,String> entry : yDivisionsFrequency.entrySet()) {
 					float x = xYaxisLeftTickTextRight - OpenGL.smallTextWidth(gl, entry.getValue());
 					float y = (entry.getKey() - minYfreq) / yFreqRange * plotHeight + yPlotBottom - (OpenGL.smallTextHeight / 2.0f);
+					OpenGL.drawSmallText(gl, entry.getValue(), (int) x, (int) y, 0);
+				}
+			
+			} else {
+				
+				OpenGL.buffer.rewind();
+				for(Float entry : yDivisionsRelativeFrequency.keySet()) {
+					float y = (entry - minYrelFreq) / yRelFreqRange * plotHeight + yPlotBottom;
+					OpenGL.buffer.put(xPlotLeft);  OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.divisionLinesColor);
+					OpenGL.buffer.put(xPlotRight); OpenGL.buffer.put(y); OpenGL.buffer.put(yAxisScale == YAxisScale.BOTH ? Theme.divisionLinesFadedColor : Theme.divisionLinesColor);
+
+					OpenGL.buffer.put(xYaxisLeftTickLeft);  OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.tickLinesColor);
+					OpenGL.buffer.put(xYaxisLeftTickRight); OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.tickLinesColor);
+				}
+				OpenGL.buffer.rewind();
+				int vertexCount = yDivisionsRelativeFrequency.keySet().size() * 4;
+				OpenGL.drawLinesXyrgba(gl, GL3.GL_LINES, OpenGL.buffer, vertexCount);
+				
+				for(Map.Entry<Float,String> entry : yDivisionsRelativeFrequency.entrySet()) {
+					float x = xYaxisLeftTickTextRight - OpenGL.smallTextWidth(gl, entry.getValue());
+					float y = (entry.getKey() - minYrelFreq) / yRelFreqRange * plotHeight + yPlotBottom - (OpenGL.smallTextHeight / 2.0f);
 					OpenGL.drawSmallText(gl, entry.getValue(), (int) x, (int) y, 0);
 				}
 				

@@ -125,7 +125,7 @@ public class ConnectionTelemetryTCP extends ConnectionTelemetry {
 				tcpServer.setSoTimeout(1000);
 			} catch (Exception e) {
 				try { tcpServer.close(); } catch(Exception e2) {}
-				SwingUtilities.invokeLater(() -> disconnect("Unable to start the TCP server. Make sure another program is not already using port " + portNumber + "."));
+				SwingUtilities.invokeLater(() -> disconnect("Unable to start the TCP server. Another program might already be using port " + portNumber + "."));
 				return;
 			}
 			
@@ -134,7 +134,7 @@ public class ConnectionTelemetryTCP extends ConnectionTelemetry {
 			
 			if(showGui)
 				Main.showConfigurationGui(isProtocolCsv() ? new DataStructureCsvView(this) :
-				                                        new DataStructureBinaryView(this));
+				                                         new DataStructureBinaryView(this));
 			
 			startProcessingTelemetry(stream);
 			

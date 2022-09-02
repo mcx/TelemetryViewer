@@ -133,7 +133,7 @@ public class ConnectionTelemetryUDP extends ConnectionTelemetry {
 			
 			if(showGui)
 				Main.showConfigurationGui(isProtocolCsv() ? new DataStructureCsvView(this) :
-				                                        new DataStructureBinaryView(this));
+				                                         new DataStructureBinaryView(this));
 			
 			startProcessingTelemetry(stream);
 			

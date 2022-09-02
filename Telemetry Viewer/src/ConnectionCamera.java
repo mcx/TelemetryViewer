@@ -314,7 +314,7 @@ public class ConnectionCamera extends Connection {
 					CommunicationView.instance.redraw();
 					
 					if(ChartsController.getCharts().isEmpty())
-						NotificationsController.showHintUntil("Add a chart by clicking on a tile, or by clicking-and-dragging across multiple tiles.", () -> !ChartsController.getCharts().isEmpty(), true);
+						NotificationsController.showHintUntil("Add a chart by clicking on a tile, or click-and-dragging across multiple tiles.", () -> !ChartsController.getCharts().isEmpty(), true);
 					
 					// enter an infinite loop that gets the frames
 					while(true) {
@@ -418,7 +418,7 @@ public class ConnectionCamera extends Connection {
 					CommunicationView.instance.redraw();
 					
 					if(ChartsController.getCharts().isEmpty())
-						NotificationsController.showHintUntil("Add a chart by clicking on a tile, or by clicking-and-dragging across multiple tiles.", () -> !ChartsController.getCharts().isEmpty(), true);
+						NotificationsController.showHintUntil("Add a chart by clicking on a tile, or click-and-dragging across multiple tiles.", () -> !ChartsController.getCharts().isEmpty(), true);
 		
 					// enter an infinite loop that acquires images
 					int frameCount = framesIndex.size();

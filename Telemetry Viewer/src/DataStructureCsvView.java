@@ -184,7 +184,7 @@ public class DataStructureCsvView extends JPanel {
 				connection.setDataStructureDefined(true);
 				CommunicationView.instance.redraw();
 				if(ChartsController.getCharts().isEmpty())
-					NotificationsController.showHintUntil("Add a chart by clicking on a tile, or by clicking-and-dragging across multiple tiles.", () -> !ChartsController.getCharts().isEmpty(), true);
+					NotificationsController.showHintUntil("Add a chart by clicking on a tile, or click-and-dragging across multiple tiles.", () -> !ChartsController.getCharts().isEmpty(), true);
 				Main.hideConfigurationGui();
 			}
 		});

@@ -449,6 +449,8 @@ public abstract class ConnectionTelemetry extends Connection {
 					while(!futures.isEmpty()) {
 						ParsedData data = futures.remove().get();
 						for(int packetN = 0; packetN < data.packetCount; packetN++) {
+							if(sampleNumber == Integer.MAX_VALUE)
+								throw new Exception();
 							if(ConnectionsController.realtimeImporting) {
 								if(Thread.interrupted()) {
 									ConnectionsController.realtimeImporting = false;
@@ -619,7 +621,7 @@ public abstract class ConnectionTelemetry extends Connection {
 				// other columns are the datasets
 				Dataset dataset = datasets.getByIndex(csvColumnNumber - 2);
 				StorageFloats.Cache cache = dataset.createCache();
-				FloatBuffer buffer = dataset.getSamplesBuffer(firstSampleNumber, firstSampleNumber + sampleCount - 1, cache);
+				FloatBuffer buffer = dataset.getSamplesBuffer(firstSampleNumber, firstSampleNumber + (sampleCount - 1), cache);
 				for(int i = 0; i < sampleCount; i++)
 					text[i] = Float.toString(buffer.get());
 			}
@@ -714,9 +716,9 @@ public abstract class ConnectionTelemetry extends Connection {
 						String[] tokens = line.split(",");
 						for(int i = 0; i < numberForLocation.length; i++)
 							numberForLocation[i] = Float.parseFloat(tokens[i]);
-						
+
 						int sampleNumber = getSampleCount();
-						if(sampleNumber + 1 < 0) { // <0 because of overflow
+						if(sampleNumber == Integer.MAX_VALUE) {
 							SwingUtilities.invokeLater(() -> disconnect("Reached maximum sample count. Disconnected.")); // invokeLater to prevent deadlock
 							throw new InterruptedException();
 						}
@@ -765,8 +767,10 @@ public abstract class ConnectionTelemetry extends Connection {
 						
 						// ensure room exists for the new samples
 						int sampleNumber = getSampleCount();
-						int packetCount = (data.end - data.offset + 1) / packetByteCount;
-						if(sampleNumber + packetCount < 0) { // <0 because of overflow
+						int maxAllowedPacketCount = Integer.MAX_VALUE - sampleNumber;
+						int receivedPacketCount = (data.end - data.offset + 1) / packetByteCount;
+						int packetCount = Integer.min(receivedPacketCount, maxAllowedPacketCount);
+						if(sampleNumber == Integer.MAX_VALUE) {
 							SwingUtilities.invokeLater(() -> disconnect("Reached maximum sample count. Disconnected.")); // invokeLater to prevent deadlock
 							throw new InterruptedException();
 						}
@@ -795,6 +799,7 @@ public abstract class ConnectionTelemetry extends Connection {
 							incrementSampleCount(1);
 							sampleNumber++;
 							samplesBeforeNextBlock--;
+							packetCount--;
 							
 						}
 						
@@ -804,7 +809,6 @@ public abstract class ConnectionTelemetry extends Connection {
 						}
 						
 						// part 2 of 3: process blocks of packets in parallel if block aligned and more than one full block remaining
-						packetCount = (data.end - data.offset + 1) / packetByteCount;
 						int blocksRemaining = packetCount / StorageFloats.BLOCK_SIZE;
 						if(blocksRemaining > 0) {
 							int threadN = 0;
@@ -818,6 +822,7 @@ public abstract class ConnectionTelemetry extends Connection {
 								threadOffset += threadPacketCount * packetByteCount;
 								blocksRemaining -= blockCount;
 								threadN = (threadN + 1) % THREAD_COUNT;
+								packetCount -= threadPacketCount;
 								
 							}
 							
@@ -833,7 +838,6 @@ public abstract class ConnectionTelemetry extends Connection {
 						}
 						
 						// part 3 of 3: process the rest of the packets individually if any remain after the blocks
-						packetCount = (data.end - data.offset + 1) / packetByteCount;
 						while(packetCount > 0) {
 						
 							if(syncWordByteCount > 0 && data.buffer[data.offset] != syncWord) {
@@ -967,12 +971,12 @@ public abstract class ConnectionTelemetry extends Connection {
 								long group1mwh         = getUint32.apply(currentPacket, 84);
 								boolean temperatureNeg = getUint32.apply(currentPacket, 88) == 1;
 								long temperature       = getUint32.apply(currentPacket, 92) * (temperatureNeg ? -1 : 1); // degrees, C or F (set by user)
-								float dPlusVoltage    = getUint32.apply(currentPacket, 96)  / 100f; // converting to volts
-								float dMinusVoltage   = getUint32.apply(currentPacket, 100) / 100f; // converting to volts
+								float dPlusVoltage     = getUint32.apply(currentPacket, 96)  / 100f; // converting to volts
+								float dMinusVoltage    = getUint32.apply(currentPacket, 100) / 100f; // converting to volts
 								
 								// populate the datasets
 								int sampleNumber = getSampleCount();
-								if(sampleNumber + 1 < 0) { // <0 because of overflow
+								if(sampleNumber == Integer.MAX_VALUE) {
 									SwingUtilities.invokeLater(() -> disconnect("Reached maximum sample count. Disconnected.")); // invokeLater to prevent deadlock
 									throw new InterruptedException();
 								}

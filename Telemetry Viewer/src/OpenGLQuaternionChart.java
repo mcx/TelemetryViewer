@@ -51,6 +51,7 @@ public class OpenGLQuaternionChart extends PositionedChart {
 		duration = 1;
 		
 		shape = ChartUtils.getShapeFromAsciiStl(getClass().getResourceAsStream("monkey.stl"));
+		shape.rewind();
 		
 		// create the control widgets and event handlers
 		datasetsWidget = new WidgetDatasetComboboxes(new String[] {"Q0", "Q1", "Q2", "Q3"},
@@ -83,15 +84,13 @@ public class OpenGLQuaternionChart extends PositionedChart {
 			return null;
 		
 		// determine which sample to use
-		int lastSampleNumber = datasets.connection.getSampleCount() - 1;
-		if(endSampleNumber < lastSampleNumber)
-			lastSampleNumber = endSampleNumber;
+		int sampleNumber = Math.min(endSampleNumber, datasets.connection.getSampleCount() - 1);
 
 		// get the quaternion values
 		float[] q = new float[4];
 		for(int i = 0; i < 4; i++) {
 			Dataset dataset = datasets.getNormal(i);
-			q[i] = lastSampleNumber < 0 ? 0 : datasets.getSample(dataset, lastSampleNumber);
+			q[i] = (sampleNumber < 0) ? 0 : datasets.getSample(dataset, sampleNumber);
 		}
 		
 		// calculate x and y positions of everything
@@ -153,7 +152,7 @@ public class OpenGLQuaternionChart extends PositionedChart {
 		
 		// draw the monkey
 		OpenGL.useMatrix(gl, modelMatrix);
-		OpenGL.drawTrianglesXYZUVW(gl, GL3.GL_TRIANGLES, shape.position(0), shape.capacity() / 6);
+		OpenGL.drawTrianglesXYZUVW(gl, GL3.GL_TRIANGLES, shape, shape.capacity() / 6);
 		
 		OpenGL.useMatrix(gl, chartMatrix);
 
