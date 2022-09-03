@@ -94,6 +94,14 @@ public class NotificationsController {
 	public static List<Notification> getNotifications() {
 		
 		notifications.removeIf(item -> item.expiresAtTimestamp && System.currentTimeMillis() >= item.expirationTimestamp + Theme.animationMilliseconds);
+		notifications.forEach(item -> {
+			if(item.expiresAtEvent && item.event.getAsBoolean() == true && !item.expiresOnConnection) {
+				// make it fade away if it expires on an event but does NOT expire on a connection event
+				item.expirationTimestamp = System.currentTimeMillis();
+				item.expiresAtTimestamp = true;
+				item.expiresAtEvent = false;
+			}
+		});
 		notifications.removeIf(item -> item.expiresAtEvent && item.event.getAsBoolean() == true);
 		notifications.forEach(item -> {
 			if(item.isProgressBar && item.currentAmount.get() >= item.totalAmount) {

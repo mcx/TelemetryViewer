@@ -12,6 +12,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import javax.swing.JFrame;
 import javax.swing.JOptionPane;
@@ -81,7 +83,6 @@ public class Main {
 		window.add(SettingsView.instance,      BorderLayout.WEST);
 		window.add(CommunicationView.instance, BorderLayout.SOUTH);
 		window.add(ConfigureView.instance,     BorderLayout.EAST);
-		NotificationsController.showHintUntil("Start by connecting to a device or opening a file by using the buttons below.", () -> false, true);
 		
 		window.setSize(window.getPreferredSize());
 		window.setMinimumSize(window.getMinimumSize());
@@ -95,9 +96,7 @@ public class Main {
 					event.acceptDrop(DnDConstants.ACTION_LINK);
 					@SuppressWarnings("unchecked")
 					List<File> files = (List<File>) event.getTransferable().getTransferData(DataFlavor.javaFileListFlavor);
-					String[] filepaths = new String[files.size()];
-					for(int i = 0; i < files.size(); i++)
-						filepaths[i] = files.get(i).getAbsolutePath();
+					List<String> filepaths = files.stream().map(file -> file.getAbsolutePath()).toList();
 					ConnectionsController.importFiles(filepaths);
 				} catch(Exception e) {
 					NotificationsController.showFailureUntil("Error while processing files: " + e.getMessage(), () -> false, true);
@@ -105,6 +104,25 @@ public class Main {
 				}
 			}
 		});
+		
+		// automatically import settings/CSV/camera files if their names start with "default" and are located in the current working directory
+		List<String> files = Stream.of(new File(".").list()).filter(file -> file.equals("default.txt") || 
+		                                                                   (file.startsWith("default - connection ") && file.endsWith(".csv")) ||
+		                                                                   (file.startsWith("default - connection ") && file.endsWith(".mkv"))).toList();
+		if(!files.contains("default.txt")) {
+			NotificationsController.showHintUntil("Start by connecting to a device or opening a file by using the buttons below.", () -> false, true);
+		} else {
+			ConnectionsController.importFiles(files);
+			if(!ConnectionsController.telemetryPossible()) {
+				NotificationsController.showFailureUntil("Error while automatically importing files.", () -> false, true);
+				NotificationsController.showHintUntil("Start by connecting to a device or opening a file by using the buttons below.", () -> false, true);
+			} else {
+				String connectionNames = ConnectionsController.allConnections.stream().map(connection -> connection.name).collect(Collectors.joining(" and "));
+				String successMessage  = (files.size() == 1 ? "Automatically connected to " : "Automatically imported ") + connectionNames;
+				long expirationTimestamp = System.currentTimeMillis() + 5000;
+				NotificationsController.showHintUntil(successMessage, () -> System.currentTimeMillis() > expirationTimestamp, false);		
+			}
+		}
 		
 		// handle window close events
 		window.addWindowListener(new WindowAdapter() {

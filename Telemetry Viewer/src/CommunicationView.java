@@ -1,12 +1,13 @@
 import java.awt.Desktop;
 import java.awt.event.ActionListener;
-import java.io.File;
 import java.net.URI;
 import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.stream.Stream;
+
 import javax.swing.BoxLayout;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
@@ -50,15 +51,12 @@ public class CommunicationView extends JPanel {
 		importButton = new JButton("Import");
 		importButton.addActionListener(event -> {
 			
-			JFileChooser inputFiles = new JFileChooser(System.getProperty("user.home") + "/Desktop/");
+			JFileChooser inputFiles = new JFileChooser(System.getProperty("user.dir"));
 			inputFiles.setMultiSelectionEnabled(true);
-			inputFiles.setFileFilter(new FileNameExtensionFilter("Files Exported from Telemetry Viewer", "txt", "csv", "mkv"));
+			inputFiles.setFileFilter(new FileNameExtensionFilter("Settings (*.txt) Data (*.csv) or Videos (*.mkv)", "txt", "csv", "mkv"));
 			JFrame parentWindow = (JFrame) SwingUtilities.windowForComponent(this);
 			if(inputFiles.showOpenDialog(parentWindow) == JFileChooser.APPROVE_OPTION) {
-				File[] files = inputFiles.getSelectedFiles();
-				String[] filepaths = new String[files.length];
-				for(int i = 0; i < files.length; i++)
-					filepaths[i] = files[i].getAbsolutePath();
+				List<String> filepaths = Stream.of(inputFiles.getSelectedFiles()).map(file -> file.getAbsolutePath()).toList();
 				ConnectionsController.importFiles(filepaths);
 			}
 			
@@ -104,7 +102,7 @@ public class CommunicationView extends JPanel {
 					return;
 				}
 				
-				JFileChooser saveFile = new JFileChooser(System.getProperty("user.home") + "/Desktop/");
+				JFileChooser saveFile = new JFileChooser(System.getProperty("user.dir"));
 				saveFile.setDialogTitle("Export as...");
 				JFrame parentWindow = (JFrame) SwingUtilities.windowForComponent(this);
 				if(saveFile.showSaveDialog(parentWindow) == JFileChooser.APPROVE_OPTION) {

@@ -479,11 +479,6 @@ public class ConnectionCamera extends Connection {
 			if(receiverThread != null && receiverThread.isAlive()) {
 				while(receiverThread.isAlive()); // wait
 			}
-
-			SwingUtilities.invokeLater(() -> { // invokeLater so this if() fails when importing a layout that has charts
-				if(ChartsController.getCharts().isEmpty() && !ConnectionsController.telemetryPossible())
-					NotificationsController.showHintUntil("Start by connecting to a device or opening a file by using the buttons below.", () -> !ChartsController.getCharts().isEmpty(), true);
-			});
 			
 		}
 		
@@ -683,8 +678,6 @@ public class ConnectionCamera extends Connection {
 	}
 
 	@Override public void importSettings(Queue<String> lines) throws AssertionError {
-
-		ChartUtils.parseExact(lines.remove(), "connection type = Camera");
 		
 		String cameraName = ChartUtils.parseString (lines.remove(), "camera name = %s");
 		if(cameraName.length() < 1)

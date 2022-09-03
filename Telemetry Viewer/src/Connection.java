@@ -3,7 +3,6 @@ import java.io.PrintWriter;
 import java.util.Queue;
 import java.util.concurrent.atomic.AtomicLong;
 import javax.swing.JPanel;
-import javax.swing.SwingUtilities;
 
 /**
  * The user establishes one or more Connections, with each Connection providing a stream of data.
@@ -147,11 +146,6 @@ public abstract class Connection {
 				receiverThread.interrupt();
 				while(receiverThread.isAlive()); // wait
 			}
-
-			SwingUtilities.invokeLater(() -> { // invokeLater so this if() fails when importing a layout that has charts
-				if(ChartsController.getCharts().isEmpty() && !ConnectionsController.telemetryPossible())
-					NotificationsController.showHintUntil("Start by connecting to a device or opening a file by using the buttons below.", () -> !ChartsController.getCharts().isEmpty(), true);
-			});
 			
 		}
 		

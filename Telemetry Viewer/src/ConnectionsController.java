@@ -340,9 +340,9 @@ public class ConnectionsController {
 	 * Imports a settings file, log files, and/or camera files.
 	 * The user will be notified if there is a problem with any of the files.
 	 * 
-	 * @param filepaths    A String[] of absolute file paths.
+	 * @param filepaths    A List<String> of file paths.
 	 */
-	public static void importFiles(String[] filepaths) {
+	public static void importFiles(List<String> filepaths) {
 		
 		if(importing || exporting) {
 			NotificationsController.showFailureForMilliseconds("Unable to import more files while importing or exporting is in progress.", 5000, true);
@@ -415,7 +415,7 @@ public class ConnectionsController {
 		// allow importing an MKV file by itself
 		boolean moviePlayerMode = false;
 		if(settingsFileCount == 0 && csvFileCount == 0 && mkvFileCount == 1) {
-			String cameraName = Paths.get(filepaths[0]).getFileName().toString(); // remove directories
+			String cameraName = Paths.get(filepaths.get(0)).getFileName().toString(); // remove directories
 			cameraName = cameraName.substring(0, cameraName.lastIndexOf(".")); // remove file extension
 			int index = cameraName.lastIndexOf("- ");
 			if(index != -1)
@@ -432,7 +432,7 @@ public class ConnectionsController {
 			
 			ConnectionCamera connection = new ConnectionCamera(cameraName);
 			addConnection(connection);
-			imports.put(connection, filepaths[0]);
+			imports.put(connection, filepaths.get(0));
 			
 			OpenGLCameraChart cameraChart = new OpenGLCameraChart(0, 0, 5, 4);
 			cameraChart.camera = connection;
@@ -731,13 +731,13 @@ public class ConnectionsController {
 				                                                                                          new ConnectionTelemetryUART(ConnectionTelemetry.Type.UART.toString());
 				addConnection(newConnection);
 				newConnection.importSettings(lines);
+				ChartUtils.parseExact(lines.remove(), "");
 				if(connect)
 					newConnection.connect(false);
 			}
 			if(connectionsCount == 0)
 				addConnection();
 
-			ChartUtils.parseExact(lines.remove(), "");
 			int chartsCount = ChartUtils.parseInteger(lines.remove(), "%d Charts:");
 			if(chartsCount == 0) {
 				NotificationsController.showHintUntil("Add a chart by clicking on a tile, or click-and-dragging across multiple tiles.", () -> !ChartsController.getCharts().isEmpty(), true);

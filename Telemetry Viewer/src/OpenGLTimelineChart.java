@@ -406,7 +406,7 @@ public class OpenGLTimelineChart extends PositionedChart {
 			OpenGL.drawBox(gl, Theme.tickLinesColor, x - markerWidth/2, y+markerWidth, markerWidth, markerWidth);
 			
 			// draw any bitfield events
-			if(haveTelemetry && (datasets.hasEdges() || datasets.hasLevels())) {
+			if((datasets.hasEdges() || datasets.hasLevels()) && datasets.connection.getSampleCount() > 0) {
 				int[] originalScissorArgs = new int[4];
 				gl.glGetIntegerv(GL3.GL_SCISSOR_BOX, originalScissorArgs, 0);
 				gl.glScissor(originalScissorArgs[0] + (int) xTimelineLeft, originalScissorArgs[1] + (int) (y + 2*markerWidth), (int) timelineWidth, (int) (height - yTimelineBottom));

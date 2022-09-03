@@ -119,6 +119,7 @@ public class OpenGLCameraChart extends PositionedChart {
 		                                            return true;
 		                                        });
 		cameraWidget.setEnabled(!noCameras);
+		widgets.set(0, cameraWidget);
 		
 		JPanel cameraPanel = Theme.newWidgetsPanel("Camera");
 		cameraPanel.add(cameraWidget, "grow x");

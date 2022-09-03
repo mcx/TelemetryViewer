@@ -336,7 +336,7 @@ public abstract class ConnectionTelemetry extends Connection {
 	}
 	
 	private record ParsedData(int packetCount,      // number of valid parsed telemetry packets
-	                          int byteCount,        // number of bytes parsed
+	                          int[] byteCount,      // number of bytes parsed per telemetry packet
 	                          long[] timestamps,    // timestamp from each packet
 	                          float[][] samples) {} // [datasetN][sampleN]
 	
@@ -347,7 +347,7 @@ public abstract class ConnectionTelemetry extends Connection {
 		private long[] timestamps;
 		private float[][] samples;
 		private int packetCount;
-		private int byteCount;
+		private int[] byteCount;
 		
 		public ImportWorker(int datasetCount, List<String> lines) {
 			this.datasetsCount = datasetCount;
@@ -355,6 +355,7 @@ public abstract class ConnectionTelemetry extends Connection {
 			timestamps = new long[lines.size()];
 			samples = new float[datasetCount][lines.size()];
 			packetCount = 0;
+			byteCount = new int[lines.size()];
 		}
 
 		@Override public ParsedData call() throws Exception {
@@ -364,8 +365,8 @@ public abstract class ConnectionTelemetry extends Connection {
 					timestamps[packetCount] = Long.parseLong(columns[1]);
 					for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
 						samples[datasetN][packetCount] = Float.parseFloat(columns[datasetN + 2]);
+					byteCount[packetCount] = line.length() + 2; // assuming each char is 1 byte, and EOL is 2 bytes
 					packetCount++;
-					byteCount += line.length() + 2; // assuming each char is 1 byte, and EOL is 2 bytes
 				});
 			} catch(NumberFormatException e) {
 				// ending early
@@ -472,8 +473,8 @@ public abstract class ConnectionTelemetry extends Connection {
 								datasets.get(datasetN).setConvertedSample(sampleNumber, data.samples[datasetN][packetN]);
 							sampleNumber++;
 							incrementSampleCountWithTimestamp(1, data.timestamps[packetN]);
+							completedByteCount.addAndGet(data.byteCount[packetN]);
 						}
-						completedByteCount.addAndGet(data.byteCount);
 						if(data.packetCount != data.timestamps.length)
 							throw new Exception(); // an error occurred while parsing
 					}
