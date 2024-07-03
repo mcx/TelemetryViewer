@@ -1,22 +1,28 @@
 import java.awt.Color;
-import java.awt.Dimension;
+import java.awt.Component;
+import java.awt.Font;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseListener;
+import java.awt.font.FontRenderContext;
 import java.io.BufferedReader;
 import java.io.FileInputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.PrintWriter;
-import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.nio.FloatBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Enumeration;
+import java.util.Collections;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Queue;
 import java.util.Scanner;
+import java.util.TreeMap;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -25,266 +31,113 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BiFunction;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
+import javax.swing.BorderFactory;
 import javax.swing.JButton;
-import javax.swing.JComboBox;
+import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTabbedPane;
+import javax.swing.JTable;
+import javax.swing.JTextArea;
+import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
+import javax.swing.table.AbstractTableModel;
+import javax.swing.table.TableCellRenderer;
 
 import net.miginfocom.swing.MigLayout;
 
 public abstract class ConnectionTelemetry extends Connection {
 	
-	enum TransmitDataType {
-		TEXT   { @Override public String toString() { return "Text";   } },
-		HEX    { @Override public String toString() { return "Hex";    } },
-		BINARY { @Override public String toString() { return "Binary"; } };
-		
-		public static TransmitDataType fromString(String text) {
-			return text.equals(TEXT.toString())   ? TransmitDataType.TEXT :
-			       text.equals(HEX.toString())    ? TransmitDataType.HEX :
-			       text.equals(BINARY.toString()) ? TransmitDataType.BINARY :
-			                                        null;
-		}
-	};
-	
-	// sample rate
-	protected volatile int     sampleRate = 0;
-	protected final    int     sampleRateMinimum = 1;
-	protected final    int     sampleRateMaximum = Integer.MAX_VALUE;
-	protected volatile boolean sampleRateAutomatic = true;
-	protected WidgetTextfieldInt sampleRateTextfield;
-	
-	public int getSampleRate() {
-		return (sampleRate == 0) ? 1000 : sampleRate; // charts expect >0
-	}
-	
-	protected void setSampleRate(int newRate) {
-		if(newRate == sampleRate)
-			return;
-		sampleRate = newRate;
-		sampleRateTextfield.setNumber(sampleRate);
-	}
-	
-	protected void setSampleRateAutomatic(boolean isAutomatic) {
-		sampleRateAutomatic = isAutomatic;
-	}
-	
-	// communication protocol
 	enum Protocol {
 		CSV    { @Override public String toString() { return "CSV Mode";    } },
 		BINARY { @Override public String toString() { return "Binary Mode"; } },
 		TC66   { @Override public String toString() { return "TC66 Mode";   } };
-		
-		public static Protocol fromString(String text) {
-			return text.equals(CSV.toString())    ? Protocol.CSV :
-			       text.equals(BINARY.toString()) ? Protocol.BINARY :
-			       text.equals(TC66.toString())   ? Protocol.TC66 :
-			                                        null;
-		}
 	};
-	protected volatile Protocol protocol = Protocol.CSV;
-	protected WidgetComboboxEnum<Protocol> protocolCombobox;
 	
-	public boolean isProtocolCsv()    { return protocol == Protocol.CSV;    }
-	public boolean isProtocolBinary() { return protocol == Protocol.BINARY; }
-	public boolean isProtocolTc66()   { return protocol == Protocol.TC66;   }
+	protected Map<Integer, Field> fields = new TreeMap<Integer, Field>(); // <location, field>
+	private volatile boolean fieldsDefined = false;
 	
-	protected void setProtocol(Protocol newProtocol) {
-		if(newProtocol == protocol)
-			return;
-		
-		boolean wasTC66 = (protocol == Protocol.TC66);
-		protocol = newProtocol;
-		datasets.removeAll();
-		protocolCombobox.setSelectedItem(protocol);
-		
-		if(protocol == Protocol.TC66) {
-			setSampleRate(2);
-			setSampleRateAutomatic(false);
-			datasets.removeSyncWord();
-			DatasetsController.BinaryFieldProcessor fake = DatasetsController.binaryFieldProcessors[0];
-			datasets.insert(0,  fake, "Voltage",          new Color(0x00FF00), "V",       1, 1);
-			datasets.insert(1,  fake, "Current",          new Color(0x00FFFF), "A",       1, 1);
-			datasets.insert(2,  fake, "Power",            new Color(0xFF00FF), "W",       1, 1);
-			datasets.insert(3,  fake, "Resistance",       new Color(0x00FFFF), "\u2126",  1, 1);
-			datasets.insert(4,  fake, "Group 0 Capacity", new Color(0xFF0000), "mAh",     1, 1);
-			datasets.insert(5,  fake, "Group 0 Energy",   new Color(0xFFFF00), "mWh",     1, 1);
-			datasets.insert(6,  fake, "Group 1 Capacity", new Color(0xFF0000), "mAh",     1, 1);
-			datasets.insert(7,  fake, "Group 1 Energy",   new Color(0xFFFF00), "mWh",     1, 1);
-			datasets.insert(8,  fake, "PCB Temperature",  new Color(0xFFFF00), "Degrees", 1, 1);
-			datasets.insert(9,  fake, "D+ Voltage",       new Color(0x8000FF), "V",       1, 1);
-			datasets.insert(10, fake, "D- Voltage",       new Color(0x0000FF), "V",       1, 1);
-			setDataStructureDefined(true);
-		} else if(wasTC66) {
-			setSampleRate(0);
-			setSampleRateAutomatic(true);
-		}
-		
-		CommunicationView.instance.redraw(); // because the sampleRateTextfield may need to be enabled/disabled
+	public void setFieldsDefined(boolean isDefined) {
+		fieldsDefined = isDefined;
+		CommunicationView.instance.redraw(); // also redraw the bottom panel, because the Export button is enabled/disabled based on this
 	}
 	
-	// connection type
-	public enum Type {
-		UART        { @Override public String toString() { return "UART";             } },
-		TCP         { @Override public String toString() { return "TCP";              } },
-		UDP         { @Override public String toString() { return "UDP";              } },
-		DEMO        { @Override public String toString() { return "Demo Mode";        } },
-		STRESS_TEST { @Override public String toString() { return "Stress Tess Mode"; } };
-		
-		public static Type fromString(String text) {
-			return text.startsWith(UART.toString())    ? Type.UART :
-			       text.equals(TCP.toString())         ? Type.TCP :
-			       text.equals(UDP.toString())         ? Type.UDP :
-			       text.equals(DEMO.toString())        ? Type.DEMO :
-			       text.equals(STRESS_TEST.toString()) ? Type.STRESS_TEST :
-			                                             null;
-		}
-	};
-	protected volatile Type type = Type.UART;
-	protected WidgetComboboxString namesCombobox;
-	
-	public boolean isTypeUart()       {return type == Type.UART;        }
-	public boolean isTypeTCP()        {return type == Type.TCP;         }
-	public boolean isTypeUDP()        {return type == Type.UDP;         }
-	public boolean isTypeDemo()       {return type == Type.DEMO;        }
-	public boolean isTypeStressTest() {return type == Type.STRESS_TEST; }
-	
-	// baud rate for UART mode
-	protected volatile int baudRate = 9600;
-	protected JComboBox<String> baudRateCombobox;
-	
-	public int getBaudRate() {
-		return baudRate;
+	public boolean isFieldsDefined() {
+		return fieldsDefined;
 	}
 	
-	protected void setBaudRate(int newRate) {
-		if(newRate == baudRate)
-			return;
-		baudRate = newRate;
-		baudRateCombobox.setSelectedItem(baudRate + " Baud");
-	}
+	// connection settings
+	protected WidgetTextfield<Integer> sampleRate;
+	protected WidgetComboboxEnum<Protocol> protocol;
+	protected WidgetComboboxString baudRate; // for UART/Demo modes
+	protected WidgetTextfield<Integer> portNumber; // for TCP/UDP modes
 	
-	// port number for TCP/UDP modes
-	protected volatile int portNumber = 8080;
-	protected final    int portNumberMinimum = 1;
-	protected final    int portNumberMaximum = 65535;
-	protected WidgetTextfieldInt portNumberTextfield;
-	
-	public int getPortNumber() { return portNumber; }
-	
-	protected void setPortNumber(int newNumber) {
-		if(newNumber == portNumber)
-			return;
-		portNumber = newNumber;
-		portNumberTextfield.setNumber(portNumber);
-	}
-
-	
-	public final DatasetsController datasets = new DatasetsController(this);
-	
-	protected JPanel settingsGui = new JPanel(new MigLayout("hidemode 3, gap " + Theme.padding  + ", insets 0 " + Theme.padding + " 0 0"));
-	protected JButton connectButton;
-	protected JButton removeButton;
-	
-	private volatile int packetByteCount = 0; // INCLUDING the optional sync word and checksum
-	
-	protected long previousSampleCountTimestamp = 0; // for automatic sample rate calculation if enabled
+	private Timer sampleRateCalculator;
+	protected long previousSampleCountTimestamp = 0;
 	protected int  previousSampleCount = 0;
 	
-	public void setDataStructureDefined(boolean isDefined) {
-		
-		if(!isDefined) {
-			packetByteCount = 0;
-			return;
-		}
-		
-		if(!isProtocolBinary()) {
-			packetByteCount = 1; // not used outside of binary mode, so using 1 to indicate it's defined
-			return;
-		}
-		
-		int packetLength = 0; 
-		if(datasets.getChecksumProcessor() != null)
-			packetLength = datasets.getChecksumProcessorOffset() + datasets.getChecksumProcessor().getByteCount();
-		else
-			for(Dataset dataset : datasets.getList()) {
-				if(dataset.location + dataset.processor.getByteCount() - 1 > packetLength)
-					packetLength = dataset.location + dataset.processor.getByteCount();
-			}
-		packetByteCount = packetLength;
-		
+	public int getSampleRate() {
+		int rate = sampleRate.get();
+		return (rate == 0) ? 1000 : rate; // because charts expect >0
 	}
 	
-	public boolean isDataStructureDefined() {
-		
-		return packetByteCount > 0;
-		
-	}
+	// transmit settings
+	protected WidgetComboboxEnum<WidgetTextfield.Mode> transmitDatatype;
+	protected WidgetTextfield<String> transmitData;
+	protected WidgetCheckbox transmitAppendCR;
+	protected WidgetCheckbox transmitAppendLF;
+	protected WidgetCheckbox transmitRepeatedly;
+	protected WidgetTextfield<Integer> transmitRepeatedlyMilliseconds;
+	protected JButton transmitSaveButton;
+	protected JButton transmitTransmitButton;
 	
-	public volatile static String localIp = "[Local IP Address Unknown]";
+	protected Queue<byte[]> transmitQueue = new ConcurrentLinkedQueue<byte[]>();
+	protected long nextRepititionTimestamp = 0;
+	public record Packet(String label, byte[] bytes, String bytesAsHexString) {}
+	protected List<Packet> transmitSavedPackets = new ArrayList<Packet>();
+	
+	public static String localIp = "[Local IP Address Unknown]";
 	static {
-		try { 
-			String ips = "";
-			Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
-			while(interfaces.hasMoreElements()) {
-				NetworkInterface ni = interfaces.nextElement();
-				Enumeration<InetAddress> addresses = ni.getInetAddresses();
-				while(addresses.hasMoreElements()) {
-					InetAddress address = addresses.nextElement();
-					if(address.isSiteLocalAddress() && !ni.getDisplayName().contains("VMware") && !ni.getDisplayName().contains("VPN"))
-						ips += address.getHostAddress() + " or ";
-				}
-			}
-			if(ips.length() > 0)
-				localIp = ips.substring(0, ips.length() - 4);
+		try {
+			localIp = Collections.list(NetworkInterface.getNetworkInterfaces()).stream()
+			          .filter( device -> !device.getDisplayName().contains("VMware"))
+			          .filter( device -> !device.getDisplayName().contains("VPN"))
+			          .flatMap(device -> Collections.list(device.getInetAddresses()).stream())
+			          .filter(address -> address.isSiteLocalAddress())
+			          .map(   address -> address.getHostAddress())
+			          .collect(Collectors.joining(" or "))
+			          .transform(result -> result.isEmpty() ? "[Local IP Address Unknown]" : result);
 		} catch(Exception e) {}
 	}
 	
 	/**
 	 * Prepares, but does not connect to, a connection that can receive "normal telemetry" (a stream of numbers to visualize.)
-	 * 
 	 */
-	@SuppressWarnings("serial")
 	public ConnectionTelemetry() {
 		
-		// connect/disconnect button
-		connectButton = new JButton("Connect") {
-			@Override public Dimension getPreferredSize() { // giving this button a fixed size so the GUI lines up nicely
-				return new JButton("Disconnect").getPreferredSize();
-			}
-		};
+		// subclass constructors must select a name by calling name.set()
+		name = ConnectionsController.getNamesCombobox(this);
 		
-		connectButton.addActionListener(event -> {
-			if(connectButton.getText().equals("Connect"))
-				connect(true);
-			else if(connectButton.getText().equals("Disconnect"))
-				disconnect(null);
-		});
+		// sample rate defaults to 0 (automatic mode)
+		sampleRate = WidgetTextfield.ofInt(1, Integer.MAX_VALUE, 0, 0, "Automatic")
+		                            .setPrefix("Sample Rate")
+		                            .setSuffix("Hz")
+		                            .setExportLabel("sample rate hz")
+		                            .setToolTipText("<html>Number of telemetry packets sent to the PC each second.<br>Use 0 to have it automatically calculated.<br>If this number is inaccurate, things like the frequency domain chart will be inaccurate.</html>");
 		
-		// remove connection button
-		removeButton = new JButton(Theme.removeSymbol);
-		removeButton.setBorder(Theme.narrowButtonBorder);
-		removeButton.addActionListener(event -> {
-			ConnectionsController.removeConnection(ConnectionTelemetry.this);
-			CommunicationView.instance.redraw();
-		});
-		
-		// automatically calculate the sample rate if needed
-		Timer sampleRateCalculator = new Timer(1000, null);
-		sampleRateCalculator.addActionListener(event -> {
-			
-			if(settingsGui.getParent() == null) {
-				// cancel timer if this GUI is no longer on screen
-				sampleRateCalculator.stop();
-				return;
-			} else if(!sampleRateAutomatic || !connected || !isDataStructureDefined()) {
+		// automatically calculate the sample rate when appropriate
+		sampleRateCalculator = new Timer(1000, event -> {
+			if(!sampleRate.is(0) || !isConnected() || !isFieldsDefined()) {
 				// skip this iteration if not ready/applicable
 				return;
 			} else if(previousSampleCountTimestamp == 0) {
@@ -300,16 +153,353 @@ public abstract class ConnectionTelemetry extends Connection {
 				long millisecondsDelta = currentTimestamp - previousSampleCountTimestamp;
 				int sampleCountDelta = currentSampleCount - previousSampleCount;
 				int samplesPerSecond = (int) Math.round((double) sampleCountDelta / ((double) millisecondsDelta / 1000.0));
-				sampleRate = samplesPerSecond;
-				sampleRateTextfield.disableWithNumber(samplesPerSecond);
+				sampleRate.disableWithNumber(samplesPerSecond);
 				previousSampleCountTimestamp = currentTimestamp;
 				previousSampleCount = currentSampleCount;
 			}
-			
 		});
 		sampleRateCalculator.start();
 		
+		// baud rate
+		baudRate = new WidgetComboboxString(List.of("9600 Baud",
+		                                            "19200 Baud",
+		                                            "38400 Baud",
+		                                            "57600 Baud",
+		                                            "115200 Baud",
+		                                            "230400 Baud",
+		                                            "460800 Baud",
+		                                            "921600 Baud",
+		                                            "1000000 Baud",
+		                                            "2000000 Baud"), "9600 Baud")
+		               .setEditable(true)
+		               .setExportLabel("speed")
+		               .onChange(newValue -> {
+		                   try {
+		                       String text = newValue.trim();
+		                       if(text.toLowerCase().endsWith("baud"))
+		                           text = text.substring(0, text.length() - 4).trim();
+		                       int rate = Integer.parseInt(text);
+		                       if(rate > 0) {
+		                           baudRate.set(rate + " Baud");
+		                           return true; // valid baud rate
+		                       } else {
+		                           return false; // invalid baud rate
+		                       }
+		                   } catch(Exception e) {
+		                       return false; // not a number
+		                   }
+		               });
+		
+		// TCP or UDP port number
+		portNumber = WidgetTextfield.ofInt(1, 65535, 8080)
+		                            .setPrefix("Port")
+		                            .setExportLabel("server port");
+		
+		// transmitted data can be automatically repeated every n milliseconds
+		transmitRepeatedly = new WidgetCheckbox("Repeat", false)
+		                         .setExportLabel("transmit repeatedly");
+		
+		transmitRepeatedlyMilliseconds = WidgetTextfield.ofInt(1, Integer.MAX_VALUE, 1000)
+		                                                .setSuffix("ms")
+		                                                .setExportLabel("transmit repitition interval milliseconds");
+		
+		// packets can be saved to JButtons
+		transmitSaveButton = new JButton("Save");
+		transmitSaveButton.addActionListener(event -> {
+			byte[] bytes = transmitData.getAsBytes(transmitAppendCR.get(), transmitAppendLF.get());
+			String label = transmitDatatype.get().toString() + ": " + transmitData.getAsText(transmitAppendCR.get(), transmitAppendLF.get());
+			String bytesAsHexString = transmitData.getAsHexText(transmitAppendCR.get(), transmitAppendLF.get());
+			if(transmitSavedPackets.stream().noneMatch(packet -> packet.label.equals(label))) {
+				transmitSavedPackets.add(new Packet(label, bytes, bytesAsHexString));
+				SettingsView.instance.redraw(); // so this TX GUI gets redrawn
+			}
+			transmitData.set("");
+		});
+		
+		// transmit button for sending the data once
+		transmitTransmitButton = new JButton("Transmit");
+		transmitTransmitButton.addActionListener(event -> transmitQueue.add(transmitData.getAsBytes(transmitAppendCR.get(), transmitAppendLF.get())));
+		
+		// data provided by the user
+		transmitData = WidgetTextfield.ofText("")
+		                   .setExportLabel("transmit data")
+		                   .onEnter(event -> transmitTransmitButton.doClick())
+		                   .onChange((newText, oldText) -> {
+		                        boolean haveBytes = transmitData.getAsBytes(transmitAppendCR.get(), transmitAppendLF.get()).length > 0;
+		                        transmitRepeatedly.setEnabled(haveBytes);
+		                        transmitRepeatedlyMilliseconds.setEnabled(haveBytes);
+		                        transmitSaveButton.setEnabled(haveBytes);
+		                        transmitTransmitButton.setEnabled(haveBytes);
+		                        return true;
+		                   })
+		                   .onIncompleteChange(text -> {
+		                       boolean haveData = transmitAppendCR.get() || transmitAppendLF.get() || transmitData.hasText();
+		                       transmitRepeatedly.setEnabled(haveData);
+		                       transmitRepeatedlyMilliseconds.setEnabled(haveData);
+		                       transmitSaveButton.setEnabled(haveData);
+		                       transmitTransmitButton.setEnabled(haveData);
+		                   });
+		
+		// for text mode, \r or \n can be automatically appended
+		transmitAppendCR = new WidgetCheckbox("CR", false)
+		                       .setExportLabel("transmit appends cr")
+		                       .onChange(isAppened -> {
+		                            boolean haveBytes = transmitData.getAsBytes(transmitAppendCR.get(), transmitAppendLF.get()).length > 0;
+		                            transmitRepeatedly.setEnabled(haveBytes);
+		                            transmitRepeatedlyMilliseconds.setEnabled(haveBytes);
+		                            transmitSaveButton.setEnabled(haveBytes);
+		                            transmitTransmitButton.setEnabled(haveBytes);
+		                       });
+		
+		transmitAppendLF = new WidgetCheckbox("LF", false)
+		                       .setExportLabel("transmit appends lf")
+		                       .onChange(isAppened -> {
+		                            boolean haveBytes = transmitData.getAsBytes(transmitAppendCR.get(), transmitAppendLF.get()).length > 0;
+		                            transmitRepeatedly.setEnabled(haveBytes);
+		                            transmitRepeatedlyMilliseconds.setEnabled(haveBytes);
+		                            transmitSaveButton.setEnabled(haveBytes);
+		                            transmitTransmitButton.setEnabled(haveBytes);
+		                       });
+		
+		// which data format the user will provide
+		transmitDatatype = new WidgetComboboxEnum<WidgetTextfield.Mode>(WidgetTextfield.Mode.values(), WidgetTextfield.Mode.TEXT)
+		                       .removeValue(WidgetTextfield.Mode.INTEGER) // only support TEXT / HEX / BINARY modes
+		                       .removeValue(WidgetTextfield.Mode.FLOAT)
+		                       .setExportLabel("transmit data type")
+		                       .onChange(newDatatype -> {
+		                           byte[] oldDataBytes = transmitData.getAsBytes(transmitAppendCR.get(), transmitAppendLF.get());
+		                           transmitData.setDataType(newDatatype);
+		                           transmitAppendCR.setEnabled(newDatatype == WidgetTextfield.Mode.TEXT);
+		                           transmitAppendLF.setEnabled(newDatatype == WidgetTextfield.Mode.TEXT);
+		                           if(newDatatype == WidgetTextfield.Mode.TEXT) {
+		                               byte[] bytes = oldDataBytes;
+		                               boolean lf =      bytes.length > 0 && bytes[bytes.length - 1] == '\n';
+		                               boolean cr = lf ? bytes.length > 1 && bytes[bytes.length - 2] == '\r' :
+		                                                 bytes.length > 0 && bytes[bytes.length - 1] == '\r';
+		                               transmitAppendCR.set(cr);
+		                               transmitAppendLF.set(lf);
+		                               int bytesToSkip = (cr && lf) ? 2 : cr ? 1 : lf ? 1 : 0;
+		                               byte[] textBytes = Arrays.copyOf(bytes, bytes.length - bytesToSkip);
+		                               transmitData.setFromBytes(textBytes);
+		                           } else {
+		                               transmitAppendCR.set(false);
+		                               transmitAppendLF.set(false);
+		                               transmitData.setFromBytes(oldDataBytes);
+		                           }
+		                           return true;
+		                       });
+		
+		// communication protocol
+		protocol = new WidgetComboboxEnum<Protocol>(Protocol.values(), Protocol.CSV)
+		               .setExportLabel("protocol")
+		               .onChange(newProtocol -> {
+		                   if(newProtocol == protocol.get())
+		                       return true; // no change, must ignore this case so we don't reset things while importing!
+		                   
+		                   // reset everything when changing protocols
+		                   removeAllFields();
+		                   dsPanel = null;
+		                   transmitQueue.clear();
+		                   transmitSavedPackets.clear();
+		                   nextRepititionTimestamp = 0;
+		                   transmitDatatype.set(WidgetTextfield.Mode.TEXT);
+		                   transmitAppendCR.set(false);
+		                   transmitAppendLF.set(false);
+		                   
+		                   if(newProtocol == Protocol.TC66) {
+		                       new Field(this).setLocation(0 ).setName("Voltage"         ).setColor(new Color(0x00FF00)).setUnit("V"      ).insert();
+		                       new Field(this).setLocation(1 ).setName("Current"         ).setColor(new Color(0x00FFFF)).setUnit("A"      ).insert();
+		                       new Field(this).setLocation(2 ).setName("Power"           ).setColor(new Color(0xFF00FF)).setUnit("W"      ).insert();
+		                       new Field(this).setLocation(3 ).setName("Resistance"      ).setColor(new Color(0x00FFFF)).setUnit("\u2126" ).insert();
+		                       new Field(this).setLocation(4 ).setName("Group 0 Capacity").setColor(new Color(0xFF0000)).setUnit("mAh"    ).insert();
+		                       new Field(this).setLocation(5 ).setName("Group 0 Energy"  ).setColor(new Color(0xFFFF00)).setUnit("mWh"    ).insert();
+		                       new Field(this).setLocation(6 ).setName("Group 1 Capacity").setColor(new Color(0xFF0000)).setUnit("mAh"    ).insert();
+		                       new Field(this).setLocation(7 ).setName("Group 1 Energy"  ).setColor(new Color(0xFFFF00)).setUnit("mWh"    ).insert();
+		                       new Field(this).setLocation(8 ).setName("PCB Temperature" ).setColor(new Color(0xFFFF00)).setUnit("Degrees").insert();
+		                       new Field(this).setLocation(9 ).setName("D+ Voltage"      ).setColor(new Color(0x8000FF)).setUnit("V"      ).insert();
+		                       new Field(this).setLocation(10).setName("D- Voltage"      ).setColor(new Color(0x0000FF)).setUnit("V"      ).insert();
+		                       setFieldsDefined(true);
+		                       sampleRate.set(2);
+		                       baudRate.set("9600 Baud");
+		                       transmitData.set("getva");
+		                       transmitRepeatedly.set(true);
+		                       transmitRepeatedlyMilliseconds.set(200);
+		                       transmitSavedPackets.add(new Packet("Rotate Display",  "rotat".getBytes(), "72 6F 74 61 74"));
+		                       transmitSavedPackets.add(new Packet("Previous Screen", "lastp".getBytes(), "6C 61 73 74 70"));
+		                       transmitSavedPackets.add(new Packet("Next Screen",     "nextp".getBytes(), "6E 65 78 74 70"));
+		                   } else {
+		                       sampleRate.set(0);
+		                       transmitData.set("");
+		                       transmitRepeatedly.set(false);
+		                       transmitRepeatedlyMilliseconds.set(1000);
+		                   }
+		                   
+		                   CommunicationView.instance.redraw(); // because the sampleRate textfield may need to be enabled/disabled
+		                   SettingsView.instance.redraw(); // redraw the TX GUI
+		                   return true;
+		               });
+		
 	}
+	
+	JPanel dsPanel;
+	Field pending;
+	JTable dataStructureTable;
+	JScrollPane scrollableRegion;
+	
+	private void createPendingFieldAndRepopulatePanel(Field deriveFrom, JTabbedPane exampleCodePane) {
+		
+		// create and configure the pending dataset
+		pending = new Field(this)
+		              .onInsert(errorMessage -> {
+		                   if(errorMessage != null)
+		                       JOptionPane.showMessageDialog(null, errorMessage, "Unable to Add the Dataset", JOptionPane.ERROR_MESSAGE);
+		                   else
+		                       createPendingFieldAndRepopulatePanel(pending, exampleCodePane);
+		               });
+		
+		if(deriveFrom != null) {
+			int location = (isFieldAllowed(pending, deriveFrom.location.get(), Field.Type.UINT8) == null) ? deriveFrom.location.get() :
+			                                                                                                getFirstAvailableLocation();
+			pending.setLocation(location)
+			       .setType(deriveFrom.type.get())
+			       .setName(deriveFrom.name.get())
+			       .setColor(deriveFrom.color.get())
+			       .setUnit(deriveFrom.unit.get())
+			       .setScalingFactors(deriveFrom.scalingFactorA.get(), deriveFrom.scalingFactorB.get());
+		}
+		
+		if(protocol.is(Protocol.CSV))
+			pending.type.setVisible(false);
+		
+		// repopulate the panel
+		dsPanel.removeAll();
+		
+		dsPanel.add(new JLabel((this instanceof ConnectionTelemetryDemo) ?
+			"<html><font size=+0><b>Data Structure Definition: (Not Editable in Demo Mode)</b></font></html>" :
+			"<html><font size=+0><b>Data Structure Definition:</b></font></html>"), "span");
+
+		pending.location.appendTo(dsPanel, "gapafter " + 2 * Theme.padding);
+		pending.type.appendTo(dsPanel, "gapafter " + 2 * Theme.padding);
+		pending.name.appendTo(dsPanel, "gapafter " + 2 * Theme.padding);
+		pending.color.appendTo(dsPanel, "gapafter " + 2 * Theme.padding);
+		pending.unit.appendTo(dsPanel, "gapafter " + 2 * Theme.padding);
+		pending.scalingFactorA.appendTo(dsPanel, "");
+		dsPanel.add(pending.equalsLabel, "");
+		pending.scalingFactorB.appendTo(dsPanel, "gapafter " + 2 * Theme.padding);
+		dsPanel.add(pending.addButton, "pushx, align right");
+		dsPanel.add(pending.doneButton, "wrap");
+		
+		dataStructureTable.revalidate();
+		dataStructureTable.repaint();
+		
+		scrollableRegion.setViewportView(dataStructureTable);
+		dsPanel.add(scrollableRegion, "grow, span");
+		
+		exampleCodePane.removeAll();
+		getExampleCode().forEach((tabName, sourceCode) -> {
+			JTextArea code = new JTextArea(sourceCode);
+			code.setEditable(false);
+			code.setTabSize(4);
+			code.setFont(new Font("Consolas", Font.PLAIN, dsPanel.getFont().getSize()));
+			code.setCaretPosition(0); // scroll back to the top
+			exampleCodePane.add(tabName, new JScrollPane(code));
+		});
+		
+		dsPanel.add(new JLabel("<html><font size=+0><b>Example Firmware / Software:</b></font></html>"), "span, gaptop 10px");
+		dsPanel.add(exampleCodePane, "grow, span, width 100%"); // 100% ensures the prefWidth getting massive doesn't shrink the other widgets
+		
+		if(!pending.location.is(-1) && !(this instanceof ConnectionTelemetryDemo))
+			SwingUtilities.invokeLater(() -> pending.name.requestFocus());
+		
+		dsPanel.revalidate();
+		dsPanel.repaint();
+		
+	}
+	
+	@SuppressWarnings("serial")
+	final public JPanel getDataStructureGui() {
+		
+		if(dsPanel != null) {
+			SwingUtilities.invokeLater(() -> pending.name.requestFocus());
+			return dsPanel;
+		}
+		
+		dsPanel = new JPanel(new MigLayout("hidemode 3, fill, insets " + Theme.padding + ", gap " + Theme.padding, "", "[][sgy,fill][50%][][50%]0")); // "sgy,fill" stretches the components to all have the same height
+		
+		dataStructureTable = new JTable(new AbstractTableModel() {
+			@Override public int getRowCount()                { return fields.size(); }
+			@Override public int getColumnCount()             { return 6;             }
+			@Override public String getColumnName(int column) { return switch(column) { case 0  -> protocol.is(Protocol.CSV) ? "Column Number" : "Byte Offset, Data Type";
+			                                                                            case 1  -> "Name";
+			                                                                            case 2  -> "Color";
+			                                                                            case 3  -> "Unit";
+			                                                                            case 4  -> "Scaling Factor";
+			                                                                            case 5  -> "";
+			                                                                            default -> "Error";};}
+			@Override public Object getValueAt(int row, int column) {
+				Field field = getFieldByIndex(row);
+				if(field.isSyncWord()) {
+					return switch(column) { case 0  -> "0, [Sync Word]";
+					                        case 1  -> field.name.get();
+					                        default -> "";};
+				} else if(field.isDataset()) {
+					return switch(column) { case 0  -> protocol.is(Protocol.CSV) ? Integer.toString(field.location.get()) : field.location.get() + ", " + field.type.get().toString();
+					                        case 1  -> field.name.get();
+					                        case 2  -> "<html><font color=\"rgb(" + field.color.get().getRed() + "," + field.color.get().getGreen() + "," + field.color.get().getBlue() + ")\">\u25B2</font></html>";
+					                        case 3  -> field.isBitfield ? "" : field.unit.get();
+					                        case 4  -> field.isBitfield ? "" : String.format("%3.3f = %3.3f %s", field.scalingFactorA.get(), field.scalingFactorB.get(), field.unit.get());
+					                        default -> "";};
+				} else if(field.isChecksum()) {
+					return switch(column) { case 0  -> field.location.get() + ", [Checksum]";
+					                        case 1  -> field.type.get().toString();
+					                        default -> "";};
+				} else {
+					return ""; // should never get here
+				}
+			}
+		});
+		dataStructureTable.setRowHeight((int) (dsPanel.getFont().getStringBounds("Abc", new FontRenderContext(null, true, true)).getHeight() * 1.5));
+		dataStructureTable.getColumn("").setCellRenderer(new TableCellRenderer() {
+			@Override public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+				JButton b = new JButton("Remove");
+				b.setEnabled(!(ConnectionTelemetry.this instanceof ConnectionTelemetryDemo));
+				return b;
+			}
+		});
+		scrollableRegion = new JScrollPane(dataStructureTable);
+		scrollableRegion.getVerticalScrollBar().setUnitIncrement(10);
+		
+		JTabbedPane exampleCodePane = new JTabbedPane();
+		
+		dataStructureTable.addMouseListener(new MouseListener() {
+			@Override public void mousePressed(MouseEvent e) {
+				if(ConnectionTelemetry.this instanceof ConnectionTelemetryDemo)
+					return;
+				Field field = getFieldByIndex(dataStructureTable.getSelectedRow());
+				String message = field.type.get().isSyncWord() ? "Remove the sync word?" :
+				                 field.type.get().isDataset()  ? "Remove " + field.name.get() + "?" :
+				                                                 "Remove the checksum?";
+				if(JOptionPane.showConfirmDialog(dsPanel, message, message, JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
+					removeField(field.location.get());
+					createPendingFieldAndRepopulatePanel(field, exampleCodePane);
+				}
+				dataStructureTable.clearSelection();
+			}
+			
+			// clear the selection again, in case the user click-and-dragged over the table
+			@Override public void mouseReleased(MouseEvent e) { dataStructureTable.clearSelection(); }
+			@Override public void mouseExited(MouseEvent e)   { }
+			@Override public void mouseEntered(MouseEvent e)  { }
+			@Override public void mouseClicked(MouseEvent e)  { }
+		});
+		
+		createPendingFieldAndRepopulatePanel(null, exampleCodePane);
+		
+		return dsPanel;
+		
+	}
+	
+	abstract Map<String, String> getExampleCode(); // <tabName, sourceCode>
 	
 	@Override public long readFirstTimestamp(String path) {
 		
@@ -330,8 +520,11 @@ public abstract class ConnectionTelemetry extends Connection {
 	
 	@Override public void removeAllData() {
 		
-		datasets.removeAllData();
-		OpenGLChartsView.instance.switchToLiveView();
+		getDatasetsList().forEach(dataset -> dataset.floats.clear());
+		clearTimestamps();
+		
+		CommunicationView.instance.redraw();
+		OpenGLChartsView.instance.setPlayLive();
 		
 	}
 	
@@ -393,12 +586,11 @@ public abstract class ConnectionTelemetry extends Connection {
 			
 			try (FileReader file = new FileReader(path, StandardCharsets.UTF_8); BufferedReader buffer = new BufferedReader(file)) {
 				
-				connected = true;
+				setConnected(true);
 				previousSampleCountTimestamp = 0;
 				previousSampleCount = 0;
-				CommunicationView.instance.redraw();
 				int sampleNumber = getSampleCount();
-				List<Dataset> datasets = this.datasets.getList(); // cache a list of the datasets
+				List<Field> datasets = getDatasetsList(); // cache a list of the datasets
 				int datasetsCount = datasets.size();
 				
 				// sanity checks
@@ -418,8 +610,8 @@ public abstract class ConnectionTelemetry extends Connection {
 				if(!columns[0].startsWith("Sample Number"))  correctColumnLabels = false;
 				if(!columns[1].startsWith("UNIX Timestamp")) correctColumnLabels = false;
 				for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
-					Dataset d = datasets.get(datasetN);
-					if(!columns[datasetN + 2].equals(d.name + " (" + d.unit + ")"))
+					Field d = datasets.get(datasetN);
+					if(!columns[datasetN + 2].equals(d.name.get() + " (" + d.unit.get() + ")"))
 						correctColumnLabels = false;
 				}
 				if(!correctColumnLabels) {
@@ -435,6 +627,9 @@ public abstract class ConnectionTelemetry extends Connection {
 				Queue<Future<ParsedData>> futures = new LinkedList<Future<ParsedData>>();
 				
 				while(true) {
+					
+					if(!isConnected())
+						break;
 					
 					for(int threadN = 0; threadN < THREAD_COUNT; threadN++) {
 						List<String> lines = new ArrayList<String>(LINES_PER_THREAD);
@@ -453,21 +648,9 @@ public abstract class ConnectionTelemetry extends Connection {
 							if(sampleNumber == Integer.MAX_VALUE)
 								throw new Exception();
 							if(ConnectionsController.realtimeImporting) {
-								if(Thread.interrupted()) {
-									ConnectionsController.realtimeImporting = false;
-									CommunicationView.instance.redraw();
-								} else {
-									long delay = (data.timestamps[packetN] - firstTimestamp) - (System.currentTimeMillis() - beginImportingTimestamp);
-									if(delay > 0)
-										try {
-											Thread.sleep(delay);
-										} catch(Exception e) {
-											ConnectionsController.realtimeImporting = false;
-											CommunicationView.instance.redraw();
-										}
-								}
-							} else if(Thread.interrupted()) {
-								throw new InterruptedException(); // not real-time, and interrupted again, so abort
+								long delay = (data.timestamps[packetN] - firstTimestamp) - (System.currentTimeMillis() - beginImportingTimestamp);
+								if(delay > 0)
+									try { Thread.sleep(delay); } catch(Exception e) { }
 							}
 							for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
 								datasets.get(datasetN).setConvertedSample(sampleNumber, data.samples[datasetN][packetN]);
@@ -511,7 +694,7 @@ public abstract class ConnectionTelemetry extends Connection {
 	 */
 	@Override public void exportDataFile(String path, AtomicLong completedByteCount) {
 		
-		List<Dataset> list = datasets.getList();
+		List<Field> list = getDatasetsList();
 		int datasetsCount = list.size();
 		int sampleCount = getSampleCount();
 		
@@ -520,10 +703,10 @@ public abstract class ConnectionTelemetry extends Connection {
 			PrintWriter logFile = new PrintWriter(path + ".csv", "UTF-8");
 			
 			// first line is the header
-			logFile.print("Sample Number (" + sampleRate + " samples per second),UNIX Timestamp (Milliseconds since 1970-01-01)");
+			logFile.print("Sample Number (" + sampleRate.get() + " samples per second),UNIX Timestamp (Milliseconds since 1970-01-01)");
 			for(int i = 0; i < datasetsCount; i++) {
-				Dataset d = datasets.getByIndex(i);
-				logFile.print("," + d.name + " (" + d.unit + ")");
+				Field d = getDatasetByIndex(i);
+				logFile.print("," + d.name.get() + " (" + d.unit.get() + ")");
 			}
 			logFile.println();
 			
@@ -620,7 +803,7 @@ public abstract class ConnectionTelemetry extends Connection {
 					text[i] = Long.toString(getTimestamp(firstSampleNumber + i, cache));
 			} else {
 				// other columns are the datasets
-				Dataset dataset = datasets.getByIndex(csvColumnNumber - 2);
+				Field dataset = getDatasetByIndex(csvColumnNumber - 2);
 				StorageFloats.Cache cache = dataset.createCache();
 				FloatBuffer buffer = dataset.getSamplesBuffer(firstSampleNumber, firstSampleNumber + (sampleCount - 1), cache);
 				for(int i = 0; i < sampleCount; i++)
@@ -635,10 +818,13 @@ public abstract class ConnectionTelemetry extends Connection {
 	
 	@Override public void dispose() {
 		
-		if(connected)
+		if(isConnected())
 			disconnect(null);
 		
-		datasets.dispose();
+		Main.window.remove(getDataStructureGui()); // ensure the DS GUI is no longer on screen
+		
+		sampleRateCalculator.stop();
+		removeAllFields();
 		timestamps.dispose();
 		
 		// if this is the only connection, remove all charts, because there may be a timeline chart
@@ -657,7 +843,7 @@ public abstract class ConnectionTelemetry extends Connection {
 		processorThread = new Thread(() -> {
 			
 			// wait for the data structure to be defined
-			while(!isDataStructureDefined()) {
+			while(!isFieldsDefined()) {
 				try {
 					Thread.sleep(1);
 				} catch (InterruptedException e) {
@@ -666,24 +852,24 @@ public abstract class ConnectionTelemetry extends Connection {
 			}
 			
 			// cache a list of the datasets
-			List<Dataset> list = datasets.getList();
+			List<Field> datasets = getDatasetsList();
 			
 			// if no telemetry after 100ms, notify the user
-			String waitingForTelemetry = isTypeUart() ? name.substring(6) + " is connected. Send telemetry." :
-			                             isTypeTCP()  ? "The TCP server is running. Send telemetry to " + localIp + ":" + portNumber :
-			                             isTypeUDP()  ? "The UDP listener is running. Send telemetry to " + localIp + ":" + portNumber :
-			                                                                    "";
-			String receivingTelemetry  = isTypeUart() ? name.substring(6) + " is connected and receiving telemetry." :
-			                             isTypeTCP()  ? "The TCP server is running and receiving telemetry." :
-			                             isTypeUDP()  ? "The UDP listener is running and receiving telemetry." :
-			                                                                    "";
+			String waitingForTelemetry = (this instanceof ConnectionTelemetryUART) ? name.get().substring(6) + " is connected. Send telemetry." :
+			                             (this instanceof ConnectionTelemetryTCP)  ? "The TCP server is running. Send telemetry to " + localIp + ":" + portNumber.get() :
+			                             (this instanceof ConnectionTelemetryUDP)  ? "The UDP listener is running. Send telemetry to " + localIp + ":" + portNumber.get() :
+			                                                                         "";
+			String receivingTelemetry  = (this instanceof ConnectionTelemetryUART) ? name.get().substring(6) + " is connected and receiving telemetry." :
+			                             (this instanceof ConnectionTelemetryTCP)  ? "The TCP server is running and receiving telemetry." :
+			                             (this instanceof ConnectionTelemetryUDP)  ? "The UDP listener is running and receiving telemetry." :
+			                                                                         "";
 			int oldSampleCount = getSampleCount();
 			Timer t = new Timer(100, event -> {
 				
-				if(isTypeDemo() || isTypeStressTest())
+				if((this instanceof ConnectionTelemetryDemo) || (this instanceof ConnectionTelemetryStressTest))
 					return;
 				
-				if(connected) {
+				if(isConnected()) {
 					if(getSampleCount() == oldSampleCount)
 						NotificationsController.showHintUntil(waitingForTelemetry, () -> getSampleCount() > oldSampleCount, true);
 					else
@@ -694,14 +880,14 @@ public abstract class ConnectionTelemetry extends Connection {
 			t.setRepeats(false);
 			t.start();
 			
-			if(isProtocolCsv()) {
+			if(protocol.is(Protocol.CSV)) {
 				
 				// prepare for CSV mode
-				stream.setPacketSize(0, list, 0, (byte) 0);
+				stream.setPacketSize(0, 0, (byte) 0);
 				int maxLocation = 0;
-				for(Dataset d : list)
-					if(d.location > maxLocation)
-						maxLocation = d.location;
+				for(Field d : datasets)
+					if(d.location.get() > maxLocation)
+						maxLocation = d.location.get();
 				float[] numberForLocation = new float[maxLocation + 1];
 				String line = null;
 				
@@ -724,8 +910,8 @@ public abstract class ConnectionTelemetry extends Connection {
 							throw new InterruptedException();
 						}
 						
-						for(Dataset d : list)
-							d.setSample(sampleNumber, numberForLocation[d.location]);
+						for(Field d : datasets)
+							d.setSample(sampleNumber, numberForLocation[d.location.get()]);
 						incrementSampleCount(1);
 						
 					} catch(NumberFormatException | NullPointerException | ArrayIndexOutOfBoundsException e1) {
@@ -740,12 +926,27 @@ public abstract class ConnectionTelemetry extends Connection {
 					
 				}
 				
-			} else if(isProtocolBinary()) {
+			} else if(protocol.is(Protocol.BINARY)) {
 				
-				// prepare for binary mode 
-				final int syncWordByteCount = datasets.syncWordByteCount;
-				final byte syncWord = datasets.syncWord;
-				stream.setPacketSize(packetByteCount, list, syncWordByteCount, syncWord);
+				// prepare for binary mode
+				final Field syncWordField = fields.values().stream().filter(Field::isSyncWord).findFirst().orElse(null);
+				final Field checksumField = fields.values().stream().filter(Field::isChecksum).findFirst().orElse(null);
+				final Field.Type checksumProcessor = (checksumField == null) ? null : checksumField.type.get();
+				final int syncWordByteCount = (syncWordField == null) ? 0 : syncWordField.type.get().getByteCount();
+				final byte syncWord         = (syncWordField == null) ? 0 : (byte) Integer.parseInt(syncWordField.name.get().substring(2), 16);
+				final int packetByteCount = (checksumField != null) ? checksumField.location.get() + checksumField.type.get().getByteCount() :
+				                                                      datasets.get(datasets.size() - 1).location.get() + datasets.get(datasets.size() - 1).type.get().getByteCount();
+				final int datasetsCount = datasets.size();
+				final Field dataset[] = new Field[datasetsCount];
+				final Field.Type processorForDataset[] = new Field.Type[datasetsCount];
+				final int locationForDataset[] = new int[datasetsCount];
+				for(int i = 0; i < datasetsCount; i++) {
+					dataset[i] = datasets.get(i);
+					processorForDataset[i] = datasets.get(i).type.get();
+					locationForDataset[i] = datasets.get(i).location.get();
+				}
+				
+				stream.setPacketSize(packetByteCount, syncWordByteCount, syncWord);
 				
 				// use multiple threads to process incoming data in parallel, with each thread parsing up to 8 blocks at a time
 				Phaser phaser = new Phaser(1);
@@ -755,7 +956,7 @@ public abstract class ConnectionTelemetry extends Connection {
 				ExecutorService pool = Executors.newFixedThreadPool(THREAD_COUNT);
 				Parser[] parsers = new Parser[THREAD_COUNT];
 				for(int i = 0; i < THREAD_COUNT; i++)
-					parsers[i] = new Parser(list, packetByteCount, MAX_BLOCK_COUNT_PER_THREAD, phaser, syncWordByteCount, syncWord);
+					parsers[i] = new Parser(datasets, packetByteCount, MAX_BLOCK_COUNT_PER_THREAD, phaser, syncWordByteCount, syncWord, checksumProcessor);
 				
 				while(true) {
 					
@@ -786,15 +987,15 @@ public abstract class ConnectionTelemetry extends Connection {
 								abort = true;
 								break;
 							}
-							if(!datasets.checksumPassed(data.buffer, data.offset, packetByteCount)) {
+							if(checksumProcessor != null && !checksumProcessor.testChecksum(data.buffer, data.offset, packetByteCount, syncWordByteCount)) {
 								data.offset += packetByteCount;
 								abort = true;
 								break;
 							}
 							
-							for(Dataset dataset : list) {
-								float rawNumber = dataset.processor.extractValue(data.buffer, data.offset + dataset.location);
-								dataset.setSample(sampleNumber, rawNumber);
+							for(int i = 0; i < datasetsCount; i++) {
+								float rawNumber = processorForDataset[i].parse(data.buffer, data.offset + locationForDataset[i]);
+								dataset[i].setSample(sampleNumber, rawNumber);
 							}
 							data.offset += packetByteCount;
 							incrementSampleCount(1);
@@ -845,15 +1046,15 @@ public abstract class ConnectionTelemetry extends Connection {
 								abort = true;
 								break;
 							}
-							if(!datasets.checksumPassed(data.buffer, data.offset, packetByteCount)) {
+							if(checksumProcessor != null && !checksumProcessor.testChecksum(data.buffer, data.offset, packetByteCount, syncWordByteCount)) {
 								data.offset += packetByteCount;
 								abort = true;
 								break;
 							}
 							
-							for(Dataset dataset : list) {
-								float rawNumber = dataset.processor.extractValue(data.buffer, data.offset + dataset.location);
-								dataset.setSample(sampleNumber, rawNumber);
+							for(int i = 0; i < datasetsCount; i++) {
+								float rawNumber = processorForDataset[i].parse(data.buffer, data.offset + locationForDataset[i]);
+								dataset[i].setSample(sampleNumber, rawNumber);
 							}
 							data.offset += packetByteCount;
 							incrementSampleCount(1);
@@ -875,10 +1076,10 @@ public abstract class ConnectionTelemetry extends Connection {
 					
 				}
 				
-			} else if(isProtocolTc66()) {
+			} else if(protocol.is(Protocol.TC66)) {
 				
 				int packetLength = 64;
-				stream.setPacketSize(packetLength, list, 0, (byte) 0);
+				stream.setPacketSize(packetLength, 0, (byte) 0);
 				
 				// for some reason the TC66/TC66C uses AES encryption when sending measurements to the PC
 				// this key is NOT a secret and IS intentionally in this publicly accessible source code
@@ -982,17 +1183,17 @@ public abstract class ConnectionTelemetry extends Connection {
 									throw new InterruptedException();
 								}
 								
-								list.get(0).setConvertedSample (sampleNumber, voltage);
-								list.get(1).setConvertedSample (sampleNumber, current);
-								list.get(2).setConvertedSample (sampleNumber, power);
-								list.get(3).setConvertedSample (sampleNumber, resistance);
-								list.get(4).setConvertedSample (sampleNumber, (float) group0mah);
-								list.get(5).setConvertedSample (sampleNumber, (float) group0mwh);
-								list.get(6).setConvertedSample (sampleNumber, (float) group1mah);
-								list.get(7).setConvertedSample (sampleNumber, (float) group1mwh);
-								list.get(8).setConvertedSample (sampleNumber, (float) temperature);
-								list.get(9).setConvertedSample (sampleNumber, dPlusVoltage);
-								list.get(10).setConvertedSample(sampleNumber, dMinusVoltage);
+								datasets.get(0).setConvertedSample (sampleNumber, voltage);
+								datasets.get(1).setConvertedSample (sampleNumber, current);
+								datasets.get(2).setConvertedSample (sampleNumber, power);
+								datasets.get(3).setConvertedSample (sampleNumber, resistance);
+								datasets.get(4).setConvertedSample (sampleNumber, (float) group0mah);
+								datasets.get(5).setConvertedSample (sampleNumber, (float) group0mwh);
+								datasets.get(6).setConvertedSample (sampleNumber, (float) group1mah);
+								datasets.get(7).setConvertedSample (sampleNumber, (float) group1mwh);
+								datasets.get(8).setConvertedSample (sampleNumber, (float) temperature);
+								datasets.get(9).setConvertedSample (sampleNumber, dPlusVoltage);
+								datasets.get(10).setConvertedSample(sampleNumber, dMinusVoltage);
 								incrementSampleCount(1);
 							} else {
 								// got a sub packet that is out of order, so skip over it so we can re-align
@@ -1033,8 +1234,12 @@ public abstract class ConnectionTelemetry extends Connection {
 		private int firstSampleNumber;            // which sample number the first packet corresponds to
 		private int phase = -2;                   // which phase to wait for
 		
-		private final List<Dataset> datasets;
 		private final int datasetsCount;
+		private final Field dataset[];
+		private final Field.Type processorForDataset[];
+		private final int locationForDataset[];
+		private final float conversionFactorForDataset[];
+		
 		private final int packetByteCount;
 		private final float[][] minimumValue;   // [blockN][datasetN]
 		private final float[][] maximumValue;   // [blockN][datasetN]
@@ -1042,6 +1247,7 @@ public abstract class ConnectionTelemetry extends Connection {
 		
 		private final int syncWordByteCount;
 		private final byte syncWord;
+		private final Field.Type checksumProcessor;
 		
 		/**
 		 * Initializes this object, but does not start to parse any data.
@@ -1052,10 +1258,20 @@ public abstract class ConnectionTelemetry extends Connection {
 		 * @param maxBlockCount      Maximum number of blocks that should be parsed by this object.
 		 * @param phaser             Phaser to await on before incrementing the sample count.
 		 */
-		public Parser(List<Dataset> datasets, int packetByteCount, int maxBlockCount, Phaser phaser, int syncWordByteCount, byte syncWord) {
+		public Parser(List<Field> datasets, int packetByteCount, int maxBlockCount, Phaser phaser, int syncWordByteCount, byte syncWord, Field.Type checksumProcessor) {
 			
-			this.datasets = datasets;
-			this.datasetsCount = datasets.size();
+			datasetsCount = datasets.size();
+			dataset = new Field[datasetsCount];
+			processorForDataset = new Field.Type[datasetsCount];
+			locationForDataset = new int[datasetsCount];
+			conversionFactorForDataset = new float[datasetsCount];
+			for(int i = 0; i < datasetsCount; i++) {
+				dataset[i] = datasets.get(i);
+				processorForDataset[i] = datasets.get(i).type.get();
+				locationForDataset[i] = datasets.get(i).location.get();
+				conversionFactorForDataset[i] = datasets.get(i).conversionFactor;
+			}
+			
 			this.packetByteCount = packetByteCount;
 			this.minimumValue = new float[maxBlockCount][datasetsCount];
 			this.maximumValue = new float[maxBlockCount][datasetsCount];
@@ -1063,6 +1279,7 @@ public abstract class ConnectionTelemetry extends Connection {
 			
 			this.syncWordByteCount = syncWordByteCount;
 			this.syncWord = syncWord;
+			this.checksumProcessor = checksumProcessor;
 			
 		}
 		
@@ -1098,7 +1315,7 @@ public abstract class ConnectionTelemetry extends Connection {
 					break;
 				
 				for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
-					slots[datasetN] = datasets.get(datasetN).getSlot(firstSampleNumber + (blockN * StorageFloats.BLOCK_SIZE));
+					slots[datasetN] = dataset[datasetN].getSlot(firstSampleNumber + (blockN * StorageFloats.BLOCK_SIZE));
 				
 				int slotOffset = (firstSampleNumber + (blockN * StorageFloats.BLOCK_SIZE)) % StorageFloats.SLOT_SIZE;
 				float[] minVal = minimumValue[blockN];
@@ -1110,15 +1327,14 @@ public abstract class ConnectionTelemetry extends Connection {
 						goodPacketsBeforeProblem = (blockN * StorageFloats.BLOCK_SIZE) + packetN;
 						break;
 					}
-					if(!ConnectionTelemetry.this.datasets.checksumPassed(data.buffer, offset, packetByteCount)) {
+					if(checksumProcessor != null && !checksumProcessor.testChecksum(data.buffer, offset, packetByteCount, syncWordByteCount)) {
 						problem = true;
 						goodPacketsBeforeProblem = (blockN * StorageFloats.BLOCK_SIZE) + packetN;
 						break;
 					}
 					
 					for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
-						Dataset d = datasets.get(datasetN);
-						float f = d.processor.extractValue(data.buffer, offset + d.location) * d.conversionFactor;
+						float f = processorForDataset[datasetN].parse(data.buffer, offset + locationForDataset[datasetN]) * conversionFactorForDataset[datasetN];
 						slots[datasetN][slotOffset] = f;
 						if(packetN == 0) {
 							minVal[datasetN] = f;
@@ -1139,7 +1355,7 @@ public abstract class ConnectionTelemetry extends Connection {
 			// update datasets
 			for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
 				for(int blockN = 0; blockN < blockCount; blockN++)
-					datasets.get(datasetN).setRangeOfBlock(firstSampleNumber + (blockN * StorageFloats.BLOCK_SIZE), minimumValue[blockN][datasetN], maximumValue[blockN][datasetN]);
+					dataset[datasetN].setRangeOfBlock(firstSampleNumber + (blockN * StorageFloats.BLOCK_SIZE), minimumValue[blockN][datasetN], maximumValue[blockN][datasetN]);
 			
 			// wait for previous thread to finish
 			if(phase >= 0) {
@@ -1179,11 +1395,6 @@ public abstract class ConnectionTelemetry extends Connection {
 		}
 		
 	}
-	
-	/**
-	 * @return    The transmit GUI, or null if no GUI should be displayed.
-	 */
-	public abstract JPanel getUpdatedTransmitGUI();
 	
 	private AtomicInteger sampleCount = new AtomicInteger(0);
 	private StorageTimestamps timestamps = new StorageTimestamps(this);
@@ -1302,6 +1513,368 @@ public abstract class ConnectionTelemetry extends Connection {
 	@Override public int getSampleCount() {
 		
 		return sampleCount.get();
+		
+	}
+	
+	/**
+	 * @return    The number of datasets in the data structure.
+	 */
+	public int getDatasetCount() {
+		
+		return (int) fields.values().stream().filter(Field::isDataset).count();
+		
+	}
+	
+	/**
+	 * @param index    An index between 0 and DatasetsController.getCount()-1, inclusive.
+	 * @return         The Dataset.
+	 */
+	public Field getDatasetByIndex(int index) {
+		
+		return fields.values().stream().filter(Field::isDataset).toList().get(index);
+		
+	}
+	
+	public Field getFieldByIndex(int index) {
+		
+		return fields.values().stream().toList().get(index);
+		
+	}
+	
+	/**
+	 * @param location    CSV column number, or Binary packet byte offset. (Locations may be sparse.)
+	 * @return            The Dataset, or null if it does not exist.
+	 */
+	public Field getDatasetByLocation(int location) {
+		
+		return fields.get(location);
+
+	}
+	
+	/**
+	 * @param field          Field to test.
+	 * @param newLocation    Proposed CSV column number, or binary packet byte offset.
+	 * @param newType        Proposed data type.
+	 * @return               null if allowed, or a user-friendly String describing why the location or data type is not allowed.
+	 */
+	public String isFieldAllowed(Field field, int newLocation, Field.Type newType) {
+		
+		Field existingSyncWord = fields.values().stream().filter(Field::isSyncWord).findFirst().orElse(null);
+		Field existingChecksum = fields.values().stream().filter(Field::isChecksum).findFirst().orElse(null);
+		
+		if(newType.isSyncWord() && protocol.is(Protocol.CSV))
+			return "CSV mode does not support sync words.";
+		
+		if(newType.isSyncWord() && existingSyncWord != null && field != existingSyncWord)
+			return "A sync word has already been defined.";
+		
+		if(newType.isSyncWord() && fields.values().stream().anyMatch(existingField -> existingField.location.is(0)))
+			return "A dataset already exists at the start of the packet.";
+		
+		if(newType.isSyncWord() && newLocation != 0)
+			return "A sync word can only be placed at the start of the packet.";
+		
+		if(newType.isDataset() && protocol.is(Protocol.CSV) && fields.values().stream().anyMatch(existingField -> (existingField.location.is(newLocation)) && (existingField != field)))
+			return "A dataset already exists at column " + newLocation + ".";
+		
+		if(newType.isDataset() && protocol.is(Protocol.BINARY) && existingSyncWord != null && existingSyncWord != field && newLocation < existingSyncWord.type.get().getByteCount())
+			return "Can not place a dataset that overlaps with the sync word.";
+		
+		if(newType.isDataset() && protocol.is(Protocol.BINARY) && existingChecksum != null && existingChecksum != field && (newLocation + newType.getByteCount() - 1 >= existingChecksum.location.get()))
+			return "Can not place a dataset that overlaps with the checksum or is placed after the checksum.";
+		
+		if(newType.isDataset() && protocol.is(Protocol.BINARY)) {
+			int proposedStartByte = newLocation;
+			int proposedEndByte = proposedStartByte + newType.getByteCount() - 1;
+			for(Field dataset : getDatasetsList()) {
+				if(dataset == field && dataset.location.get() == newLocation && dataset.type.get().getByteCount() >= newType.getByteCount())
+					return null; // same dataset and location, occupying the same or less space, so allow it
+				int existingStartByte = dataset.location.get();
+				int existingEndByte = existingStartByte + dataset.type.get().getByteCount() - 1;
+				if(proposedStartByte >= existingStartByte && proposedStartByte <= existingEndByte)
+					return "Can not place a dataset that overlaps an existing field."; // starting inside existing range
+				if(proposedEndByte >= existingStartByte && proposedEndByte <= existingEndByte)
+					return "Can not place a dataset that overlaps an existing field."; // ending inside existing range
+				if(existingStartByte >= proposedStartByte && existingEndByte <= proposedEndByte)
+					return "Can not place a dataset that overlaps an existing field."; // encompassing existing range
+			}
+		}
+		
+		if(newType.isChecksum() && protocol.is(Protocol.CSV))
+			return "CSV mode does not support checksums.";
+
+		if(newType.isChecksum() && existingChecksum != null && existingChecksum != field)
+			return "A checksum field already exists.";
+		
+		if(newType.isChecksum() && newLocation == 0)
+			return "A checksum field can only be placed at the end of a packet.";
+		
+		if(newType.isChecksum() && getDatasetsList().stream().anyMatch(dataset -> newLocation <= dataset.location.get() + dataset.type.get().getByteCount() - 1))
+			return "A checksum field can only be placed at the end of a packet.";
+		
+		if(newType.isChecksum() && (newLocation - 1) % newType.getByteCount() != 0)
+			return "This checksum must be aligned on a " + newType.getByteCount() + " byte boundary. (The number of bytes before the checksum, not counting the sync word, must be a multiple of " + newType.getByteCount() + " bytes.)";
+		
+		// success, the location is available
+		return null;
+		
+	}
+	
+	public void removeAllFields() {
+		
+		fields.values().stream().toList().forEach(field -> removeField(field.location.get())); // toList() to prevent a ConcurrentModificationException
+		setFieldsDefined(false);
+		
+	}
+	
+	public List<Field> getDatasetsList() {
+		
+		return fields.values().stream().filter(Field::isDataset).toList();
+		
+	}
+	
+	/**
+	 * @param field    The data type being inserted. Could be a sync word, dataset, or checksum.
+	 * @return         null on success, or a user-friendly String describing why the field could not be added.
+	 */
+	public String insertField(Field field) {
+		
+		// sanity checks
+		String errorMessage = isFieldAllowed(field, field.location.get(), field.type.get());
+		if(errorMessage != null)
+			return errorMessage;
+		
+		if(field.isDataset() && field.name.get().isEmpty())
+			return "A dataset name is required.";
+		
+		if(field.isSyncWord())
+			try {
+				Integer.parseInt(field.name.get().substring(2), 16);
+			} catch(NumberFormatException e) {
+				return "Invalid sync word.";
+			}
+			
+		// insert
+		fields.put(field.location.get(), field);
+		if(field.isSyncWord()) {
+			return null;
+		} else if(field.isDataset()) {
+			removeAllData(); // remove any existing samples, because every dataset must contain samples for every sample number
+			return null;
+		} else if(field.isChecksum()) {
+			return null;
+		} else {
+			return "Unknown error."; // we should never get here
+		}
+		
+	}
+	
+	/**
+	 * @param location    CSV column number, or binary packet byte offset.
+	 * @return            null on success, or a user-friendly String describing why the field could not be removed.
+	 */
+	public String removeField(int location) {
+		
+		Field field = fields.get(location);
+		if(field == null)
+			return "A field does not exist at location " + location + ".";
+		
+		// ensure the configure panel isn't open
+		ConfigureView.instance.close();
+		
+		// remove charts containing the dataset
+		ChartsController.getCharts().stream().filter(chart -> chart.datasets.contains(field)).toList().forEach(chart -> ChartsController.removeChart(chart));
+		
+		// remove the dataset
+		fields.remove(location);
+		if(field.isDataset())
+			field.floats.dispose();
+		
+		// remove timestamps if no other datasets are left
+		if(fields.values().stream().filter(Field::isDataset).count() == 0) {
+
+			clearTimestamps();
+			
+			CommunicationView.instance.redraw();
+			OpenGLChartsView.instance.setPlayLive();
+			
+			// if this is the only connection, also remove all charts because a timeline chart may still exist
+			if(ConnectionsController.allConnections.size() == 1)
+				ChartsController.removeAllCharts();
+		}
+		
+		return null; // success
+		
+	}
+	
+	/**
+	 * @return    The first unoccupied CSV column number or byte offset, or -1 if they are all occupied.
+	 */
+	public int getFirstAvailableLocation() {
+		
+		if(protocol.is(Protocol.CSV)) {
+			
+			return IntStream.range(0, Integer.MAX_VALUE)
+			                .filter(i -> getDatasetByLocation(i) == null)
+			                .findFirst().orElse(-1);
+			
+		} else {
+			
+			Field checksum = fields.values().stream().filter(Field::isChecksum).findFirst().orElse(null);
+			return IntStream.range(0, (checksum == null) ? Integer.MAX_VALUE : checksum.location.get() + checksum.type.get().getByteCount())
+			                .filter(i -> fields.values().stream().noneMatch(dataset ->
+			                                                                i >= dataset.location.get() &&
+			                                                                i <  dataset.location.get() + dataset.type.get().getByteCount()))
+			                .findFirst().orElse(-1);
+			
+		}
+		
+	}
+	
+	List<Widget> widgetsList = new ArrayList<Widget>();
+	
+	abstract protected boolean supportsTransmitting();
+	abstract protected boolean supportsUserDefinedDataStructure();
+
+	@Override public void importSettings(ConnectionsController.QueueOfLines lines) throws AssertionError {
+		
+		widgetsList.stream().skip(1).forEach(widget -> widget.importFrom(lines));
+
+		if(supportsTransmitting() && !protocol.is(Protocol.TC66)) {
+			transmitDatatype.importFrom(lines);
+			transmitData.importFrom(lines);
+			transmitAppendCR.importFrom(lines);
+			transmitAppendLF.importFrom(lines);
+			transmitRepeatedly.importFrom(lines);
+			transmitRepeatedlyMilliseconds.importFrom(lines);
+			
+			int saveCount = lines.parseInteger("transmit saved packet count = %d");
+			if(saveCount < 0)
+				throw new AssertionError("Invalid saved packet count.");
+			
+			while(saveCount-- > 0) {
+				try {
+					String label = lines.remove();
+					String hexText = lines.remove().trim();
+					String[] hexBytes = hexText.split(" ");
+					byte[] bytes = new byte[hexBytes.length];
+					for(int i = 0; i < hexBytes.length; i++)
+						bytes[i] = (byte) (Integer.parseInt(hexBytes[i], 16) & 0xFF);
+					if(label.equals("") || bytes.length == 0)
+						throw new Exception();
+					transmitSavedPackets.add(new Packet(label, bytes, hexText));
+				} catch(Exception e) {
+					throw new AssertionError("Invalid saved packet.");
+				}
+			}
+		}
+		
+		if(supportsUserDefinedDataStructure()) {
+			int fieldCount = lines.parseInteger("field count = %d");
+			if(fieldCount < 1)
+				throw new AssertionError("Invalid datasets count.");
+			for(int i = 0; i < fieldCount; i++)
+				new Field(this).importFrom(lines);
+		}
+		
+		setFieldsDefined(true);
+
+	}
+
+	@Override public void exportSettings(PrintWriter file) {
+		
+		widgetsList.forEach(widget -> widget.exportTo(file));
+		
+		if(supportsTransmitting() && !protocol.is(Protocol.TC66)) {
+			transmitDatatype.exportTo(file);
+			transmitData.exportTo(file);
+			transmitAppendCR.exportTo(file);
+			transmitAppendLF.exportTo(file);
+			transmitRepeatedly.exportTo(file);
+			transmitRepeatedlyMilliseconds.exportTo(file);
+			
+			file.println("\ttransmit saved packet count = " + transmitSavedPackets.size());
+			transmitSavedPackets.forEach(packet -> {
+				file.println("\t\t" + packet.label());
+				file.println("\t\t" + packet.bytesAsHexString);
+			});
+		}
+		
+		if(supportsUserDefinedDataStructure()) {
+			file.println("\tfield count = " + fields.size());
+			fields.values().stream().forEach(dataset -> dataset.exportTo(file));
+		}
+		
+		file.println("");
+
+	}
+	
+	final public JPanel getUpdatedTransmitGUI() {
+		
+		if(!supportsTransmitting())
+			return null;
+		
+		if(protocol.is(Protocol.TC66)) {
+			
+			// special case: for the TC66, the user can only send some pre-defined packets
+			JPanel gui = new JPanel(new MigLayout("hidemode 3, fillx, wrap 1, insets " + Theme.padding + ", gap " + Theme.padding, "[fill,grow]"));
+			gui.setBorder(BorderFactory.createTitledBorder("TC66 (" + name.get() + (isConnected() ? "" : " - disconnected") + ")"));
+			
+			transmitSavedPackets.forEach(packet -> {
+				JButton packetButton = new JButton(packet.label());
+				packetButton.setHorizontalAlignment(SwingConstants.LEFT);
+				packetButton.addActionListener(clicked -> transmitQueue.add(packet.bytes()));
+				packetButton.setEnabled(isConnected());
+				gui.add(packetButton);
+			});
+			
+			return gui;
+			
+		} else {
+			
+			boolean haveData = !transmitData.get().isEmpty() || transmitAppendCR.get() || transmitAppendLF.get();
+			
+			// show all of the widgets and saved packets
+			JPanel gui = new JPanel(new MigLayout("hidemode 3, fillx, wrap 2, insets " + Theme.padding + ", gap " + Theme.padding));
+			gui.setBorder(BorderFactory.createTitledBorder("Transmit to " + name.get() + (isConnected() ? "" : " (disconnected)")));
+			
+			transmitDatatype.appendTo(gui, "grow x");
+			transmitData.appendTo(gui, "grow x");
+			transmitAppendCR.appendTo(gui, "span 2, split 4");
+			transmitAppendLF.appendTo(gui, "");
+			transmitRepeatedly.appendTo(gui, "");
+			transmitRepeatedlyMilliseconds.appendTo(gui, "grow x");
+			gui.add(transmitSaveButton, "span 2, split 2, grow x");
+			gui.add(transmitTransmitButton, "grow x");
+			
+			transmitDatatype.setEnabled(isConnected());
+			transmitData.setEnabled(isConnected());
+			transmitAppendCR.setEnabled(isConnected() && transmitDatatype.is(WidgetTextfield.Mode.TEXT));
+			transmitAppendLF.setEnabled(isConnected() && transmitDatatype.is(WidgetTextfield.Mode.TEXT));
+			transmitRepeatedly.setEnabled(isConnected() && haveData);
+			transmitRepeatedlyMilliseconds.setEnabled(isConnected() && haveData);
+			transmitSaveButton.setEnabled(isConnected() && haveData);
+			transmitTransmitButton.setEnabled(isConnected() && haveData);
+			
+			transmitSavedPackets.forEach(packet -> {
+				JButton sendButton = new JButton(packet.label());
+				sendButton.setHorizontalAlignment(SwingConstants.LEFT);
+				sendButton.addActionListener(clicked -> transmitQueue.add(packet.bytes()));
+				sendButton.setEnabled(isConnected());
+				JButton removeButton = new JButton(Theme.removeSymbol);
+				removeButton.setBorder(Theme.narrowButtonBorder);
+				removeButton.addActionListener(click -> {
+					transmitSavedPackets.remove(packet);
+					SettingsView.instance.redraw(); // so this TX GUI gets redrawn
+				});
+				removeButton.setEnabled(isConnected());
+				gui.add(sendButton, "span 2, split 2, grow x, width 1:1:"); // setting min/pref width to 1px to ensure this button doesn't widen the panel
+				gui.add(removeButton);
+			});
+			
+			return gui;
+			
+		}
 		
 	}
 

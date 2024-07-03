@@ -107,7 +107,7 @@ public abstract class Plot {
 	 * @param plotWidth    Width of the plot region, in pixels.
 	 * @return             An object indicating if the tooltip should be drawn, for what sample number, with what label, and at what location on screen.
 	 */
-	abstract TooltipInfo getTooltip(int mouseX, float plotWidth);
+	abstract public void drawTooltip(GL2ES3 gl, int mouseX, int mouseY, float xPlotLeft, float yPlotBottom, float plotWidth, float plotHeight, float plotMinY, float plotMaxY, float plotRange, float yPlotTop, float xPlotRight);
 	
 	/**
 	 * Gets the horizontal location, relative to the plot, for a sample number.
@@ -122,22 +122,6 @@ public abstract class Plot {
 	 * @return    Domain (interval of x-axis values) of the plot.
 	 */
 	final long getPlotDomain() { return plotDomain; }
-	
-	static class TooltipInfo {
-		
-		boolean draw;
-		int sampleNumber;
-		String label;
-		float pixelX;
-		
-		TooltipInfo(boolean draw, long sampleNumber, String label, float pixelX) {
-			this.draw = draw;
-			this.sampleNumber = (int) sampleNumber;
-			this.label = label;
-			this.pixelX = pixelX;
-		}
-		
-	}
 	
 	abstract public void freeResources(GL2ES3 gl);
 

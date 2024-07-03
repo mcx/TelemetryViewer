@@ -1,4 +1,6 @@
 import java.awt.Color;
+import java.awt.Component;
+import java.awt.Toolkit;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -8,6 +10,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
 
 import javax.swing.JOptionPane;
+import javax.swing.SwingUtilities;
 
 public class NotificationsController {
 	
@@ -31,10 +34,10 @@ public class NotificationsController {
 		
 		public static Notification forMilliseconds(String level, String[] message, long milliseconds, boolean expiresOnConnection) {
 			Notification notification = new Notification();
-			Color color = level.equals("hint")    ? SettingsController.getHintNotificationColor() :
-			              level.equals("warning") ? SettingsController.getWarningNotificationColor() :
-			              level.equals("failure") ? SettingsController.getFailureNotificationColor() :
-			                                        SettingsController.getVerboseNotificationColor();
+			Color color = level.equals("hint")    ? SettingsView.instance.hintsColorButton.get() :
+			              level.equals("warning") ? SettingsView.instance.warningsColorButton.get() :
+			              level.equals("failure") ? SettingsView.instance.failuresColorButton.get() :
+			                                        SettingsView.instance.verboseColorButton.get();
 			notification.level = level;
 			notification.lines = message;
 			notification.glColor = new float[] {color.getRed() / 255f, color.getGreen() / 255f, color.getBlue() / 255f, 1.0f};
@@ -49,10 +52,10 @@ public class NotificationsController {
 		
 		public static Notification untilEvent(String level, String[] message, BooleanSupplier isExpired, boolean expiresOnConnection) {
 			Notification notification = new Notification();
-			Color color = level.equals("hint")    ? SettingsController.getHintNotificationColor() :
-			              level.equals("warning") ? SettingsController.getWarningNotificationColor() :
-			              level.equals("failure") ? SettingsController.getFailureNotificationColor() :
-			                                        SettingsController.getVerboseNotificationColor();
+			Color color = level.equals("hint")    ? SettingsView.instance.hintsColorButton.get() :
+			              level.equals("warning") ? SettingsView.instance.warningsColorButton.get() :
+			              level.equals("failure") ? SettingsView.instance.failuresColorButton.get() :
+			                                        SettingsView.instance.verboseColorButton.get();
 			notification.level = level;
 			notification.lines = message;
 			notification.glColor = new float[] {color.getRed() / 255f, color.getGreen() / 255f, color.getBlue() / 255f, 1.0f};
@@ -67,10 +70,10 @@ public class NotificationsController {
 		
 		public static Notification progressBar(String level, String[] message, AtomicLong currentAmount, long totalAmount) {
 			Notification notification = new Notification();
-			Color color = level.equals("hint")    ? SettingsController.getHintNotificationColor() :
-			              level.equals("warning") ? SettingsController.getWarningNotificationColor() :
-			              level.equals("failure") ? SettingsController.getFailureNotificationColor() :
-			                                        SettingsController.getVerboseNotificationColor();
+			Color color = level.equals("hint")    ? SettingsView.instance.hintsColorButton.get() :
+			              level.equals("warning") ? SettingsView.instance.warningsColorButton.get() :
+			              level.equals("failure") ? SettingsView.instance.failuresColorButton.get() :
+			                                        SettingsView.instance.verboseColorButton.get();
 			notification.level = level;
 			notification.lines = message;
 			notification.glColor = new float[] {color.getRed() / 255f, color.getGreen() / 255f, color.getBlue() / 255f, 1.0f};
@@ -109,7 +112,7 @@ public class NotificationsController {
 				item.expirationTimestamp = System.currentTimeMillis() + 2000; // fade away 2 seconds after done
 				item.lines[0] += " Done";
 				item.isProgressBar = false;
-				NotificationsController.showDebugMessage(item.lines[0]);
+				NotificationsController.printDebugMessage(item.lines[0]);
 			}
 		});
 		if(notifications.size() > 5) {
@@ -148,7 +151,7 @@ public class NotificationsController {
 	public static void showHintUntil(String message, BooleanSupplier isExpired, boolean autoExpire) {
 
 		System.out.println(timestamp.format(new Date()) + "   [HINT    ]   " + message);
-		if(SettingsController.getHintNotificationVisibility())
+		if(SettingsView.instance.hintsCheckbox.get())
 			notifications.add(Notification.untilEvent("hint", message.split("\\R"), isExpired, autoExpire));
 		
 	}
@@ -164,7 +167,7 @@ public class NotificationsController {
 	public static void showWarningForMilliseconds(String message, long milliseconds, boolean autoExpire) {
 
 		System.out.println(timestamp.format(new Date()) + "   [WARNING ]   " + message);
-		if(SettingsController.getWarningNotificationVisibility())
+		if(SettingsView.instance.warningsCheckbox.get())
 			notifications.add(Notification.forMilliseconds("warning", message.split("\\R"), milliseconds, autoExpire));
 		
 	}
@@ -180,7 +183,7 @@ public class NotificationsController {
 	public static void showFailureUntil(String message, BooleanSupplier isExpired, boolean autoExpire) {
 
 		System.out.println(timestamp.format(new Date()) + "   [FAILURE ]   " + message);
-		if(SettingsController.getFailureNotificationVisibility())
+		if(SettingsView.instance.failuresCheckbox.get())
 			notifications.add(Notification.untilEvent("failure", message.split("\\R"), isExpired, autoExpire));
 		
 	}
@@ -196,7 +199,7 @@ public class NotificationsController {
 	public static void showFailureForMilliseconds(String message, long milliseconds, boolean autoExpire) {
 
 		System.out.println(timestamp.format(new Date()) + "   [FAILURE ]   " + message);
-		if(SettingsController.getFailureNotificationVisibility())
+		if(SettingsView.instance.failuresCheckbox.get())
 			notifications.add(Notification.forMilliseconds("failure", message.split("\\R"), milliseconds, autoExpire));
 		
 	}
@@ -212,20 +215,33 @@ public class NotificationsController {
 	public static void showVerboseForMilliseconds(String message, long milliseconds, boolean autoExpire) {
 
 		System.out.println(timestamp.format(new Date()) + "   [VERBOSE ]   " + message);
-		if(SettingsController.getVerboseNotificationVisibility())
+		if(SettingsView.instance.verboseCheckbox.get())
 			notifications.add(Notification.forMilliseconds("verbose", message.split("\\R"), milliseconds, autoExpire));
 		
 	}
 	
 	/**
-	 * Shows a debug message. It will be printed to the console, and if enabled, it will be shown in the GUI for 10 seconds.
+	 * Prints a message to the console.
 	 * This method is thread-safe.
 	 * 
-	 * @param message            The message to show.
+	 * @param message    The message to print.
 	 */
-	public static void showDebugMessage(String message) {
+	public static void printDebugMessage(String message) {
 
 		System.out.println(timestamp.format(new Date()) + "   [DEBUG   ]   " + message);
+		
+	}
+	
+	/**
+	 * Prints a message to the console and makes a "beep" sound.
+	 * This method is thread-safe.
+	 * 
+	 * @param message    The message to print.
+	 */
+	public static void printDebugMessageAndBeep(String message) {
+
+		System.out.println(timestamp.format(new Date()) + "   [DEBUG   ]   " + message);
+		Toolkit.getDefaultToolkit().beep();
 		
 	}
 	
@@ -250,6 +266,13 @@ public class NotificationsController {
 		
 		System.out.println(timestamp.format(new Date()) + "   [CRITICAL]   " + message);
 		JOptionPane.showMessageDialog(null, "<html><b>CRITICAL FAULT</b><br><br>If you continue to use the software it may crash or become unresponsive.<br>The error message is below, but more details may have been printed to the console.<br><br>" + message + "</pre><br></html>", "CRITICAL FAULT", JOptionPane.ERROR_MESSAGE);
+		
+	}
+	
+	public static void showErrorPopup(Component parent, String message) {
+		
+		// invokeLater so if the GUI cancels a change, that change goes into effect *before* the error dialog box pops up
+		SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(parent, message, "Error", JOptionPane.ERROR_MESSAGE));
 		
 	}
 

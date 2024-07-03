@@ -1,6 +1,6 @@
 import java.awt.Container;
+import java.io.PrintWriter;
 import java.util.List;
-import java.util.Queue;
 import java.util.function.Consumer;
 
 import javax.swing.ButtonGroup;
@@ -10,20 +10,17 @@ import javax.swing.JToggleButton;
 
 public class WidgetToggleButtonEnum<T> implements Widget {
 	
-	JLabel prefixLabel;
-	String prefix;
-	String importExportLabel;
-	JToggleButton[] buttons;
+	private String importExportLabel;
+	private JLabel prefixLabel;
+	private JToggleButton[] buttons;
 	
-	private T value;
+	private volatile T value;
 	private T[] options;
 	
 	public WidgetToggleButtonEnum(String label, String importExportText, T[] values, T selectedValue, Consumer<T> handler) {
 		
-		if(label != null && !label.equals("")) {
+		if(label != null && !label.equals(""))
 			prefixLabel = new JLabel(label + ": ");
-			prefix = label;
-		}
 		importExportLabel = importExportText;
 		options = values;
 		
@@ -41,7 +38,7 @@ public class WidgetToggleButtonEnum<T> implements Widget {
 					// because the event handler may have added/removed/hid stuff
 					Container parent = buttons[0].getParent();
 					if(parent != null) {
-						buttons[0].getParent().revalidate(); 
+						buttons[0].getParent().revalidate();
 						buttons[0].getParent().repaint();
 					}
 				}
@@ -56,25 +53,37 @@ public class WidgetToggleButtonEnum<T> implements Widget {
 		
 	}
 	
-	public void setValue(T newValue) {
+	public boolean is(T someValue) {
+		return value == someValue;
+	}
+	
+	public T get() {
+		
+		return value;
+		
+	}
+	
+	public void set(T newValue) {
 		
 		for(JToggleButton button : buttons)
-			if(button.getText().equals(newValue.toString()))
-				button.doClick();
+			if(button.getText().equals(newValue.toString())) {
+				button.setSelected(true);
+				List.of(button.getActionListeners()).forEach(listener -> listener.actionPerformed(null));
+			}
 		
 	}
 
-	@Override public void appendToGui(JPanel gui) {
+	@Override public void appendTo(JPanel panel, String constraints) {
 		
 		if(prefixLabel == null) {
 			for(int i = 0; i < buttons.length; i++) {
-				String constraints = (i == 0) ? "split " + buttons.length + ", grow" : "grow";
-				gui.add(buttons[i], constraints);
+				String constraint = (i == 0) ? "split " + buttons.length + ", grow" : "grow";
+				panel.add(buttons[i], constraint);
 			}
 		} else {
-			gui.add(prefixLabel, "split " + (buttons.length + 1));
+			panel.add(prefixLabel, "split " + (buttons.length + 1));
 			for(int i = 0; i < buttons.length; i++) {
-				gui.add(buttons[i], "grow");
+				panel.add(buttons[i], "grow");
 			}
 		}
 
@@ -89,9 +98,9 @@ public class WidgetToggleButtonEnum<T> implements Widget {
 		
 	}
 
-	@Override public void importFrom(Queue<String> lines) {
+	@Override public void importFrom(ConnectionsController.QueueOfLines lines) throws AssertionError {
 
-		String text = ChartUtils.parseString(lines.remove(), importExportLabel + " = %s");
+		String text = lines.parseString(importExportLabel + " = %s");
 		T newValue = null;
 		for(T option : options)
 			if(option.toString().equals(text))
@@ -105,14 +114,14 @@ public class WidgetToggleButtonEnum<T> implements Widget {
 			message += "\nFound: " + text;
 			throw new AssertionError(message);
 		} else {
-			setValue(newValue);
+			set(newValue);
 		}
 
 	}
 
-	@Override public void exportTo(List<String> lines) {
+	@Override public void exportTo(PrintWriter file) {
 		
-		lines.add(importExportLabel + " = " + value.toString());
+		file.println("\t" + importExportLabel + " = " + value.toString());
 
 	}
 

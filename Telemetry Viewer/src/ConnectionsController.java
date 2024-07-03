@@ -1,4 +1,3 @@
-import java.awt.Color;
 import java.io.File;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -6,13 +5,15 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
+import java.util.stream.Stream;
+
+import javax.swing.SwingUtilities;
 
 /**
  * ConnectionController manages all Connections, but the bulk of the work is done by the individual Connections.
@@ -30,86 +31,95 @@ public class ConnectionsController {
 	public static List<ConnectionCamera>               cameraConnections = new ArrayList<ConnectionCamera>();
 	public static Map<ConnectionTelemetry, DatasetsInterface> interfaces = new HashMap<ConnectionTelemetry, DatasetsInterface>();
 	static {
-		addConnection();
+		addConnection(null);
 	}
 	
 	private static final String filenameSanitizer = "[^a-zA-Z0-9_\\.\\- ]"; // only allow letters, numbers, underscores, periods, hyphens and spaces.
 	
-	public static void addConnection() {
+	public record Device(String name, boolean isAvailable, Supplier<Connection> connection) {}
+	public static Stream<Device> getDevicesStream() {
 		
-		List<String> potentialNames = new ArrayList<String>();
-		potentialNames.addAll(ConnectionTelemetryUART.getPortNames());
-		potentialNames.add(ConnectionTelemetry.Type.TCP.toString());
-		potentialNames.add(ConnectionTelemetry.Type.UDP.toString());
-		potentialNames.add(ConnectionTelemetry.Type.DEMO.toString());
-		potentialNames.add(ConnectionTelemetry.Type.STRESS_TEST.toString());
-		
-		// the webcam lib crashes on the raspberry pi when running a 64-bit os, so don't allow cameras in that case
-		if(!System.getProperty("os.name").equals("Linux") && !System.getProperty("os.arch").equals("AArch64"))
-			potentialNames.addAll(ConnectionCamera.getNames());
-		
-		allConnections.forEach(existingConnection -> {
-			String existingName = existingConnection.name;
-			if(!existingName.equals(ConnectionTelemetry.Type.TCP.toString()) &&
-			   !existingName.equals(ConnectionTelemetry.Type.UDP.toString()) &&
-			   !existingName.equals(ConnectionCamera.mjpegOverHttp) &&
-			   potentialNames.contains(existingName))
-				potentialNames.remove(existingName);
+		List<Device> list = new ArrayList<Device>();
+		ConnectionTelemetryUART.getNames().forEach(name -> {
+			boolean isAvailable = telemetryConnections.stream().noneMatch(con -> con.name.get().equals(name));
+			list.add(new Device(name, isAvailable, isAvailable ? () -> new ConnectionTelemetryUART(name) :
+			                                                     () -> null));
 		});
-		
-		String name = potentialNames.get(0); // first unused potential connection
-		
-		addConnection(name.startsWith(ConnectionTelemetry.Type.UART.toString())    ? new ConnectionTelemetryUART(name) :
-		              name.equals(ConnectionTelemetry.Type.TCP.toString())         ? new ConnectionTelemetryTCP() :
-		              name.equals(ConnectionTelemetry.Type.UDP.toString())         ? new ConnectionTelemetryUDP() :
-		              name.equals(ConnectionTelemetry.Type.DEMO.toString())        ? new ConnectionTelemetryDemo() :
-		              name.equals(ConnectionTelemetry.Type.STRESS_TEST.toString()) ? new ConnectionTelemetryStressTest() :
-		                                                                             new ConnectionCamera(name));
+		list.add(new Device("TCP", true, () -> new ConnectionTelemetryTCP()));
+		list.add(new Device("UDP", true, () -> new ConnectionTelemetryUDP()));
+		boolean isDemoAvailable = telemetryConnections.stream().noneMatch(con -> con.name.get().equals("Demo Mode"));
+		list.add(new Device("Demo Mode", isDemoAvailable, isDemoAvailable ? () -> new ConnectionTelemetryDemo() :
+		                                                                    () -> null));
+		boolean isStressAvailable = telemetryConnections.stream().noneMatch(con -> con.name.get().equals("Stress Test Mode"));
+		list.add(new Device("Stress Test Mode", isStressAvailable, isStressAvailable ? () -> new ConnectionTelemetryStressTest() :
+		                                                                               () -> null));
+		// don't support webcams on AArch64 Linux (Pi4, etc.) because the webcam library crashes
+		if(!(System.getProperty("os.name").toLowerCase().equals("linux") && System.getProperty("os.arch").toLowerCase().equals("aarch64"))) {
+			ConnectionCamera.getNames().forEach(name -> {
+				boolean isAvailable = cameraConnections.stream().noneMatch(con -> con.name.get().equals(name));
+				list.add(new Device(name, isAvailable, isAvailable ? () -> new ConnectionCamera(name) :
+				                                                     () -> null));
+			});
+			list.add(new Device(ConnectionCamera.mjpegOverHttp, true, () -> new ConnectionCamera(ConnectionCamera.mjpegOverHttp)));
+		}
+		return list.stream();
 		
 	}
 	
 	public static void addConnection(Connection newConnection) {
 		
+		if(newConnection == null)
+			newConnection = getDevicesStream().filter(Device::isAvailable)
+			                                  .map(device -> device.connection().get())
+			                                  .findFirst().orElse(null);
+		
 		allConnections.add(newConnection);
-		if(newConnection instanceof ConnectionTelemetry)
-			telemetryConnections.add((ConnectionTelemetry) newConnection);
-		else if(newConnection instanceof ConnectionCamera)
-			cameraConnections.add((ConnectionCamera) newConnection);
+		if(newConnection instanceof ConnectionTelemetry newConn)
+			telemetryConnections.add(newConn);
+		else if(newConnection instanceof ConnectionCamera newConn)
+			cameraConnections.add(newConn);
 		
 		interfaces.clear();
 		telemetryConnections.forEach(connection -> interfaces.put(connection, new DatasetsInterface(connection)));
 		
-		CommunicationView.instance.redraw();
+		// CommunicationView.instance will be null when static { addConnection(null); } from above gets run,
+		// because the CommunicationView constructor will still be in progress at that time!
+		if(CommunicationView.instance != null)
+			CommunicationView.instance.redraw(); // redraw bottom panel so it shows the connection widgets
+		SettingsView.instance.redraw();      // redraw the left panel so it shows the TX GUI if appropriate
 		
 	}
 	
 	public static void removeConnection(Connection oldConnection) {
 		
 		oldConnection.dispose();
+		
 		allConnections.remove(oldConnection);
-		if(oldConnection instanceof ConnectionTelemetry)
-			telemetryConnections.remove((ConnectionTelemetry) oldConnection);
-		else if(oldConnection instanceof ConnectionCamera)
-			cameraConnections.remove((ConnectionCamera) oldConnection);
+		if(oldConnection instanceof ConnectionTelemetry oldConn)
+			telemetryConnections.remove(oldConn);
+		else if(oldConnection instanceof ConnectionCamera oldConn)
+			cameraConnections.remove(oldConn);
 		
 		interfaces.clear();
 		telemetryConnections.forEach(connection -> interfaces.put(connection, new DatasetsInterface(connection)));
 		
-		CommunicationView.instance.redraw();
+		CommunicationView.instance.redraw(); // redraw bottom panel so it doesn't show the old connection's widgets
+		SettingsView.instance.redraw();      // redraw the left panel so it doesn't show the old connection's TX GUI
+		
+		if(allConnections.isEmpty())
+			OpenGLChartsView.instance.setPlayLive(); // ensure we're not paused at a time/sampleNumber that no longer exists
 		
 	}
 	
 	public static void replaceConnection(Connection oldConnection, Connection newConnection) {
 		
 		oldConnection.dispose();
-		int index = allConnections.indexOf(oldConnection);
-		allConnections.set(index, newConnection);
-		if(oldConnection instanceof ConnectionTelemetry && newConnection instanceof ConnectionTelemetry) {
-			index = telemetryConnections.indexOf(oldConnection);
-			telemetryConnections.set(index, (ConnectionTelemetry) newConnection);
-		} else if(oldConnection instanceof ConnectionCamera && newConnection instanceof ConnectionCamera) {
-			index = cameraConnections.indexOf(oldConnection);
-			cameraConnections.set(index, (ConnectionCamera) newConnection);
+		
+		allConnections.set(allConnections.indexOf(oldConnection), newConnection);
+		if(oldConnection instanceof ConnectionTelemetry oldConn && newConnection instanceof ConnectionTelemetry newConn) {
+			telemetryConnections.set(telemetryConnections.indexOf(oldConn), newConn);
+		} else if(oldConnection instanceof ConnectionCamera oldConn && newConnection instanceof ConnectionCamera newConn) {
+			cameraConnections.set(cameraConnections.indexOf(oldConn), newConn);
 		} else if(oldConnection instanceof ConnectionTelemetry) {
 			telemetryConnections.remove(oldConnection);
 			cameraConnections.add((ConnectionCamera) newConnection);
@@ -121,23 +131,14 @@ public class ConnectionsController {
 		interfaces.clear();
 		telemetryConnections.forEach(connection -> interfaces.put(connection, new DatasetsInterface(connection)));
 		
-		CommunicationView.instance.redraw();
+		CommunicationView.instance.redraw(); // redraw bottom panel so it shows the connection widgets
+		SettingsView.instance.redraw();      // redraw the left panel so it shows the TX GUI if appropriate
 		
 	}
 	
 	public static void removeAllConnections() {
 		
-		for(Connection connection : allConnections)
-			connection.dispose();
-		allConnections.clear();
-		telemetryConnections.clear();
-		cameraConnections.clear();
-		
-		interfaces.clear();
-		telemetryConnections.forEach(connection -> interfaces.put(connection, new DatasetsInterface(connection)));
-		
-		CommunicationView.instance.redraw();
-		OpenGLChartsView.instance.setLiveView();
+		allConnections.stream().toList().forEach(ConnectionsController::removeConnection); // toList() to prevent a ConcurrentModificationException
 		
 	}
 	
@@ -207,11 +208,11 @@ public class ConnectionsController {
 	public static boolean telemetryPossible() {
 		
 		for(ConnectionTelemetry connection : telemetryConnections)
-			if(connection.connected && connection.isDataStructureDefined())
+			if(connection.isConnected() && connection.isFieldsDefined())
 				return true;
 		
 		for(ConnectionCamera connection : cameraConnections)
-			if(connection.connected)
+			if(connection.isConnected())
 				return true;
 		
 		return false;
@@ -223,11 +224,8 @@ public class ConnectionsController {
 	 */
 	public static boolean telemetryExists() {
 		
-		for(Connection connection : ConnectionsController.allConnections)
-			if(connection.getSampleCount() > 0)
-				return true;
+		return allConnections.stream().anyMatch(connection -> connection.getSampleCount() > 0);
 		
-		return false;
 	}
 	
 	/**
@@ -235,16 +233,9 @@ public class ConnectionsController {
 	 */
 	public static long getFirstTimestamp() {
 		
-		long timestamp = Long.MAX_VALUE;
-		
-		for(Connection connection : ConnectionsController.allConnections)
-			if(connection.getSampleCount() > 0) {
-				long firstTimestamp = connection.getFirstTimestamp();
-				if(firstTimestamp < timestamp)
-					timestamp = firstTimestamp;
-			}
-
-		return timestamp;
+		return allConnections.stream().filter(connection -> connection.getSampleCount() > 0)
+		                              .mapToLong(connection -> connection.getFirstTimestamp())
+		                              .min().orElse(Long.MAX_VALUE);
 		
 	}
 	
@@ -253,86 +244,46 @@ public class ConnectionsController {
 	 */
 	public static long getLastTimestamp() {
 		
-		long timestamp = Long.MIN_VALUE;
-		
-		for(Connection connection : ConnectionsController.allConnections)
-			if(connection.getSampleCount() > 0) {
-				long lastTimestamp = connection.getLastTimestamp();
-				if(lastTimestamp > timestamp)
-					timestamp = lastTimestamp;
-			}
-		
-		return timestamp;
+		return allConnections.stream().filter(connection -> connection.getSampleCount() > 0)
+		                              .mapToLong(connection -> connection.getLastTimestamp())
+		                              .max().orElse(Long.MIN_VALUE);
 		
 	}
 	
-	public static WidgetComboboxString getNamesCombobox(Connection thisConnection) {
+	public static WidgetComboboxString getNamesCombobox(Connection connection) {
 		
-		List<String> connectionNames = new ArrayList<String>();
-		
-		connectionNames.addAll(ConnectionTelemetryUART.getPortNames());
-		connectionNames.add(ConnectionTelemetry.Type.TCP.toString());
-		connectionNames.add(ConnectionTelemetry.Type.UDP.toString());
-		connectionNames.add(ConnectionTelemetry.Type.DEMO.toString());
-		connectionNames.add(ConnectionTelemetry.Type.STRESS_TEST.toString());
-		
-		// the webcam lib crashes on the raspberry pi when running a 64-bit os, so don't allow cameras in that case
-		if(!System.getProperty("os.name").equals("Linux") && !System.getProperty("os.arch").equals("AArch64"))
-			connectionNames.addAll(ConnectionCamera.getNames());
-		
-		WidgetComboboxString namesCombobox = new WidgetComboboxString("connections",
-		                                                              connectionNames,
-		                                                              thisConnection.name,
-		                                                              proposedNewName -> {
-		                                                                  // accept and ignore if no change
-		                                                                  if(proposedNewName.equals(thisConnection.name))
-		                                                                      return true;
-		                                                                  
-		                                                                  // always accept TCP/UDP/MJPEG (multiple connections allowed)
-		                                                                  if(proposedNewName.equals(ConnectionTelemetry.Type.TCP.toString())) {
-		                                                                      replaceConnection(thisConnection, new ConnectionTelemetryTCP());
-		                                                                      return true;
-		                                                                  }
-		                                                                  if(proposedNewName.equals(ConnectionTelemetry.Type.UDP.toString())) {
-		                                                                      replaceConnection(thisConnection, new ConnectionTelemetryUDP());
-		                                                                      return true;
-		                                                                  }
-		                                                                  if(proposedNewName.startsWith(ConnectionCamera.mjpegOverHttp)) {
-		                                                                      replaceConnection(thisConnection, new ConnectionCamera(proposedNewName));
-		                                                                      return true;
-		                                                                  }
-		                                                                  
-		                                                                  // reject if already used (multiple connections not allowed)
-		                                                                  for(Connection other : ConnectionsController.allConnections)
-		                                                                      if(other.name.equals(proposedNewName))
-		                                                                          return false;
-		                                                                  
-		                                                                  // new connection is allowed
-		                                                                  if(proposedNewName.equals(ConnectionTelemetry.Type.STRESS_TEST.toString())) {
-		                                                                      replaceConnection(thisConnection, new ConnectionTelemetryStressTest());
-		                                                                      return true;
-		                                                                  }
-		                                                                  if(proposedNewName.equals(ConnectionTelemetry.Type.DEMO.toString())) {
-		                                                                      replaceConnection(thisConnection, new ConnectionTelemetryDemo());
-		                                                                      return true;
-		                                                                  }
-		                                                                  if(proposedNewName.startsWith(ConnectionTelemetry.Type.UART.toString())) {
-		                                                                	  if(thisConnection.name.startsWith(ConnectionTelemetry.Type.UART.toString()))
-		                                                                		  ((ConnectionTelemetryUART) thisConnection).setPortName(proposedNewName);
-		                                                                	  else
-		                                                                          replaceConnection(thisConnection, new ConnectionTelemetryUART(proposedNewName));
-		                                                                      return true;
-		                                                                  }
-		                                                                  if(ConnectionCamera.names.contains(proposedNewName)) {
-		                                                                      replaceConnection(thisConnection, new ConnectionCamera(proposedNewName));
-		                                                                      return true;
-		                                                                  }
-		                                                                  
-		                                                                  // should not get here
-		                                                                  return false;
-		                                                              });
-		
-		return namesCombobox;
+		return new WidgetComboboxString(getDevicesStream().map(Device::name).toList(), null)
+		           .setExportLabel("type")
+		           .onChange(newName -> {
+		               // ignore this event if the connection is still be constructed
+		               if(connection.name == null || connection.name.get() == null)
+		                   return true;
+		               
+		               // accept and ignore if no change
+		               String oldName = connection.name.get();
+		               if(newName.equals(oldName))
+		                   return true;
+		               
+		               // reject change if the device is not available
+		               Device dev = getDevicesStream().filter(device -> device.name.equals(newName) &&
+		                                                                device.isAvailable)
+		                                              .findFirst().orElse(null);
+		               if(dev == null)
+		                   return false;
+		               
+		               if(oldName.startsWith("UART") && newName.startsWith("UART")) {
+		                   SwingUtilities.invokeLater(() -> SettingsView.instance.redraw()); // so the TX GUI shows the new port name, invokeLater so the name change goes into effect first!
+		                   return true; // no need to replace this connection, just changing the port number
+		               }
+		               
+		               if(oldName.startsWith("Cam") && newName.startsWith("Cam")) {
+		            	   SwingUtilities.invokeLater(() -> CommunicationView.instance.redraw()); // so the widgets get redrawn when switching between local and MJPEG-over-HTTP modes!
+		                   return true; // no need to replace this connection, just changing the settings
+		               }
+		               
+		               replaceConnection(connection, dev.connection.get());
+		               return true;
+		           });
 		
 	}
 	
@@ -350,22 +301,12 @@ public class ConnectionsController {
 		}
 		
 		// sanity check
-		int settingsFileCount = 0;
-		int csvFileCount = 0;
-		int mkvFileCount = 0;
-		int invalidFileCount = 0;
-		
-		Map<Connection, String> imports = new HashMap<Connection, String>(); // keys are Connections, values are the corresponding files
-		
-		for(String filepath : filepaths)
-			if(filepath.endsWith(".txt"))
-				settingsFileCount++;
-			else if(filepath.endsWith(".csv"))
-				csvFileCount++;
-			else if(filepath.endsWith(".mkv"))
-				mkvFileCount++;
-			else
-				invalidFileCount++;
+		long settingsFileCount = filepaths.stream().filter(path ->  path.endsWith(".txt")).count();
+		long csvFileCount      = filepaths.stream().filter(path ->  path.endsWith(".csv")).count();
+		long mkvFileCount      = filepaths.stream().filter(path ->  path.endsWith(".mkv")).count();
+		long invalidFileCount  = filepaths.stream().filter(path -> !path.endsWith(".txt") &&
+		                                                           !path.endsWith(".csv") &&
+		                                                           !path.endsWith(".mkv")).count();
 		
 		if(invalidFileCount > 0) {
 			NotificationsController.showFailureForMilliseconds("Unsupported file type. Only files exported from TelemetryViewer can be imported:\nSettings files (.txt)\nCSV files (.csv)\nCamera files (.mkv)", 5000, true);
@@ -391,55 +332,53 @@ public class ConnectionsController {
 				if(filepath.endsWith(".txt"))
 					if(!importSettingsFile(filepath, csvFileCount + mkvFileCount == 0)) {
 						removeAllConnections();
-						addConnection();
+						addConnection(null);
 						return;
 					}
 		}
+		
+		Map<Connection, String> imports = new HashMap<Connection, String>(); // <Connection, corresponding file path>
 		
 		for(String filepath : filepaths) {
 			if(filepath.endsWith(".csv")) {
 				for(int connectionN = 0; connectionN < allConnections.size(); connectionN++) {
 					Connection connection = allConnections.get(connectionN);
-					if(filepath.endsWith(" - connection " + connectionN + " - " + connection.name.replaceAll(filenameSanitizer, "") + ".csv"))
+					if(filepath.endsWith(" - connection " + connectionN + " - " + connection.name.get().replaceAll(filenameSanitizer, "") + ".csv"))
 						imports.put(connection, filepath);
 				}
 			} else if(filepath.endsWith(".mkv")) {
 				for(int connectionN = 0; connectionN < allConnections.size(); connectionN++) {
 					Connection connection = allConnections.get(connectionN);
-					if(filepath.endsWith(" - connection " + connectionN + " - " + connection.name.replaceAll(filenameSanitizer, "_") + ".mkv"))
+					if(filepath.endsWith(" - connection " + connectionN + " - " + connection.name.get().replaceAll(filenameSanitizer, "_") + ".mkv"))
 						imports.put(connection, filepath);
 				}
 			}
 		}
 		
 		// allow importing an MKV file by itself
-		boolean moviePlayerMode = false;
-		if(settingsFileCount == 0 && csvFileCount == 0 && mkvFileCount == 1) {
-			String cameraName = Paths.get(filepaths.get(0)).getFileName().toString(); // remove directories
-			cameraName = cameraName.substring(0, cameraName.lastIndexOf(".")); // remove file extension
-			int index = cameraName.lastIndexOf("- ");
-			if(index != -1)
-				cameraName = cameraName.substring(index + 2); // remove the leading "user provided text here - connection n - "
+		boolean moviePlayerMode = settingsFileCount == 0 && csvFileCount == 0 && mkvFileCount == 1;
+		if(moviePlayerMode) {
+			String cameraName = "Cam: Unknown Camera";
+			try { cameraName = new ConnectionCamera.Mkv().parseFile(filepaths.get(0)).connectionName; } catch(Exception e) {}
 			
 			removeAllConnections();
 			imports.clear();
 			
-			SettingsController.setTileColumns(6);
-			SettingsController.setTileRows(6);
-			if(SettingsController.getTimeFormat().equals("Only Time"))
-				SettingsController.setTimeFormat("Time and YYYY-MM-DD");
-			SettingsController.setAntialiasingLevel(16);
+			SettingsView.instance.tileColumnsTextfield.set(6);
+			SettingsView.instance.tileRowsTextfield.set(6);
+			if(SettingsView.instance.timeFormatCombobox.is(SettingsView.TimeFormat.ONLY_TIME)) {
+				SettingsView.instance.timeFormatCombobox.set(SettingsView.TimeFormat.TIME_AND_YYYY_MM_DD);
+				SettingsView.instance.timeFormat24hoursCheckbox.set(true);
+			}
+			SettingsView.instance.antialiasingSlider.set(8);
 			
 			ConnectionCamera connection = new ConnectionCamera(cameraName);
 			addConnection(connection);
 			imports.put(connection, filepaths.get(0));
 			
-			OpenGLCameraChart cameraChart = new OpenGLCameraChart(0, 0, 5, 4);
-			cameraChart.camera = connection;
-			ChartsController.addChart(cameraChart);
-			ChartsController.createAndAddChart("Timeline", 0, 5, 5, 5);
-			
-			moviePlayerMode = true;
+			OpenGLCameraChart cameraChart = (OpenGLCameraChart) ChartsController.createAndAddChart("Camera").setPosition(0, 0, 5, 4);
+			cameraChart.cameraName.set(cameraName);
+			ChartsController.createAndAddChart("Timeline").setPosition(0, 5, 5, 5);
 		}
 		
 		if(csvFileCount + mkvFileCount != imports.size()) {
@@ -464,35 +403,26 @@ public class ConnectionsController {
 			AtomicLong completedByteCount = NotificationsController.showProgressBar("Importing...", totalByteCount);
 		
 			// import the CSV / MKV files
-			long firstTimestamp = Long.MAX_VALUE;
-			for(Entry<Connection, String> entry : imports.entrySet()) {
-				long timestamp = entry.getKey().readFirstTimestamp(entry.getValue());
-				if(timestamp < firstTimestamp)
-					firstTimestamp = timestamp;
-			}
+			long firstTimestamp = imports.entrySet().stream()
+			                                        .mapToLong(entry -> entry.getKey().readFirstTimestamp(entry.getValue()))
+			                                        .min().orElse(Long.MAX_VALUE);
 			long now = System.currentTimeMillis();
 			if(firstTimestamp != Long.MAX_VALUE)
-				for(Entry<Connection, String> entry : imports.entrySet())
-					entry.getKey().importDataFile(entry.getValue(), firstTimestamp, now, completedByteCount);
+				imports.entrySet().forEach(entry -> entry.getKey().importDataFile(entry.getValue(), firstTimestamp, now, completedByteCount));
 			
 			// when importing an MKV file by itself, "finish" importing it, then rewind, then play (so the timeline shows the entire amount of time)
 			if(moviePlayerMode) {
 				cameraConnections.get(0).finishImporting();
-				OpenGLChartsView.instance.setPausedView(firstTimestamp, null, 0, false);
-				OpenGLTimelineChart timeline = (OpenGLTimelineChart) ChartsController.getCharts().get(1);
-				timeline.playing = true;
-				timeline.playingSpeed = 1;
-				timeline.previousFrameTimestamp = System.currentTimeMillis();
+				OpenGLChartsView.instance.setPaused(firstTimestamp, null, 0);
+				OpenGLChartsView.instance.setPlayForwards();
 			}
 
 			// have another thread clean up when importing finishes
 			long byteCount = totalByteCount;
 			new Thread(() -> {
 				while(true) {
-					boolean allDone = true;
-					for(Connection connection : allConnections)
-						if(connection.receiverThread != null && connection.receiverThread.isAlive())
-							allDone = false;
+					boolean allDone = allConnections.stream().noneMatch(connection -> connection.receiverThread != null &&
+					                                                                  connection.receiverThread.isAlive());
 					if(allDone) {
 						previouslyImported = true;
 						importing = false;
@@ -542,13 +472,13 @@ public class ConnectionsController {
 	
 			for(ConnectionTelemetry connection : telemetryToExport) {
 				int connectionN = allConnections.indexOf(connection);
-				String filename = filepath + " - connection " + connectionN + " - " + connection.name.replaceAll(filenameSanitizer, "");
+				String filename = filepath + " - connection " + connectionN + " - " + connection.name.get().replaceAll(filenameSanitizer, "");
 				connection.exportDataFile(filename, completedSampleCount);
 			}
 	
 			for(ConnectionCamera connection : camerasToExport) {
 				int connectionN = allConnections.indexOf(connection);
-				String filename = filepath + " - connection " + connectionN + " - " + connection.name.replaceAll(filenameSanitizer, "_");
+				String filename = filepath + " - connection " + connectionN + " - " + connection.name.get().replaceAll(filenameSanitizer, "_");
 				connection.exportDataFile(filename, completedSampleCount);
 			}
 			
@@ -565,13 +495,20 @@ public class ConnectionsController {
 		
 	}
 	
+	static void finishImporting() {
+		
+		allConnections.forEach(Connection::finishImporting);
+		CommunicationView.instance.redraw();
+		
+	}
+	
 	/**
 	 * Aborts the file exporting process. This may leave incomplete files on disk.
 	 */
 	static void cancelExporting() {
 		
 		if(exportThread != null && exportThread.isAlive()) {
-			NotificationsController.showDebugMessage("Exporting... Canceled");
+			NotificationsController.printDebugMessage("Exporting... Canceled");
 			exportThread.interrupt();
 			while(exportThread.isAlive()); // wait
 			
@@ -594,56 +531,14 @@ public class ConnectionsController {
 			file.println("Telemetry Viewer v0.8 Settings");
 			file.println("");
 			
-			file.println("GUI Settings:");
-			file.println("");
-			file.println("\ttile column count = "           + SettingsController.getTileColumns());
-			file.println("\ttile row count = "              + SettingsController.getTileRows());
-			file.println("\ttime format = "                 + SettingsController.getTimeFormat());
-			file.println("\tshow 24-hour time = "           + SettingsController.getTimeFormat24hours());
-			file.println("\tshow hint notifications = "     + SettingsController.getHintNotificationVisibility());
-			file.println("\thint notifications color = "    + String.format("0x%02X%02X%02X", SettingsController.getHintNotificationColor().getRed(),
-			                                                                                  SettingsController.getHintNotificationColor().getGreen(),
-			                                                                                  SettingsController.getHintNotificationColor().getBlue()));
-			file.println("\tshow warning notifications = "  + SettingsController.getWarningNotificationVisibility());
-			file.println("\twarning notifications color = " + String.format("0x%02X%02X%02X", SettingsController.getWarningNotificationColor().getRed(),
-			                                                                                  SettingsController.getWarningNotificationColor().getGreen(),
-			                                                                                  SettingsController.getWarningNotificationColor().getBlue()));
-			file.println("\tshow failure notifications = "  + SettingsController.getFailureNotificationVisibility());
-			file.println("\tfailure notifications color = " + String.format("0x%02X%02X%02X", SettingsController.getFailureNotificationColor().getRed(),
-			                                                                                  SettingsController.getFailureNotificationColor().getGreen(),
-			                                                                                  SettingsController.getFailureNotificationColor().getBlue()));
-			file.println("\tshow verbose notifications = "  + SettingsController.getVerboseNotificationVisibility());
-			file.println("\tverbose notifications color = " + String.format("0x%02X%02X%02X", SettingsController.getVerboseNotificationColor().getRed(),
-			                                                                                  SettingsController.getVerboseNotificationColor().getGreen(),
-			                                                                                  SettingsController.getVerboseNotificationColor().getBlue()));
-			file.println("\tshow plot tooltips = "          + SettingsController.getTooltipVisibility());
-			file.println("\tbenchmarking = "                + SettingsController.getBenchmarking());
-			file.println("\tantialiasing level = "          + SettingsController.getAntialiasingLevel());
-			file.println("");
+			SettingsView.instance.exportTo(file);
 			
 			file.println(allConnections.size() + " Connections:");
 			file.println("");
-			for(Connection connection : allConnections) {
-				connection.exportSettings(file);
-				file.println("");
-			}
+			allConnections.forEach(connection -> connection.exportSettings(file));
 			
 			file.println(ChartsController.getCharts().size() + " Charts:");
-			
-			for(PositionedChart chart : ChartsController.getCharts()) {
-				
-				file.println("");
-				file.println("\tchart type = " + chart.toString());
-				file.println("\ttop left x = " + chart.topLeftX);
-				file.println("\ttop left y = " + chart.topLeftY);
-				file.println("\tbottom right x = " + chart.bottomRightX);
-				file.println("\tbottom right y = " + chart.bottomRightY);
-				
-				List<String> lines = new ArrayList<String>();
-				chart.exportTo(lines);
-				lines.forEach(line -> file.println("\t" + line));
-				
-			}
+			ChartsController.getCharts().forEach(chart -> chart.exportTo(file));
 			
 			file.close();
 			
@@ -672,73 +567,32 @@ public class ConnectionsController {
 
 			lines = new QueueOfLines(Files.readAllLines(new File(path).toPath(), StandardCharsets.UTF_8));
 			
-			ChartUtils.parseExact(lines.remove(), "Telemetry Viewer v0.8 Settings");
-			ChartUtils.parseExact(lines.remove(), "");
+			lines.parseExact("Telemetry Viewer v0.8 Settings");
+			lines.parseExact("");
 			
-			ChartUtils.parseExact(lines.remove(), "GUI Settings:");
-			ChartUtils.parseExact(lines.remove(), "");
-			
-			int tileColumns           = ChartUtils.parseInteger(lines.remove(), "tile column count = %d");
-			int tileRows              = ChartUtils.parseInteger(lines.remove(), "tile row count = %d");
-			String timeFormat         = ChartUtils.parseString (lines.remove(), "time format = %s");
-			if(!Arrays.asList(SettingsController.getTimeFormats()).contains(timeFormat))
-				throw new AssertionError("Invalid time format.");
-			boolean timeFormat24hours = ChartUtils.parseBoolean(lines.remove(), "show 24-hour time = %b");
-			boolean hintVisibility    = ChartUtils.parseBoolean(lines.remove(), "show hint notifications = %b");
-			String hintColorText      = ChartUtils.parseString (lines.remove(), "hint notifications color = 0x%s");
-			boolean warningVisibility = ChartUtils.parseBoolean(lines.remove(), "show warning notifications = %b");
-			String warningColorText   = ChartUtils.parseString (lines.remove(), "warning notifications color = 0x%s");
-			boolean failureVisibility = ChartUtils.parseBoolean(lines.remove(), "show failure notifications = %b");
-			String failureColorText   = ChartUtils.parseString (lines.remove(), "failure notifications color = 0x%s");
-			boolean verboseVisibility = ChartUtils.parseBoolean(lines.remove(), "show verbose notifications = %b");
-			String verboseColorText   = ChartUtils.parseString (lines.remove(), "verbose notifications color = 0x%s");
-			boolean tooltipVisibility = ChartUtils.parseBoolean(lines.remove(), "show plot tooltips = %b");
-			boolean benchmarking      = ChartUtils.parseBoolean(lines.remove(), "benchmarking = %b");
-			int antialiasingLevel     = ChartUtils.parseInteger(lines.remove(), "antialiasing level = %d");
-			ChartUtils.parseExact(lines.remove(), "");
-			
-			Color hintColor    = new Color(Integer.parseInt(hintColorText, 16));
-			Color warningColor = new Color(Integer.parseInt(warningColorText, 16));
-			Color failureColor = new Color(Integer.parseInt(failureColorText, 16));
-			Color verboseColor = new Color(Integer.parseInt(verboseColorText, 16));
-			
-			SettingsController.setTileColumns(tileColumns);
-			SettingsController.setTileRows(tileRows);
-			SettingsController.setTimeFormat(timeFormat);
-			SettingsController.setTimeFormat24hours(timeFormat24hours);
-			SettingsController.setHintNotificationVisibility(hintVisibility);
-			SettingsController.setHintNotificationColor(hintColor);
-			SettingsController.setWarningNotificationVisibility(warningVisibility);
-			SettingsController.setWarningNotificationColor(warningColor);
-			SettingsController.setFailureNotificationVisibility(failureVisibility);
-			SettingsController.setFailureNotificationColor(failureColor);
-			SettingsController.setVerboseNotificationVisibility(verboseVisibility);
-			SettingsController.setVerboseNotificationColor(verboseColor);
-			SettingsController.setTooltipVisibility(tooltipVisibility);
-			SettingsController.setBenchmarking(benchmarking);
-			SettingsController.setAntialiasingLevel(antialiasingLevel);
+			SettingsView.instance.importFrom(lines);
 
-			int connectionsCount = ChartUtils.parseInteger(lines.remove(), "%d Connections:");
-			ChartUtils.parseExact(lines.remove(), "");
+			int connectionsCount = lines.parseInteger("%d Connections:");
+			lines.parseExact("");
 			
 			for(int i = 0; i < connectionsCount; i++) {
-				String type = ChartUtils.parseString (lines.remove(), "connection type = %s");
-				Connection newConnection = type.equals("Camera")                                        ? new ConnectionCamera() :
-				                           type.equals(ConnectionTelemetry.Type.TCP.toString())         ? new ConnectionTelemetryTCP() :
-				                           type.equals(ConnectionTelemetry.Type.UDP.toString())         ? new ConnectionTelemetryUDP() :
-				                           type.equals(ConnectionTelemetry.Type.DEMO.toString())        ? new ConnectionTelemetryDemo() :
-				                           type.equals(ConnectionTelemetry.Type.STRESS_TEST.toString()) ? new ConnectionTelemetryStressTest() :
-				                                                                                          new ConnectionTelemetryUART(ConnectionTelemetry.Type.UART.toString());
+				String type = lines.parseString("type = %s");
+				Connection newConnection = type.startsWith("Cam: ")        ? new ConnectionCamera(type) :
+				                           type.equals("TCP")              ? new ConnectionTelemetryTCP() :
+				                           type.equals("UDP")              ? new ConnectionTelemetryUDP() :
+				                           type.equals("Demo Mode")        ? new ConnectionTelemetryDemo() :
+				                           type.equals("Stress Test Mode") ? new ConnectionTelemetryStressTest() :
+				                                                             new ConnectionTelemetryUART(type);
 				addConnection(newConnection);
 				newConnection.importSettings(lines);
-				ChartUtils.parseExact(lines.remove(), "");
+				lines.parseExact("");
 				if(connect)
 					newConnection.connect(false);
 			}
 			if(connectionsCount == 0)
-				addConnection();
+				addConnection(null);
 
-			int chartsCount = ChartUtils.parseInteger(lines.remove(), "%d Charts:");
+			int chartsCount = lines.parseInteger("%d Charts:");
 			if(chartsCount == 0) {
 				NotificationsController.showHintUntil("Add a chart by clicking on a tile, or click-and-dragging across multiple tiles.", () -> !ChartsController.getCharts().isEmpty(), true);
 				return true;
@@ -746,38 +600,12 @@ public class ConnectionsController {
 
 			for(int i = 0; i < chartsCount; i++) {
 				
-				ChartUtils.parseExact(lines.remove(), "");
-				String chartType = ChartUtils.parseString (lines.remove(), "chart type = %s");
-				int topLeftX     = ChartUtils.parseInteger(lines.remove(), "top left x = %d");
-				int topLeftY     = ChartUtils.parseInteger(lines.remove(), "top left y = %d");
-				int bottomRightX = ChartUtils.parseInteger(lines.remove(), "bottom right x = %d");
-				int bottomRightY = ChartUtils.parseInteger(lines.remove(), "bottom right y = %d");
+				lines.parseExact("");
+				String chartType = lines.parseString("chart type = %s");
 				
-				if(topLeftX < 0 || topLeftX >= SettingsController.getTileColumns()) {
-					lines.lineNumber -= 3;
-					throw new AssertionError("Invalid chart position.");
-				}
-				
-				if(topLeftY < 0 || topLeftY >= SettingsController.getTileRows()) {
-					lines.lineNumber -= 2;
-					throw new AssertionError("Invalid chart position.");
-				}
-				
-				if(bottomRightX < 0 || bottomRightX >= SettingsController.getTileColumns()) {
-					lines.lineNumber -= 1;
-					throw new AssertionError("Invalid chart position.");
-				}
-				
-				if(bottomRightY < 0 || bottomRightY >= SettingsController.getTileRows())
-					throw new AssertionError("Invalid chart position.");
-				
-				for(PositionedChart existingChart : ChartsController.getCharts())
-					if(existingChart.regionOccupied(topLeftX, topLeftY, bottomRightX, bottomRightY))
-						throw new AssertionError("Chart overlaps an existing chart.");
-				
-				PositionedChart chart = ChartsController.createAndAddChart(chartType, topLeftX, topLeftY, bottomRightX, bottomRightY);
+				PositionedChart chart = ChartsController.createAndAddChart(chartType);
 				if(chart == null) {
-					lines.lineNumber -= 4;
+					lines.lineNumber--;
 					throw new AssertionError("Invalid chart type.");
 				}
 				chart.importFrom(lines);
@@ -831,6 +659,206 @@ public class ConnectionsController {
 			} catch(Exception e) {
 				throw new AssertionError("Incomplete file. More lines are required.");
 			}
+		}
+		
+		/**
+		 * Checks if the current line of text exactly matches a format string.
+		 * Throws an AssertionException if the text does not match the format string.
+		 * 
+		 * @param formatString    Expected line of text, for example: "GUI Settings:"
+		 */
+		public void parseExact(String formatString) {
+			
+			String text = remove();
+			
+			if(!text.equals(formatString)) {
+				String message = "Text does not match the expected value.\nExpected: " + formatString + "\nFound: " + text;
+				throw new AssertionError(message);
+			}
+			
+		}
+		
+		/**
+		 * Attempts to extract an integer from the beginning or end of the current line of text.
+		 * Throws an AssertionException if the text does not match the format string or does not start/end with an integer value.
+		 * 
+		 * @param formatString    Expected line of text, for example: "sample count = %d"
+		 * @return                The integer value extracted from the text.
+		 */
+		public int parseInteger(String formatString) {
+			
+			String text = remove();
+			
+			if(!formatString.startsWith("%d") && !formatString.endsWith("%d"))
+				throw new AssertionError("Source code contains an invalid format string.");
+			
+			if(formatString.startsWith("%d")) {
+				
+				// starting with %d, so an integer should be at the start of the text
+				try {
+					String[] tokens = text.split(" ");
+					int number = Integer.parseInt(tokens[0]);
+					String expectedText = formatString.substring(2);
+					String remainingText = "";
+					for(int i = 1; i < tokens.length; i++)
+						remainingText += " " + tokens[i];
+					if(remainingText.equals(expectedText))
+						return number;
+					else {
+						String message = "Text does not match the expected value.\nExpected: " + formatString + "\nFound: " + text;
+						throw new AssertionError(message);
+					}
+				} catch(Exception e) {
+					String message = "Text does not start with an integer.\nExpected: " + formatString + "\nFound: " + text;
+					throw new AssertionError(message);
+				}
+				
+			} else  {
+				
+				// ending with %d, so an integer should be at the end of the text
+				try {
+					String expectedText = formatString.substring(0, formatString.length() - 2);
+					if(!text.startsWith(expectedText)) {
+						String message = "Text does not match the expected value.\nExpected: " + formatString + "\nFound: " + text;
+						throw new AssertionError(message);
+					}
+					String[] tokens = text.split(" ");
+					int number = Integer.parseInt(tokens[tokens.length - 1]);
+					return number;
+				} catch(Exception e) {
+					String message = "Text does not end with an integer.\nExpected: " + formatString + "\nFound: " + text;
+					throw new AssertionError(message);
+				}
+				
+			}
+			
+		}
+		
+		/**
+		 * Attempts to extract a boolean from the end of the current line of text.
+		 * Throws an AssertionException if the text does not match the format string or does not end with a boolean value.
+		 * 
+		 * @param formatString    Expected line of text, for example: "show x-axis title = %b"
+		 * @return                The boolean value extracted from the text.
+		 */
+		public boolean parseBoolean(String formatString) {
+			
+			String text = remove();
+			
+			if(!formatString.endsWith("%b"))
+				throw new AssertionError("Source code contains an invalid format string.");
+			
+			try {
+				String expectedText = formatString.substring(0, formatString.length() - 2);
+				String actualText = text.substring(0, expectedText.length());
+				String token = text.substring(expectedText.length()); 
+				if(actualText.equals(expectedText))
+					if(token.toLowerCase().equals("true"))
+						return true;
+					else if(token.toLowerCase().equals("false"))
+						return false;
+					else {
+						String message = "Text does not end with a boolean.\nExpected: " + formatString + "\nFound: " + text;
+						throw new AssertionError(message);
+					}
+				else
+					throw new Exception();
+			} catch(Exception e) {
+				String message = "Text does not match the expected value.\nExpected: " + formatString + "\nFound: " + text;
+				throw new AssertionError(message);
+			}
+			
+		}
+		
+
+		
+		/**
+		 * Attempts to extract a float from the beginning or end of the current line of text.
+		 * Throws an AssertionException if the text does not match the format string or does not start/end with a float value.
+		 * 
+		 * @param formatString    Expected line of text, for example: "manual y-axis maximum = %f"
+		 * @return                The float value extracted from the text.
+		 */
+		public float parseFloat(String formatString) {
+			
+			String text = remove();
+			
+			if(!formatString.startsWith("%f") && !formatString.endsWith("%f"))
+				throw new AssertionError("Source code contains an invalid format string.");
+			
+			if(formatString.startsWith("%f")) {
+				
+				// starting with %f, so a float should be at the start of the text
+				try {
+					String[] tokens = text.split(" ");
+					float number = Float.parseFloat(tokens[0]);
+					String expectedText = formatString.substring(2);
+					String remainingText = "";
+					for(int i = 1; i < tokens.length; i++)
+						remainingText += " " + tokens[i];
+					if(remainingText.equals(expectedText))
+						return number;
+					else {
+						String message = "Text does not match the expected value.\nExpected: " + formatString + "\nFound: " + text;
+						throw new AssertionError(message);
+					}
+				} catch(Exception e) {
+					String message = "Text does not start with a floating point number.\nExpected: " + formatString + "\nFound: " + text;
+					throw new AssertionError(message);
+				}
+				
+			} else  {
+				
+				// ending with %f, so a float should be at the end of the text
+				try {
+					String[] tokens = text.split(" ");
+					float number = Float.parseFloat(tokens[tokens.length - 1]);
+					String expectedText = formatString.substring(0, formatString.length() - 2);
+					String remainingText = "";
+					for(int i = 0; i < tokens.length - 1; i++)
+						remainingText += tokens[i] + " ";
+					if(remainingText.equals(expectedText))
+						return number;
+					else {
+						String message = "Text does not match the expected value.\nExpected: " + formatString + "\nFound: " + text;
+						throw new AssertionError(message);
+					}
+				} catch(Exception e) {
+					String message = "Text does not end with a floating point number.\nExpected: " + formatString + "\nFound: " + text;
+					throw new AssertionError(message);
+				}
+				
+			}
+			
+		}
+		
+		/**
+		 * Attempts to extract a string from the end of the current line of text.
+		 * Throws an AssertionException if the text does not match the format string.
+		 * 
+		 * @param formatString    Expected line of text, for example: "packet type = %s"
+		 * @return                The String value extracted from the text.
+		 */
+		public String parseString(String formatString) {
+			
+			String text = remove();
+			
+			if(!formatString.endsWith("%s"))
+				throw new AssertionError("Source code contains an invalid format string.");
+			
+			try {
+				String expectedText = formatString.substring(0, formatString.length() - 2);
+				String actualText = text.substring(0, expectedText.length());
+				String token = text.substring(expectedText.length()); 
+				if(actualText.equals(expectedText))
+					return token;
+				else
+					throw new Exception();
+			} catch(Exception e) {
+				String message = "Text does not match the expected value.\nExpected: " + formatString + "\nFound: " + text;
+				throw new AssertionError(message);
+			}
+			
 		}
 
 	}

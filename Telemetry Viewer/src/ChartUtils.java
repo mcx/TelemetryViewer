@@ -6,7 +6,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Scanner;
-
 import com.jogamp.common.nio.Buffers;
 import com.jogamp.opengl.GL;
 import com.jogamp.opengl.GL2ES3;
@@ -297,10 +296,10 @@ public class ChartUtils {
 		
 		// determine how many divisions can fit on screen
 		// first try with milliseconds resolution
-		String leftLabel  = SettingsController.formatTimestampToMilliseconds(minTimestamp);
-		String rightLabel = SettingsController.formatTimestampToMilliseconds(maxTimestamp);
+		String leftLabel  = SettingsView.formatTimestampToMilliseconds(minTimestamp);
+		String rightLabel = SettingsView.formatTimestampToMilliseconds(maxTimestamp);
 		float maxLabelWidth = 0;
-		if(SettingsController.isTimeFormatTwoLines()) {
+		if(SettingsView.isTimeFormatTwoLines()) {
 			String[] leftLine = leftLabel.split("\n");
 			String[] rightLine = rightLabel.split("\n");
 			float leftMax  = Float.max(OpenGL.smallTextWidth(gl, leftLine[0]),  OpenGL.smallTextWidth(gl, leftLine[1]));
@@ -316,10 +315,10 @@ public class ChartUtils {
 		
 		// if the divisions are >1000ms apart, change to seconds resolution instead
 		if(millisecondsPerDivision > 1000) {
-			leftLabel  = SettingsController.formatTimestampToSeconds(minTimestamp);
-			rightLabel = SettingsController.formatTimestampToSeconds(maxTimestamp);
+			leftLabel  = SettingsView.formatTimestampToSeconds(minTimestamp);
+			rightLabel = SettingsView.formatTimestampToSeconds(maxTimestamp);
 			maxLabelWidth = 0;
-			if(SettingsController.isTimeFormatTwoLines()) {
+			if(SettingsView.isTimeFormatTwoLines()) {
 				String[] leftLine = leftLabel.split("\n");
 				String[] rightLine = rightLabel.split("\n");
 				float leftMax  = Float.max(OpenGL.smallTextWidth(gl, leftLine[0]),  OpenGL.smallTextWidth(gl, leftLine[1]));
@@ -338,10 +337,10 @@ public class ChartUtils {
 		
 		// if the divisions are >60000ms apart, change to minutes resolution instead
 		if(millisecondsPerDivision > 60000) {
-			leftLabel  = SettingsController.formatTimestampToMinutes(minTimestamp);
-			rightLabel = SettingsController.formatTimestampToMinutes(maxTimestamp);
+			leftLabel  = SettingsView.formatTimestampToMinutes(minTimestamp);
+			rightLabel = SettingsView.formatTimestampToMinutes(maxTimestamp);
 			maxLabelWidth = 0;
-			if(SettingsController.isTimeFormatTwoLines()) {
+			if(SettingsView.isTimeFormatTwoLines()) {
 				String[] leftLine = leftLabel.split("\n");
 				String[] rightLine = rightLabel.split("\n");
 				float leftMax  = Float.max(OpenGL.smallTextWidth(gl, leftLine[0]),  OpenGL.smallTextWidth(gl, leftLine[1]));
@@ -420,9 +419,9 @@ public class ChartUtils {
 		for(int divisionN = 0; divisionN < divisionCount; divisionN++) {
 			long timestampN = firstDivisionTimestamp + (divisionN * millisecondsPerDivision);
 			float pixelX = (float) (timestampN - minTimestamp) / (float) millisecondsOnScreen * width;
-			String label = millisecondsPerDivision < 1000  ? SettingsController.formatTimestampToMilliseconds(timestampN) :
-			               millisecondsPerDivision < 60000 ? SettingsController.formatTimestampToSeconds(timestampN) :
-			                                                 SettingsController.formatTimestampToMinutes(timestampN);
+			String label = millisecondsPerDivision < 1000  ? SettingsView.formatTimestampToMilliseconds(timestampN) :
+			               millisecondsPerDivision < 60000 ? SettingsView.formatTimestampToSeconds(timestampN) :
+			                                                 SettingsView.formatTimestampToMinutes(timestampN);
 			if(pixelX <= width)
 				divisions.put(pixelX, label);
 			else
@@ -454,199 +453,6 @@ public class ChartUtils {
 		if(text.charAt(stringLength - 1) == '.')
 			stringLength--;
 		return text.substring(0, pointLocation < stringLength ? stringLength : pointLocation);
-		
-	}
-	
-	/**
-	 * Takes a string of text and checks that it exactly matches a format string.
-	 * Throws an AssertionException if the text does not match the format string.
-	 * 
-	 * @param text            Line of text to examine.
-	 * @param formatString    Expected line of text, for example: "GUI Settings:"
-	 */
-	public static void parseExact(String text, String formatString) {
-		
-		if(!text.equals(formatString)) {
-			String message = "Text does not match the expected value.\nExpected: " + formatString + "\nFound: " + text;
-			throw new AssertionError(message);
-		}
-		
-	}
-	
-	/**
-	 * Takes a string of text and attempts to extract a boolean from the end of it.
-	 * Throws an AssertionException if the text does not match the format string or does not end with a boolean value.
-	 * 
-	 * @param text            Line of text to examine.
-	 * @param formatString    Expected line of text, for example: "show x-axis title = %b"
-	 * @return                The boolean value extracted from the text.
-	 */
-	public static boolean parseBoolean(String text, String formatString) {
-		
-		if(!formatString.endsWith("%b"))
-			throw new AssertionError("Source code contains an invalid format string.");
-		
-		try {
-			String expectedText = formatString.substring(0, formatString.length() - 2);
-			String actualText = text.substring(0, expectedText.length());
-			String token = text.substring(expectedText.length()); 
-			if(actualText.equals(expectedText))
-				if(token.toLowerCase().equals("true"))
-					return true;
-				else if(token.toLowerCase().equals("false"))
-					return false;
-				else {
-					String message = "Text does not end with a boolean.\nExpected: " + formatString + "\nFound: " + text;
-					throw new AssertionError(message);
-				}
-			else
-				throw new Exception();
-		} catch(Exception e) {
-			String message = "Text does not match the expected value.\nExpected: " + formatString + "\nFound: " + text;
-			throw new AssertionError(message);
-		}
-		
-	}
-	
-	/**
-	 * Takes a string of text and attempts to extract an integer from the beginning or end of it.
-	 * Throws an AssertionException if the text does not match the format string or does not start/end with an integer value.
-	 * 
-	 * @param text            Line of text to examine.
-	 * @param formatString    Expected line of text, for example: "sample count = %d"
-	 * @return                The integer value extracted from the text.
-	 */
-	public static int parseInteger(String text, String formatString) {
-		
-		if(!formatString.startsWith("%d") && !formatString.endsWith("%d"))
-			throw new AssertionError("Source code contains an invalid format string.");
-		
-		if(formatString.startsWith("%d")) {
-			
-			// starting with %d, so an integer should be at the start of the text
-			try {
-				String[] tokens = text.split(" ");
-				int number = Integer.parseInt(tokens[0]);
-				String expectedText = formatString.substring(2);
-				String remainingText = "";
-				for(int i = 1; i < tokens.length; i++)
-					remainingText += " " + tokens[i];
-				if(remainingText.equals(expectedText))
-					return number;
-				else {
-					String message = "Text does not match the expected value.\nExpected: " + formatString + "\nFound: " + text;
-					throw new AssertionError(message);
-				}
-			} catch(Exception e) {
-				String message = "Text does not start with an integer.\nExpected: " + formatString + "\nFound: " + text;
-				throw new AssertionError(message);
-			}
-			
-		} else  {
-			
-			// ending with %d, so an integer should be at the end of the text
-			try {
-				String expectedText = formatString.substring(0, formatString.length() - 2);
-				if(!text.startsWith(expectedText)) {
-					String message = "Text does not match the expected value.\nExpected: " + formatString + "\nFound: " + text;
-					throw new AssertionError(message);
-				}
-				String[] tokens = text.split(" ");
-				int number = Integer.parseInt(tokens[tokens.length - 1]);
-				return number;
-			} catch(Exception e) {
-				String message = "Text does not end with an integer.\nExpected: " + formatString + "\nFound: " + text;
-				throw new AssertionError(message);
-			}
-			
-		}
-		
-	}
-	
-	/**
-	 * Takes a string of text and attempts to extract a float from the beginning or end of it.
-	 * Throws an AssertionException if the text does not match the format string or does not start/end with a float value.
-	 * 
-	 * @param text            Line of text to examine.
-	 * @param formatString    Expected line of text, for example: "manual y-axis maximum = %f"
-	 * @return                The float value extracted from the text.
-	 */
-	public static float parseFloat(String text, String formatString) {
-		
-		if(!formatString.startsWith("%f") && !formatString.endsWith("%f"))
-			throw new AssertionError("Source code contains an invalid format string.");
-		
-		if(formatString.startsWith("%f")) {
-			
-			// starting with %f, so a float should be at the start of the text
-			try {
-				String[] tokens = text.split(" ");
-				float number = Float.parseFloat(tokens[0]);
-				String expectedText = formatString.substring(2);
-				String remainingText = "";
-				for(int i = 1; i < tokens.length; i++)
-					remainingText += " " + tokens[i];
-				if(remainingText.equals(expectedText))
-					return number;
-				else {
-					String message = "Text does not match the expected value.\nExpected: " + formatString + "\nFound: " + text;
-					throw new AssertionError(message);
-				}
-			} catch(Exception e) {
-				String message = "Text does not start with a floating point number.\nExpected: " + formatString + "\nFound: " + text;
-				throw new AssertionError(message);
-			}
-			
-		} else  {
-			
-			// ending with %f, so a float should be at the end of the text
-			try {
-				String[] tokens = text.split(" ");
-				float number = Float.parseFloat(tokens[tokens.length - 1]);
-				String expectedText = formatString.substring(0, formatString.length() - 2);
-				String remainingText = "";
-				for(int i = 0; i < tokens.length - 1; i++)
-					remainingText += tokens[i] + " ";
-				if(remainingText.equals(expectedText))
-					return number;
-				else {
-					String message = "Text does not match the expected value.\nExpected: " + formatString + "\nFound: " + text;
-					throw new AssertionError(message);
-				}
-			} catch(Exception e) {
-				String message = "Text does not end with a floating point number.\nExpected: " + formatString + "\nFound: " + text;
-				throw new AssertionError(message);
-			}
-			
-		}
-		
-	}
-	
-	/**
-	 * Takes a string of text and attempts to extract a string from the end of it.
-	 * Throws an AssertionException if the text does not match the format string.
-	 * 
-	 * @param text            Line of text to examine.
-	 * @param formatString    Expected line of text, for example: "packet type = %s"
-	 * @return                The String value extracted from the text.
-	 */
-	public static String parseString(String text, String formatString) {
-		
-		if(!formatString.endsWith("%s"))
-			throw new AssertionError("Source code contains an invalid format string.");
-		
-		try {
-			String expectedText = formatString.substring(0, formatString.length() - 2);
-			String actualText = text.substring(0, expectedText.length());
-			String token = text.substring(expectedText.length()); 
-			if(actualText.equals(expectedText))
-				return token;
-			else
-				throw new Exception();
-		} catch(Exception e) {
-			String message = "Text does not match the expected value.\nExpected: " + formatString + "\nFound: " + text;
-			throw new AssertionError(message);
-		}
 		
 	}
 	
@@ -792,7 +598,7 @@ public class ChartUtils {
 				occupiedRegions.add(new float[] {xBoxLeft, xBoxRight, yAnchor, yBoxTop});
 				boolean mouseOverMarker = mouseX > xBoxLeft && mouseX < xBoxRight && mouseY > yAnchor && mouseY < yBoxTop;
 				if(mouseOverMarker)
-					handler = EventHandler.onPress(press -> OpenGLChartsView.instance.setPausedView(marker.timestamp, marker.connection, marker.sampleNumber, true));
+					handler = EventHandler.onPress(press -> OpenGLChartsView.instance.setPaused(marker.timestamp, marker.connection, marker.sampleNumber));
 				
 				OpenGL.drawQuad2D(gl, Theme.tooltipBackgroundColor, xBoxLeft, yBoxBottom, xBoxRight, yBoxTop);
 				OpenGL.drawTriangle2D(gl, Theme.tooltipBackgroundColor, xAnchor, yAnchor, xAnchorRight, yBoxBottom, xAnchorLeft, yBoxBottom);
@@ -835,7 +641,7 @@ public class ChartUtils {
 				occupiedRegions.add(new float[] {xBoxLeft, xBoxRight, yAnchor, yBoxTop});
 				boolean mouseOverMarker = mouseX > xBoxLeft && mouseX < xBoxRight && mouseY > yAnchor && mouseY < yBoxTop;
 				if(mouseOverMarker)
-					handler = EventHandler.onPress(press -> OpenGLChartsView.instance.setPausedView(marker.timestamp, marker.connection, marker.sampleNumber, true));
+					handler = EventHandler.onPress(press -> OpenGLChartsView.instance.setPaused(marker.timestamp, marker.connection, marker.sampleNumber));
 				
 				OpenGL.drawQuad2D(gl, Theme.tooltipBackgroundColor, xBoxLeft, yBoxBottom, xBoxRight, yBoxTop);
 				OpenGL.drawTriangle2D(gl, Theme.tooltipBackgroundColor, xAnchor, yAnchor, xAnchor, yBoxBottom, xAnchorLeft, yBoxBottom);
@@ -879,7 +685,7 @@ public class ChartUtils {
 				occupiedRegions.add(new float[] {xBoxLeft, xBoxRight, yAnchor, yBoxTop});
 				boolean mouseOverMarker = mouseX > xBoxLeft && mouseX < xBoxRight && mouseY > yAnchor && mouseY < yBoxTop;
 				if(mouseOverMarker)
-					handler = EventHandler.onPress(press -> OpenGLChartsView.instance.setPausedView(marker.timestamp, marker.connection, marker.sampleNumber, true));
+					handler = EventHandler.onPress(press -> OpenGLChartsView.instance.setPaused(marker.timestamp, marker.connection, marker.sampleNumber));
 				
 				OpenGL.buffer.rewind();
 				OpenGL.buffer.put(xBoxLeft);     OpenGL.buffer.put(yBoxTop);
@@ -957,7 +763,7 @@ public class ChartUtils {
 					
 					if(mouseOverMarker) {
 						int r = rangeN;
-						handler = EventHandler.onPress(event -> OpenGLChartsView.instance.setPausedView(marker.timestampRanges.get(r)[0], marker.bitfield.dataset.connection, marker.sampleNumberRanges.get(r)[0], true));
+						handler = EventHandler.onPress(event -> OpenGLChartsView.instance.setPaused(marker.timestampRanges.get(r)[0], marker.bitfield.dataset.connection, marker.sampleNumberRanges.get(r)[0]));
 					}
 					
 				} else {
@@ -1076,58 +882,6 @@ public class ChartUtils {
 		
 		// not occupied
 		return true;
-		
-	}
-	
-	/**
-	 * Converts a byte[] back to a String of text.
-	 * 
-	 * @param bytes         Input byte[].
-	 * @param escapeCRLF    If true, the returned String will contain \r instead of an actual CR, and \n instead of an actual LF.
-	 * @return              Corresponding String.
-	 */
-	public static String convertBytesToTextString(byte[] bytes, boolean escapeCRLF) {
-		
-		if(escapeCRLF)
-			return new String(bytes).replace("\r", "\\r").replace("\n", "\\n");
-		
-		String string = new String(bytes);
-		if(string.endsWith("\n"))
-			string = string.substring(0, string.length() - 1);
-		if(string.endsWith("\r"))
-			string = string.substring(0, string.length() - 1);
-		return string;
-		
-	}
-	
-	/**
-	 * Converts a byte[] back to a String of hex bytes.
-	 * 
-	 * @param bytes    Input byte[].
-	 * @return         Corresponding hex String with spaces between bytes. (Example: "12 34 AB CD")
-	 */
-	public static String convertBytesToHexString(byte[] bytes) {
-		
-		String string = "";
-		for(byte b : bytes)
-			string += String.format("%02X ", b);
-		return string.trim();
-		
-		
-	}
-	
-	/**
-	 * Converts a byte[] back to a String of binary bytes.
-	 * 
-	 * @param bytes    Input byte[].
-	 * @return         Corresponding binary String with spaced between bytes. (Example: "00000001 10101010")
-	 */
-	public static String convertBytesToBinString(byte[] bytes) {
-		
-		String string = "";
-		for(byte b : bytes)
-			string += String.format("%8s", Integer.toBinaryString(Byte.toUnsignedInt(b))).replace(' ', '0') + " ";
-		return string.trim();
 		
 	}
 	

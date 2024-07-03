@@ -3,7 +3,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
 import com.jogamp.opengl.GL2ES3;
 import com.jogamp.opengl.GL3;
 
@@ -18,9 +17,9 @@ public class PlotSampleCount extends Plot {
 	int[]     fbHandle;
 	int[]     texHandle;
 	boolean   cacheIsValid;
-	List<Dataset> previousNormalDatasets;
-	List<Dataset.Bitfield.State> previousEdgeStates;
-	List<Dataset.Bitfield.State> previousLevelStates;
+	List<Field> previousNormalDatasets;
+	List<Field.Bitfield.State> previousEdgeStates;
+	List<Field.Bitfield.State> previousLevelStates;
 	long          previousMinSampleNumber;
 	long          previousMaxSampleNumber;
 	float         previousPlotMinY;
@@ -135,7 +134,7 @@ public class PlotSampleCount extends Plot {
 		
 		buffersY = new FloatBuffer[datasets.normalsCount()];
 		for(int datasetN = 0; datasetN < datasets.normalsCount(); datasetN++) {
-			Dataset dataset = datasets.getNormal(datasetN);
+			Field dataset = datasets.getNormal(datasetN);
 			if(!dataset.isBitfield)
 				buffersY[datasetN] = datasets.getSamplesBuffer(dataset, (int) minSampleNumber, (int) maxSampleNumber);
 		}
@@ -308,23 +307,23 @@ public class PlotSampleCount extends Plot {
 		if(plotSampleCount >= 2) {
 			for(int i = 0; i < datasets.normalsCount(); i++) {
 				
-				Dataset dataset = datasets.getNormal(i);
+				Field dataset = datasets.getNormal(i);
 				if(dataset.isBitfield)
 					continue;
 
-				OpenGL.drawLinesY(gl, GL3.GL_LINE_STRIP, dataset.glColor, buffersY[i], (int) plotSampleCount, (int) (plotMinX >= 0 ? 0 : plotMinX * -1));
+				OpenGL.drawLinesY(gl, GL3.GL_LINE_STRIP, dataset.color.getGl(), buffersY[i], (int) plotSampleCount, (int) (plotMinX >= 0 ? 0 : plotMinX * -1));
 				
 				// also draw points if there are relatively few samples on screen
 				boolean fewSamplesOnScreen = (plotWidth / (float) plotDomain) > (2 * Theme.pointWidth);
 				if(fewSamplesOnScreen)
-					OpenGL.drawPointsY(gl, dataset.glColor, buffersY[i], (int) plotSampleCount, (int) (plotMinX >= 0 ? 0 : plotMinX * -1));
+					OpenGL.drawPointsY(gl, dataset.color.getGl(), buffersY[i], (int) plotSampleCount, (int) (plotMinX >= 0 ? 0 : plotMinX * -1));
 				
 			}
 		}
 		
 		OpenGL.useMatrix(gl, chartMatrix);
 		
-		// draw any bitfield changes
+		// draw any bitfields
 		if(plotSampleCount >= 2) {
 			List<BitfieldEvents.EdgeMarker>  edgeMarkers  = events.getEdgeMarkersSampleCountMode((int) plotMinX, (int) plotDomain, plotWidth);
 			List<BitfieldEvents.LevelMarker> levelMarkers = events.getLevelMarkersSampleCountMode((int) plotMinX, (int) plotDomain, plotWidth);
@@ -417,7 +416,7 @@ public class PlotSampleCount extends Plot {
 		if(plotSampleCount >= 2) {
 			for(int i = 0; i < datasets.normalsCount(); i++) {
 				
-				Dataset dataset = datasets.getNormal(i);
+				Field dataset = datasets.getNormal(i);
 				if(dataset.isBitfield)
 					continue;
 				
@@ -426,18 +425,18 @@ public class PlotSampleCount extends Plot {
 				if(draw1.enabled) {
 					gl.glEnable(GL3.GL_SCISSOR_TEST);
 					gl.glScissor(draw1.scissorArgs[0], draw1.scissorArgs[1], draw1.scissorArgs[2], draw1.scissorArgs[3]);
-					OpenGL.drawLinesY(gl, GL3.GL_LINE_STRIP, dataset.glColor, draw1.buffersY[i], draw1.sampleCount, draw1.xOffset);
+					OpenGL.drawLinesY(gl, GL3.GL_LINE_STRIP, dataset.color.getGl(), draw1.buffersY[i], draw1.sampleCount, draw1.xOffset);
 					if(fewSamplesOnScreen)
-						OpenGL.drawPointsY(gl, dataset.glColor, draw1.buffersY[i], draw1.sampleCount, draw1.xOffset);
+						OpenGL.drawPointsY(gl, dataset.color.getGl(), draw1.buffersY[i], draw1.sampleCount, draw1.xOffset);
 					gl.glDisable(GL3.GL_SCISSOR_TEST);
 				}
 				
 				if(draw2.enabled) {
 					gl.glEnable(GL3.GL_SCISSOR_TEST);
 					gl.glScissor(draw2.scissorArgs[0], draw2.scissorArgs[1], draw2.scissorArgs[2], draw2.scissorArgs[3]);
-					OpenGL.drawLinesY(gl, GL3.GL_LINE_STRIP, dataset.glColor, draw2.buffersY[i], draw2.sampleCount, draw2.xOffset);
+					OpenGL.drawLinesY(gl, GL3.GL_LINE_STRIP, dataset.color.getGl(), draw2.buffersY[i], draw2.sampleCount, draw2.xOffset);
 					if(fewSamplesOnScreen)
-						OpenGL.drawPointsY(gl, dataset.glColor, draw2.buffersY[i], draw2.sampleCount, draw2.xOffset);
+						OpenGL.drawPointsY(gl, dataset.color.getGl(), draw2.buffersY[i], draw2.sampleCount, draw2.xOffset);
 					gl.glDisable(GL3.GL_SCISSOR_TEST);
 				}
 				
@@ -483,28 +482,48 @@ public class PlotSampleCount extends Plot {
 		
 	}
 	
-	/**
-	 * Checks if a tooltip should be drawn for the mouse's current location.
-	 * 
-	 * @param mouseX       The mouse's location along the x-axis, in pixels (0 = left edge of the plot.)
-	 * @param plotWidth    Width of the plot region, in pixels.
-	 * @return             An object indicating if the tooltip should be drawn, for what sample number, with what label, and at what location on screen.
-	 */
-	@Override public TooltipInfo getTooltip(int mouseX, float plotWidth) {
+	@Override public void drawTooltip(GL2ES3 gl, int mouseX, int mouseY, float xPlotLeft, float yPlotBottom, float plotWidth, float plotHeight, float plotMinY, float plotMaxY, float plotRange, float yPlotTop, float xPlotRight) {
 		
-		if(plotSampleCount == 0)
-			return new TooltipInfo(false, 0, "", 0);
-			
-		long sampleNumber = Math.round((float) mouseX / plotWidth * plotDomain) + plotMinX;
-		if(sampleNumber < 0)
-			return new TooltipInfo(false, 0, "", 0);
-		
+		// determine the sample number corresponding to mouseX
+		long sampleNumber = Math.round(((float) mouseX - xPlotLeft) / plotWidth * plotDomain) + plotMinX;
 		if(sampleNumber > maxSampleNumber)
 			sampleNumber = maxSampleNumber;
 		
+		// sanity checks
+		if(sampleNumber < 0)
+			return;
+		if(plotSampleCount < 2)
+			return;
+		
+		// prepare the tooltip
 		String label = "Sample " + sampleNumber;
 		float pixelX = getPixelXforSampleNumber(sampleNumber, plotWidth);
-		return new TooltipInfo(true, sampleNumber, label, pixelX);
+		final int sampleN = (int) sampleNumber; // final needed for the lambdas below
+		
+		PositionedChart.Tooltip tooltip = new PositionedChart.Tooltip();
+		tooltip.addRow(label);
+		
+		datasets.normalDatasets.forEach(field -> tooltip.addRow(field.color.getGl(),
+		                                                        datasets.getSampleAsString(field, sampleN),
+		                                                        (datasets.getSample(field, sampleN) - plotMinY) / plotRange * plotHeight + yPlotBottom));
+		
+		List<Field> levelFields = datasets.levelStates.stream().map(state -> state.dataset).distinct().sorted().toList();
+		int levelFieldsCount = levelFields.size();
+		for(int i = 0; i < levelFieldsCount; i++) {
+			// following 3 lines from ChartUtils.drawMarkers()
+			float padding = 6f * ChartsController.getDisplayScalingFactor();
+			float yBottom = yPlotBottom + padding + ((levelFieldsCount - 1 - i) * (padding + OpenGL.smallTextHeight + padding));
+			float yTop    = yBottom + OpenGL.smallTextHeight + padding;
+			
+			Field field = levelFields.get(i);
+			tooltip.addRow(field.color.getGl(),
+			               datasets.getSampleAsString(field, (int) sampleNumber),
+			               yTop);
+		}
+		
+		// draw the tooltip
+		float anchorX = pixelX + xPlotLeft;
+		tooltip.draw(gl, anchorX, mouseX, mouseY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
 		
 	}
 	
@@ -578,7 +597,7 @@ public class PlotSampleCount extends Plot {
 			// acquire the samples
 			buffersY = new FloatBuffer[datasets.normalsCount()];
 			for(int datasetN = 0; datasetN < datasets.normalsCount(); datasetN++) {
-				Dataset dataset = datasets.getNormal(datasetN);
+				Field dataset = datasets.getNormal(datasetN);
 				if(!dataset.isBitfield)
 					buffersY[datasetN] = datasets.getSamplesBuffer(dataset, (int) firstSampleNumber, (int) lastSampleNumber);
 			}

@@ -1,5 +1,3 @@
-import java.util.List;
-
 /**
  * Inspired by PipedOutputStream/PipedInputStream, but optimized for my use cases.
  * This is a thread-safe way to share a buffer of telemetry packets between two threads (one reader and one writer.)
@@ -22,16 +20,18 @@ public class SharedByteStream {
 	private int[] occupiedSize; // [0 or 1]
 	private boolean writeIntoA;
 	
-	private ConnectionTelemetry connection;
+	private final ConnectionTelemetry connection;
+	private final Field.Type checksumProcessor;
 	
 	/**
 	 * Creates a placeholder for sharing data between one reading thread and one writing thread.
 	 * Before data can be written or read, the setPacketSize() method must be called.
 	 */
-	public SharedByteStream(ConnectionTelemetry connection) {
+	public SharedByteStream(ConnectionTelemetry connection, Field.Type checksumProcessor) {
 		
 		ready = false;
 		this.connection = connection;
+		this.checksumProcessor = checksumProcessor;
 		
 	}
 	
@@ -40,7 +40,7 @@ public class SharedByteStream {
 	 * 
 	 * @param byteCount    Number of bytes per packet (binary mode), or 0 for CSV mode.
 	 */
-	public synchronized void setPacketSize(int byteCount, List<Dataset> list, int syncWordByteCount, byte syncWord) {
+	public synchronized void setPacketSize(int byteCount, int syncWordByteCount, byte syncWord) {
 			
 		if(byteCount == 0) {
 			
@@ -196,7 +196,7 @@ public class SharedByteStream {
 				NotificationsController.showFailureForMilliseconds("Lost sync with the telemetry packet stream.", 5000, true);
 			
 			// test checksum if enabled
-			if(!connection.datasets.checksumPassed(buffer[readBuffer], readIndex[readBuffer], packetByteCount)) {
+			if(checksumProcessor != null && !checksumProcessor.testChecksum(buffer[readBuffer], readIndex[readBuffer], packetByteCount, syncWordByteCount)) {
 				StringBuilder message = new StringBuilder(1024);
 				message.append("A corrupt telemetry packet was received:\n");
 				for(int i = 0; i < packetByteCount; i++)
@@ -262,7 +262,7 @@ public class SharedByteStream {
 				skipCorruptByteCount = 1;
 				break;
 			}
-			if(!connection.datasets.checksumPassed(buffer[readBuffer], index, packetByteCount)) {
+			if(checksumProcessor != null && !checksumProcessor.testChecksum(buffer[readBuffer], index, packetByteCount, syncWordByteCount)) {
 				packetCount = i;
 				skipCorruptByteCount = packetByteCount;
 				break;
@@ -293,7 +293,7 @@ public class SharedByteStream {
 	 */
 	public synchronized String readLine() throws InterruptedException {
 		
-		StringBuilder text = new StringBuilder(16 * connection.datasets.getCount());
+		StringBuilder text = new StringBuilder(16 * connection.getDatasetCount());
 		
 		// skip past any line terminators
 		while(true) {

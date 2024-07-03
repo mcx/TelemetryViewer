@@ -1,94 +1,123 @@
-import java.util.List;
-import java.util.Queue;
+import java.io.PrintWriter;
 import java.util.function.Consumer;
 
 import javax.swing.JCheckBox;
-import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.SwingUtilities;
 
-@SuppressWarnings("serial")
-public class WidgetCheckbox extends JCheckBox implements Widget {
+public class WidgetCheckbox implements Widget {
 	
-	String label;
-	String importExportLabel;
-	Consumer<Boolean> handler;
+	private String importExportLabel;
+	private JCheckBox checkbox;
+	private Consumer<Boolean> handler;
+	private volatile boolean isChecked;
 	
 	/**
 	 * A widget that lets the user check or uncheck a checkbox.
+	 * The export label defaults to a lower-case version of the label text.
 	 * 
-	 * @param labelText           Label to show at the right of the checkbox.
-	 * @param isChecked           If the checkbox should default to checked.
-	 * @param eventHandler        Will be notified when the checkbox changes.
+	 * @param label        Label to show next to the checkbox.
+	 * @param isChecked    If the checkbox should default to checked.
 	 */
-	public WidgetCheckbox(String labelText, boolean isChecked, Consumer<Boolean> eventHandler) {
+	public WidgetCheckbox(String label, boolean isChecked) {
 		
-		this(labelText, labelText.toLowerCase(), isChecked, eventHandler);
+		this.isChecked = isChecked;
+		checkbox = new JCheckBox(label, isChecked);
+		checkbox.addActionListener(event -> {
+			this.isChecked = checkbox.isSelected();
+			if(handler != null)
+				handler.accept(this.isChecked);
+		});
+		
+		importExportLabel = label.toLowerCase();
+		handler = null;
 		
 	}
 	
 	/**
-	 * A widget that lets the user check or uncheck a checkbox.
-	 * 
-	 * @param labelText           Label to show at the right of the checkbox.
-	 * @param importExportText    Text to use when importing or exporting.
-	 * @param isChecked           If the checkbox should default to checked.
-	 * @param eventHandler        Will be notified when the checkbox changes.
+	 * @param label    Label to use when importing/exporting a settings file.
 	 */
-	public WidgetCheckbox(String labelText, String importExportText, boolean isChecked, Consumer<Boolean> eventHandler) {
+	public WidgetCheckbox setExportLabel(String label) {
 		
-		super(labelText);
+		importExportLabel = (label == null) ? "" : label;
+		return this;
 		
-		label = labelText;
-		importExportLabel = importExportText;
+	}
+	
+	/**
+	 * @param eventHandler    Will be notified when the checkbox changes. Can be null.
+	 */
+	public WidgetCheckbox onChange(Consumer<Boolean> eventHandler) {
+		
 		handler = eventHandler;
 		
-		setSelected(isChecked);
-		addActionListener(event -> handler.accept(isSelected()));
+		// call the handler, but later, so the calling code can finish constructing things before the handler is triggered
+		SwingUtilities.invokeLater(() -> {
+			if(handler != null)
+				handler.accept(isChecked);
+		});
 		
-		handler.accept(isSelected());
-		
-	}
-	
-	@Override public void setSelected(boolean isSelected) {
-		
-		super.setSelected(isSelected);
-		handler.accept(isSelected());
+		return this;
 		
 	}
 	
-	@Override public void appendToGui(JPanel gui) {
+	public void set(boolean newValue) {
 		
-		gui.add(new JLabel(""), "");
-		gui.add(this, "span 3, growx");
+		if(isChecked == newValue)
+			return;
+		
+		isChecked = newValue;
+		checkbox.setSelected(isChecked);
+		if(handler != null)
+			handler.accept(isChecked);
 		
 	}
 	
-	/**
-	 * Updates the widget and chart based on settings from a settings file.
-	 * 
-	 * @param lines    A queue of remaining lines from the settings file.
-	 */
-	@Override public void importFrom(Queue<String> lines) {
+	public boolean get() {
+		
+		return isChecked;
+		
+	}
+	
+	public boolean isTrue() {
+		
+		return isChecked == true;
+		
+	}
+	
+	public boolean isFalse() {
+		
+		return isChecked == false;
+		
+	}
+	
+	public void setEnabled(boolean isEnabled) {
+		
+		checkbox.setEnabled(isEnabled);
+		
+	}
 
-		// parse the text
-		boolean checked = ChartUtils.parseBoolean(lines.remove(), importExportLabel + " = %b");
-		
-		// update the widget
-		setSelected(checked);
-		
-		// update the chart
-		handler.accept(isSelected());
+	@Override public void setVisible(boolean isVisible) {
+
+		checkbox.setVisible(isVisible);
 		
 	}
 	
-	/**
-	 * Saves the current state to one or more lines of text.
-	 * 
-	 * @param    Append lines of text to this List.
-	 */
-	@Override public void exportTo(List<String> lines) {
+	@Override public void appendTo(JPanel panel, String constraints) {
 		
-		lines.add(importExportLabel + " = " + isSelected());
+		panel.add(checkbox, constraints);
+		
+	}
+	
+	@Override public void importFrom(ConnectionsController.QueueOfLines lines) throws AssertionError {
+
+		set(lines.parseBoolean(importExportLabel + " = %b"));
+		
+	}
+	
+	@Override public void exportTo(PrintWriter file) {
+		
+		file.println("\t" + importExportLabel + " = " + isChecked);
 		
 	}
 

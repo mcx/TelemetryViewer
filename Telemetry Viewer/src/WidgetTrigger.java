@@ -1,6 +1,6 @@
+import java.io.PrintWriter;
 import java.nio.FloatBuffer;
 import java.util.List;
-import java.util.Queue;
 import java.util.function.Consumer;
 
 import javax.swing.JLabel;
@@ -37,15 +37,15 @@ public class WidgetTrigger implements Widget {
 	private WidgetToggleButtonEnum<Type> triggerTypeButtons;
 	
 	private DatasetsInterface datasets = new DatasetsInterface();
-	private Dataset triggerChannel = null;
+	private Field triggerChannel = null;
 	private WidgetDatasetComboboxes triggerChannelCombobox;
 	private boolean userSpecifiedTheChannel = false;
 	
 	private float triggerLevel = 0;
-	private WidgetTextfieldFloat triggerLevelTextfield;
+	private WidgetTextfield<Float> triggerLevelTextfield;
 	
 	private float triggerHysteresis = 0;
-	private WidgetTextfieldFloat triggerHysteresisTextfield;
+	private WidgetTextfield<Float> triggerHysteresisTextfield;
 	
 	private int triggerPrePostRatio = 20;
 	private JLabel prePostLabel;
@@ -61,7 +61,7 @@ public class WidgetTrigger implements Widget {
 		
 		// update the model
 		triggerLevel = newLevel;
-		triggerLevelTextfield.setNumber(newLevel);
+		triggerLevelTextfield.set(newLevel);
 		if(resetTrigger)
 			resetTrigger(true);
 		
@@ -73,7 +73,7 @@ public class WidgetTrigger implements Widget {
 		
 	}
 	
-	public void setDefaultChannel(Dataset dataset) {
+	public void setDefaultChannel(Field dataset) {
 		
 		if(!userSpecifiedTheChannel) {
 			triggerChannelCombobox.setDataset(0, dataset);
@@ -114,24 +114,22 @@ public class WidgetTrigger implements Widget {
 		                                                      });
 		
 		// trigger level
-		triggerLevelTextfield = new WidgetTextfieldFloat("Level",
-		                                                 "trigger level",
-		                                                 "",
-		                                                 -Float.MAX_VALUE,
-		                                                 Float.MAX_VALUE,
-		                                                 triggerLevel,
-		                                                 newLevel -> setLevel(newLevel, true));
+		triggerLevelTextfield = WidgetTextfield.ofFloat(-Float.MAX_VALUE, Float.MAX_VALUE, triggerLevel)
+		                                       .setPrefix("Level")
+		                                       .setExportLabel("trigger level")
+		                                       .onChange((newLevel, oldLevel) -> {
+		                                                     setLevel(newLevel, true);
+		                                                     return true;
+		                                                 });
 		
 		// trigger hysteresis
-		triggerHysteresisTextfield = new WidgetTextfieldFloat("Hysteresis",
-		                                                      "trigger hysteresis",
-		                                                      "",
-		                                                      -Float.MAX_VALUE,
-		                                                      Float.MAX_VALUE,
-		                                                      triggerHysteresis,
-		                                                      newValue -> {
+		triggerHysteresisTextfield = WidgetTextfield.ofFloat(-Float.MAX_VALUE, Float.MAX_VALUE, triggerHysteresis)
+		                                            .setPrefix("Hysteresis")
+		                                            .setExportLabel("trigger hysteresis")
+		                                            .onChange((newValue, oldValue) -> {
 		                                                          triggerHysteresis = newValue;
 		                                                          resetTrigger(true);
+		                                                          return true;
 		                                                      });
 		
 		// trigger channel
@@ -143,8 +141,8 @@ public class WidgetTrigger implements Widget {
 		                                                         triggerChannel = newDatasets.get(0);
 		                                                         userSpecifiedTheChannel = true;
 		                                                         resetTrigger(true);
-		                                                         triggerLevelTextfield.setUnit(datasets.getNormal(0).unit);
-		                                                         triggerHysteresisTextfield.setUnit(datasets.getNormal(0).unit);
+		                                                         triggerLevelTextfield.setSuffix(datasets.getNormal(0).unit.get());
+		                                                         triggerHysteresisTextfield.setSuffix(datasets.getNormal(0).unit.get());
 		                                                     });
 		
 		// pre/post ratio
@@ -170,17 +168,17 @@ public class WidgetTrigger implements Widget {
 		
 	}
 	
-	@Override public void appendToGui(JPanel gui) {
+	@Override public void appendTo(JPanel panel, String constraints) {
 		
-		triggerModeButtons.appendToGui(gui);
-		triggerAffectsButtons.appendToGui(gui);
-		triggerTypeButtons.appendToGui(gui);
-		triggerChannelCombobox.appendToGui(gui);
-		triggerLevelTextfield.appendToGui(gui);
-		triggerHysteresisTextfield.appendToGui(gui);
+		triggerModeButtons.appendTo(panel, "");
+		triggerAffectsButtons.appendTo(panel, "");
+		triggerTypeButtons.appendTo(panel, "");
+		triggerChannelCombobox.appendTo(panel, "");
+		triggerLevelTextfield.appendTo(panel, "");
+		triggerHysteresisTextfield.appendTo(panel, "");
 		
-		gui.add(prePostLabel, "split 2");
-		gui.add(prePostRatioSlider, "width min:min:max, grow"); // force preferred width = min width
+		panel.add(prePostLabel, "split 2");
+		panel.add(prePostRatioSlider, "width min:min:max, grow"); // force preferred width = min width
 		
 	}
 	
@@ -223,7 +221,7 @@ public class WidgetTrigger implements Widget {
 			nextTriggerableSampleNumber = -1;
 			nextTriggerableTimestamp = -1;
 			if(OpenGLChartsView.instance.isTriggeredView())
-		      	  OpenGLChartsView.instance.switchToLiveView();
+		      	  OpenGLChartsView.instance.setPlayLive();
 		}
 	}
 	
@@ -311,7 +309,7 @@ public class WidgetTrigger implements Widget {
 		if(triggerMode == Mode.AUTO) {
 			resetTrigger(false);
 			if(triggerAffects == Affects.EVERY_CHART && OpenGLChartsView.instance.isTriggeredView())
-				OpenGLChartsView.instance.setLiveView();
+				OpenGLChartsView.instance.setPlayLive();
 		}
 		
 		// check for a new trigger
@@ -336,7 +334,7 @@ public class WidgetTrigger implements Widget {
 				triggeredMinSampleNumber = minSampleNumber;
 				triggeredEndTimestamp = triggeredTimestamp + millisecondsAfterTrigger;
 				if(triggerAffects == Affects.EVERY_CHART)
-					OpenGLChartsView.instance.setTriggeredView(triggeredEndTimestamp, triggerChannel.connection, triggeredEndSampleNumber);
+					OpenGLChartsView.instance.setTriggered(triggeredEndTimestamp, triggerChannel.connection, triggeredEndSampleNumber);
 				return triggeredEndTimestamp;
 			}
 		}
@@ -396,7 +394,7 @@ public class WidgetTrigger implements Widget {
 		if(triggerMode == Mode.AUTO) {
 			resetTrigger(false);
 			if(triggerAffects == Affects.EVERY_CHART && OpenGLChartsView.instance.isTriggeredView())
-				OpenGLChartsView.instance.setLiveView();
+				OpenGLChartsView.instance.setPlayLive();
 		}
 		
 		// check for a new trigger
@@ -422,7 +420,7 @@ public class WidgetTrigger implements Widget {
 				triggeredMinSampleNumber = minSampleNumber;
 				triggeredEndSampleNumber = triggeredSampleNumber + (int) Math.round(chartDomain * postTriggerPercent);
 				if(triggerAffects == Affects.EVERY_CHART)
-					OpenGLChartsView.instance.setTriggeredView(triggeredEndTimestamp, triggerChannel.connection, triggeredEndSampleNumber);
+					OpenGLChartsView.instance.setTriggered(triggeredEndTimestamp, triggerChannel.connection, triggeredEndSampleNumber);
 				return triggeredEndSampleNumber;
 			}
 		}
@@ -439,8 +437,8 @@ public class WidgetTrigger implements Widget {
 	 * 
 	 * @param lines    A queue of remaining lines from the settings file.
 	 */
-	@Override public void importFrom(Queue<String> lines) {
-
+	@Override public void importFrom(ConnectionsController.QueueOfLines lines) throws AssertionError {
+		
 		triggerModeButtons.importFrom(lines);
 		triggerAffectsButtons.importFrom(lines);
 		triggerTypeButtons.importFrom(lines);
@@ -448,7 +446,7 @@ public class WidgetTrigger implements Widget {
 		triggerLevelTextfield.importFrom(lines);
 		triggerHysteresisTextfield.importFrom(lines);
 		
-		int ratio = ChartUtils.parseInteger(lines.remove(), "trigger pre/post ratio = %d");
+		int ratio = lines.parseInteger("trigger pre/post ratio = %d");
 		if(ratio < 0 || ratio > 100)
 			throw new AssertionError("Invalid trigger pre/post ratio.");
 		else
@@ -461,15 +459,15 @@ public class WidgetTrigger implements Widget {
 	 * 
 	 * @param    Append lines of text to this List.
 	 */
-	@Override public void exportTo(List<String> lines) {
+	@Override public void exportTo(PrintWriter file) {
 		
-		triggerModeButtons.exportTo(lines);
-		triggerAffectsButtons.exportTo(lines);
-		triggerTypeButtons.exportTo(lines);
-		triggerChannelCombobox.exportTo(lines);
-		triggerLevelTextfield.exportTo(lines);
-		triggerHysteresisTextfield.exportTo(lines);
-		lines.add("trigger pre/post ratio = " + triggerPrePostRatio);
+		triggerModeButtons.exportTo(file);
+		triggerAffectsButtons.exportTo(file);
+		triggerTypeButtons.exportTo(file);
+		triggerChannelCombobox.exportTo(file);
+		triggerLevelTextfield.exportTo(file);
+		triggerHysteresisTextfield.exportTo(file);
+		file.println("\t" + "trigger pre/post ratio = " + triggerPrePostRatio);
 		
 	}
 

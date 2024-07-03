@@ -1,8 +1,5 @@
 import java.nio.FloatBuffer;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
-import javax.swing.Box;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import com.jogamp.common.nio.Buffers;
@@ -15,131 +12,42 @@ public class OpenGLHistogramChart extends PositionedChart {
 	int[][] bins; // [datasetN][binN]
 	FloatBuffer[] binsAsTriangles; // [datasetN], filled with binN's, for drawing
 	
-	// x-axis title
-	float yXaxisTitleTextBasline;
-	float yXaxisTitleTextTop;
-	String xAxisTitle;
-	float xXaxisTitleTextLeft;
-	
-	// legend
-	float xLegendBorderLeft;
-	float yLegendBorderBottom;
-	float yLegendTextBaseline;
-	float yLegendTextTop;
-	float yLegendBorderTop;
-	float[][] legendMouseoverCoordinates;
-	float[][] legendBoxCoordinates;
-	float[] xLegendNameLeft;
-	float xLegendBorderRight;
-	
-	// x-axis scale
-	Map<Float, String> xDivisions;
-	float yXaxisTickTextBaseline;
-	float yXaxisTickTextTop;
-	float yXaxisTickBottom;
-	float yXaxisTickTop;
-	
-	// user settings
 	private WidgetDatasetCheckboxes datasetsWidget;
-	
-	private WidgetTextfieldInt durationWidget;
-	
-	private boolean legendVisible = true;
-	private WidgetCheckbox legendCheckbox;
-	
+	private WidgetTextfield<Integer> durationWidget;
+	private WidgetCheckbox legendVisibility;
 	private enum XAxisScale {
 		MIN_MAX     { @Override public String toString() { return "Minimum/Maximum"; } },
 		CENTER_SPAN { @Override public String toString() { return "Center/Span";     } };
 	};
-	private XAxisScale xAxisScale = XAxisScale.MIN_MAX;
-	private WidgetToggleButtonEnum<XAxisScale> xAxisScaleButtons;
-	
-	private float xAxisMinimum = -1;
-	private WidgetTextfieldFloat xAxisMinimumTextfield;
-
-	private boolean xAxisMinimumAutomatic = true;
-	private WidgetCheckbox xAxisMinimumAutomaticCheckbox;
-	
-	private float xAxisMaximum = 1;
-	private WidgetTextfieldFloat xAxisMaximumTextfield;
-	
-	private boolean xAxisMaximumAutomatic = true;
-	private WidgetCheckbox xAxisMaximumAutomaticCheckbox;
-	
-	private float xAxisCenter = 0;
-	private WidgetTextfieldFloat xAxisCenterTextfield;
+	private WidgetToggleButtonEnum<XAxisScale> xAxisScale;
+	private WidgetTextfield<Float> xAxisMinimum;
+	private WidgetCheckbox xAxisMinimumAutomatic;
+	private WidgetTextfield<Float> xAxisMaximum;
+	private WidgetCheckbox xAxisMaximumAutomatic;
+	private WidgetTextfield<Float> xAxisCenter;
 	private JLabel xAxisCenterPlaceholder;
-	
-	private float xAxisSpan = 2;
-	private WidgetTextfieldFloat xAxisSpanTextfield;
-	
-	private boolean xAxisSpanAutomatic = true;
-	private WidgetCheckbox xAxisSpanAutomaticCheckbox;
-	
-	private int binCount = 60;
-	private WidgetTextfieldInt binCountTextfield;
-	
-	private boolean xAxisTicksVisible = true;
-	private WidgetCheckbox xAxisTicksCheckbox;
-	
-	private boolean xAxisTitleVisible = true;
-	private WidgetCheckbox xAxisTitleCheckbox;
-	
+	private WidgetTextfield<Float> xAxisSpan;
+	private WidgetCheckbox xAxisSpanAutomatic;
+	private WidgetTextfield<Integer> binCount;
+	private WidgetCheckbox xAxisTicksVisibility;
+	private WidgetCheckbox xAxisTitleVisibility;
 	private enum YAxisScale {
 		FREQUENCY          { @Override public String toString() { return "Frequency";          } },
 		RELATIVE_FREQUENCY { @Override public String toString() { return "Relative Frequency"; } },
 		BOTH               { @Override public String toString() { return "Both";               } };
 	};
-	private YAxisScale yAxisScale = YAxisScale.RELATIVE_FREQUENCY;
-	private WidgetToggleButtonEnum<YAxisScale> yAxisScaleButtons;
+	private WidgetToggleButtonEnum<YAxisScale> yAxisScale;
+	private WidgetTextfield<Integer> yAxisMinimumFrequency;
+	private WidgetCheckbox yAxisMinimumFrequencyIsZero;
+	private WidgetTextfield<Integer> yAxisMaximumFrequency;
+	private WidgetCheckbox yAxisMaximumFrequencyAutomatic;
+	private WidgetTextfield<Float> yAxisMinimumRelativeFrequency;
+	private WidgetCheckbox yAxisMinimumRelativeFrequencyIsZero;
+	private WidgetTextfield<Float> yAxisMaximumRelativeFrequency;
+	private WidgetCheckbox yAxisMaximumRelativeFrequencyAutomatic;
+	private WidgetCheckbox yAxisTicksVisibility;
+	private WidgetCheckbox yAxisTitleVisibility;
 	
-	private int yAxisMinimumFrequency = 0;
-	private WidgetTextfieldInt yAxisMinimumFrequencyTextfield;
-	
-	private boolean yAxisMinimumFrequencyIsZero = true;
-	private WidgetCheckbox yAxisMinimumFrequencyIsZeroCheckbox;
-	
-	private int yAxisMaximumFrequency = 1000;
-	private WidgetTextfieldInt yAxisMaximumFrequencyTextfield;
-	
-	private boolean yAxisMaximumFrequencyAutomatic = true;
-	private WidgetCheckbox yAxisMaximumFrequencyAutomaticCheckbox;
-	
-	private float yAxisMinimumRelativeFrequency = 0;
-	private WidgetTextfieldFloat yAxisMinimumRelativeFrequencyTextfield;
-	
-	private boolean yAxisMinimumRelativeFrequencyIsZero = true;
-	private WidgetCheckbox yAxisMinimumRelativeFrequencyIsZeroCheckbox;
-	
-	private float yAxisMaximumRelativeFrequency = 1;
-	private WidgetTextfieldFloat yAxisMaximumRelativeFrequencyTextfield;
-	
-	private boolean yAxisMaximumRelativeFrequencyAutomatic = true;
-	private WidgetCheckbox yAxisMaximumRelativeFrequencyAutomaticCheckbox;
-	
-	private boolean yAxisTicksVisible = true;
-	private WidgetCheckbox yAxisTicksCheckbox;
-	
-	private boolean yAxisTitleVisible = true;
-	private WidgetCheckbox yAxisTitleCheckbox;
-	
-	// y-axis title
-	float xYaxisLeftTitleTextTop;
-	float xYaxisLeftTitleTextBaseline;
-	String yAxisLeftTitle;
-	float yYaxisLeftTitleTextLeft;
-	float xYaxisRightTitleTextTop;
-	float xYaxisRightTitleTextBaseline;
-	String yAxisRightTitle;
-	float yYaxisRightTitleTextLeft;
-	
-	// y-axis scale
-	float xYaxisLeftTickTextRight;
-	float xYaxisLeftTickLeft;
-	float xYaxisLeftTickRight;
-	float xYaxisRightTickTextLeft;
-	float xYaxisRightTickLeft;
-	float xYaxisRightTickRight;
 	private AutoScale  yAutoscaleRelativeFrequency;
 	private AutoScale  yAutoscaleFrequency;
 	
@@ -149,119 +57,105 @@ public class OpenGLHistogramChart extends PositionedChart {
 		
 	}
 	
-	public OpenGLHistogramChart(int x1, int y1, int x2, int y2) {
-		
-		super(x1, y1, x2, y2);
+	public OpenGLHistogramChart() {
 
 		yAutoscaleRelativeFrequency = new AutoScale(AutoScale.MODE_EXPONENTIAL, 30, 0.20f);
 		yAutoscaleFrequency = new AutoScale(AutoScale.MODE_EXPONENTIAL, 30, 0.20f);
 		
 		// create the control widgets and event handlers
-		durationWidget = new WidgetTextfieldInt("",
-		                                        "sample count",
-		                                        "Samples",
-		                                        2,
-		                                        Integer.MAX_VALUE / 16,
-		                                        ConnectionsController.getDefaultChartDuration(),
-		                                        newDuration -> duration = newDuration);
+		durationWidget = WidgetTextfield.ofInt(2, Integer.MAX_VALUE / 16, ConnectionsController.getDefaultChartDuration())
+		                                .setSuffix("Samples")
+		                                .setExportLabel("sample count")
+		                                .onChange((newDuration, oldDuration) -> {
+		                                    duration = newDuration;
+		                                    return true;
+		                                });
 		
-		legendCheckbox = new WidgetCheckbox("Show Legend",
-		                                    legendVisible,
-		                                    newVisibility -> legendVisible = newVisibility);
+		legendVisibility = new WidgetCheckbox("Show Legend", true);
 		
-		xAxisMinimumTextfield = new WidgetTextfieldFloat("Minimum",
-		                                                 "x-axis minimum",
-		                                                 "",
-		                                                 -Float.MAX_VALUE,
-		                                                 Float.MAX_VALUE,
-		                                                 xAxisMinimum,
-		                                                 newMinimum -> {
-		                                                     xAxisMinimum = newMinimum;
-		                                                     if(xAxisMinimum > xAxisMaximum)
-		                                                         xAxisMaximumTextfield.setNumber(xAxisMinimum);
-		                                                 });
+		xAxisMinimum = WidgetTextfield.ofFloat(-Float.MAX_VALUE, Float.MAX_VALUE, -1)
+		                              .setPrefix("Minimum")
+		                              .setExportLabel("x-axis minimum")
+		                              .onChange((newMinimum, oldMinumum) -> {
+		                                            if(newMinimum > xAxisMaximum.get())
+		                                                xAxisMaximum.set(newMinimum);
+		                                            return true;
+		                                        });
 		
-		xAxisMinimumAutomaticCheckbox = new WidgetCheckbox("Automatic",
-		                                                   "x-axis minimum automatic",
-		                                                   xAxisMinimumAutomatic,
-		                                                   isAutomatic -> {
-		                                                       xAxisMinimumAutomatic = isAutomatic;
-		                                                       if(isAutomatic)
-		                                                           xAxisMinimumTextfield.disableWithMessage("Automatic");
-		                                                       else
-		                                                           xAxisMinimumTextfield.setEnabled(true);
-		                                                   });
+		xAxisMinimumAutomatic = new WidgetCheckbox("Automatic", true)
+		                            .setExportLabel("x-axis minimum automatic")
+		                            .onChange(isAutomatic -> {
+		                                         if(isAutomatic)
+		                                             xAxisMinimum.disableWithMessage("Automatic");
+		                                         else
+		                                             xAxisMinimum.setEnabled(true);
+		                                     });
 		
-		xAxisMaximumTextfield = new WidgetTextfieldFloat("Maximum",
-		                                                 "x-axis maximum",
-		                                                 "",
-		                                                 -Float.MAX_VALUE,
-		                                                 Float.MAX_VALUE,
-		                                                 xAxisMaximum,
-		                                                 newMaximum -> {
-		                                                     xAxisMaximum = newMaximum;
-		                                                     if(xAxisMaximum < xAxisMinimum)
-		                                                         xAxisMinimumTextfield.setNumber(xAxisMaximum);
-		                                                 });
+		xAxisMaximum = WidgetTextfield.ofFloat(-Float.MAX_VALUE, Float.MAX_VALUE, 1)
+		                              .setPrefix("Maximum")
+		                              .setExportLabel("x-axis maximum")
+		                              .onChange((newMaximum, oldMaximum) -> {
+		                                            if(newMaximum < xAxisMinimum.get())
+		                                                xAxisMinimum.set(newMaximum);
+		                                            return true;
+		                                        });
 		
-		xAxisMaximumAutomaticCheckbox = new WidgetCheckbox("Automatic",
-		                                                   "x-axis maximum automatic",
-		                                                   xAxisMaximumAutomatic,
-		                                                   isAutomatic -> {
-		                                                       xAxisMaximumAutomatic = isAutomatic;
-		                                                       if(isAutomatic)
-		                                                           xAxisMaximumTextfield.disableWithMessage("Automatic");
-		                                                       else
-		                                                           xAxisMaximumTextfield.setEnabled(true);
-		                                                   });
+		xAxisMaximumAutomatic = new WidgetCheckbox("Automatic", true)
+		                            .setExportLabel("x-axis maximum automatic")
+		                            .onChange(isAutomatic -> {
+		                                         if(isAutomatic)
+		                                             xAxisMaximum.disableWithMessage("Automatic");
+		                                         else
+		                                             xAxisMaximum.setEnabled(true);
+		                                     });
 		
-		xAxisCenterTextfield = new WidgetTextfieldFloat("Center",
-		                                                "x-axis center",
-		                                                "",
-		                                                -Float.MAX_VALUE,
-		                                                Float.MAX_VALUE,
-		                                                xAxisCenter,
-		                                                newCenter -> xAxisCenter = newCenter);
+		xAxisCenter = WidgetTextfield.ofFloat(-Float.MAX_VALUE, Float.MAX_VALUE, 0)
+		                             .setPrefix("Center")
+		                             .setExportLabel("x-axis center");
 		
 		xAxisCenterPlaceholder = new JLabel(" "); // used to keep the center textfield the same size as the span textfield
 		
-		xAxisSpanTextfield = new WidgetTextfieldFloat("Span",
-		                                              "x-axis span",
-		                                              "",
-		                                              Float.MIN_VALUE,
-		                                              Float.MAX_VALUE,
-		                                              xAxisSpan,
-		                                              newSpan -> xAxisSpan = newSpan);
+		xAxisSpan = WidgetTextfield.ofFloat(Float.MIN_VALUE, Float.MAX_VALUE, 2)
+		                           .setPrefix("Span")
+		                           .setExportLabel("x-axis span");
 		
-		xAxisSpanAutomaticCheckbox = new WidgetCheckbox("Automatic",
-		                                                "x-axis span automatic",
-		                                                xAxisSpanAutomatic,
-		                                                isAutomatic -> {
-		                                                    xAxisSpanAutomatic = isAutomatic;
-		                                                    if(isAutomatic)
-		                                                        xAxisSpanTextfield.disableWithMessage("Automatic");
-		                                                    else
-		                                                        xAxisSpanTextfield.setEnabled(true);
-		                                                });
+		xAxisSpanAutomatic = new WidgetCheckbox("Automatic", true)
+		                         .setExportLabel("x-axis span automatic")
+		                         .onChange(isAutomatic -> {
+		                                      if(isAutomatic)
+		                                          xAxisSpan.disableWithMessage("Automatic");
+		                                      else
+		                                          xAxisSpan.setEnabled(true);
+		                                  });
+		
+		binCount = WidgetTextfield.ofInt(2, Integer.MAX_VALUE, 60)
+		                          .setPrefix("Bins")
+		                          .setExportLabel("x-axis bin count")
+		                          .onChange((newBinCount, oldBinCount) -> {
+		                                        bins = new int[datasets.normalsCount()][newBinCount];
+		                                        for(int i = 0; i < datasets.normalsCount(); i++)
+		                                            binsAsTriangles[i] = Buffers.newDirectFloatBuffer(newBinCount * 12);
+		                                        return true;
+		                                    });
 
 		datasetsWidget = new WidgetDatasetCheckboxes(newDatasets -> {
 		                                                 datasets.setNormals(newDatasets);
 		                                                 int datasetsCount = datasets.normalsCount();
 		                                                 samples = new FloatBuffer[datasetsCount];
-		                                                 bins = new int[datasetsCount][binCount];
+		                                                 bins = new int[datasetsCount][binCount.get()];
 		                                                 binsAsTriangles = new FloatBuffer[datasetsCount];
 		                                                 for(int i = 0; i < datasetsCount; i++)
-		                                                     binsAsTriangles[i] = Buffers.newDirectFloatBuffer(binCount * 12);
+		                                                     binsAsTriangles[i] = Buffers.newDirectFloatBuffer(binCount.get() * 12);
 		                                                 if(datasets.normalsCount() == 1) {
-		                                                     xAxisMinimumTextfield.setUnit(datasets.getNormal(0).unit);
-		                                                     xAxisMaximumTextfield.setUnit(datasets.getNormal(0).unit);
-		                                                     xAxisCenterTextfield.setUnit(datasets.getNormal(0).unit);
-		                                                     xAxisSpanTextfield.setUnit(datasets.getNormal(0).unit);
+		                                                     xAxisMinimum.setSuffix(datasets.getNormal(0).unit.get());
+		                                                     xAxisMaximum.setSuffix(datasets.getNormal(0).unit.get());
+		                                                     xAxisCenter.setSuffix(datasets.getNormal(0).unit.get());
+		                                                     xAxisSpan.setSuffix(datasets.getNormal(0).unit.get());
 		                                                 } else if(datasets.normalsCount() == 0) {
-		                                                     xAxisMinimumTextfield.setUnit("");
-		                                                     xAxisMaximumTextfield.setUnit("");
-		                                                     xAxisCenterTextfield.setUnit("");
-		                                                     xAxisSpanTextfield.setUnit("");
+		                                                     xAxisMinimum.setSuffix("");
+		                                                     xAxisMaximum.setSuffix("");
+		                                                     xAxisCenter.setSuffix("");
+		                                                     xAxisSpan.setSuffix("");
 		                                                 }
 		                                             },
 		                                             null,
@@ -269,235 +163,188 @@ public class OpenGLHistogramChart extends PositionedChart {
 		                                             null,
 		                                             false);
 		
-		xAxisScaleButtons = new WidgetToggleButtonEnum<XAxisScale>("Specify as",
-		                                                           "x-axis scale",
-		                                                           XAxisScale.values(),
-		                                                           xAxisScale,
-		                                                           newScale -> {
-		                                                               xAxisScale = newScale;
-		                                                               xAxisMinimumTextfield.setVisible(xAxisScale == XAxisScale.MIN_MAX);
-		                                                               xAxisMinimumAutomaticCheckbox.setVisible(xAxisScale == XAxisScale.MIN_MAX);
-		                                                               xAxisMaximumTextfield.setVisible(xAxisScale == XAxisScale.MIN_MAX);
-		                                                               xAxisMaximumAutomaticCheckbox.setVisible(xAxisScale == XAxisScale.MIN_MAX);
-		                                                               xAxisCenterTextfield.setVisible(xAxisScale == XAxisScale.CENTER_SPAN);
-		                                                               xAxisCenterPlaceholder.setVisible(xAxisScale == XAxisScale.CENTER_SPAN);
-		                                                               xAxisSpanTextfield.setVisible(xAxisScale == XAxisScale.CENTER_SPAN);
-		                                                               xAxisSpanAutomaticCheckbox.setVisible(xAxisScale == XAxisScale.CENTER_SPAN);
-		                                                           });
+		xAxisScale = new WidgetToggleButtonEnum<XAxisScale>("Specify as",
+		                                                    "x-axis scale",
+		                                                    XAxisScale.values(),
+		                                                    XAxisScale.MIN_MAX,
+		                                                    newScale -> {
+		                                                        xAxisMinimum.setVisible(newScale == XAxisScale.MIN_MAX);
+		                                                        xAxisMinimumAutomatic.setVisible(newScale == XAxisScale.MIN_MAX);
+		                                                        xAxisMaximum.setVisible(newScale == XAxisScale.MIN_MAX);
+		                                                        xAxisMaximumAutomatic.setVisible(newScale == XAxisScale.MIN_MAX);
+		                                                        xAxisCenter.setVisible(newScale == XAxisScale.CENTER_SPAN);
+		                                                        xAxisCenterPlaceholder.setVisible(newScale == XAxisScale.CENTER_SPAN);
+		                                                        xAxisSpan.setVisible(newScale == XAxisScale.CENTER_SPAN);
+		                                                        xAxisSpanAutomatic.setVisible(newScale == XAxisScale.CENTER_SPAN);
+		                                                    });
 		
-		binCountTextfield = new WidgetTextfieldInt("Bins",
-		                                           "x-axis bin count",
-		                                           "",
-		                                           2,
-		                                           Integer.MAX_VALUE,
-		                                           binCount,
-		                                           false,
-		                                           0,
-		                                           null,
-		                                           newBinCount -> {
-		                                               binCount = newBinCount;
-		                                               bins = new int[datasets.normalsCount()][binCount];
-		                                               for(int i = 0; i < datasets.normalsCount(); i++)
-		                                                   binsAsTriangles[i] = Buffers.newDirectFloatBuffer(binCount * 12);
-		                                           });
+		xAxisTicksVisibility = new WidgetCheckbox("Show Ticks", true)
+		                           .setExportLabel("x-axis show ticks");
 		
-		xAxisTicksCheckbox = new WidgetCheckbox("Show Ticks",
-		                                        "x-axis show ticks",
-		                                        xAxisTicksVisible,
-		                                        isVisible -> xAxisTicksVisible = isVisible);
+		xAxisTitleVisibility = new WidgetCheckbox("Show Title", true)
+		                           .setExportLabel("x-axis show title");
 		
-		xAxisTitleCheckbox = new WidgetCheckbox("Show Title",
-		                                        "x-axis show title",
-		                                        xAxisTitleVisible,
-		                                        isVisible -> xAxisTitleVisible = isVisible);
+		yAxisMinimumFrequency = WidgetTextfield.ofInt(0, Integer.MAX_VALUE, 0)
+		                                       .setPrefix("Minimum")
+		                                       .setExportLabel("y-axis minimum frequency")
+		                                       .onChange((newMinimum, oldMinimum) -> {
+		                                                     if(newMinimum > yAxisMaximumFrequency.get())
+		                                                         yAxisMaximumFrequency.set(newMinimum);
+		                                                     return true;
+		                                                 });
 		
-		yAxisMinimumFrequencyTextfield = new WidgetTextfieldInt("Minimum",
-		                                                        "y-axis minimum frequency",
-		                                                        null,
-		                                                        0,
-		                                                        Integer.MAX_VALUE,
-		                                                        yAxisMinimumFrequency,
-		                                                        newMinimum -> {
-		                                                            yAxisMinimumFrequency = newMinimum;
-		                                                            if(yAxisMinimumFrequency > yAxisMaximumFrequency)
-		                                                                yAxisMaximumFrequencyTextfield.setNumber(yAxisMinimumFrequency);
-		                                                        });
+		yAxisMinimumFrequencyIsZero = new WidgetCheckbox("Zero", true)
+		                                  .setExportLabel("y-axis minimum frequency is zero")
+		                                  .onChange(isZero -> {
+		                                                if(isZero)
+		                                                    yAxisMinimumFrequency.disableWithMessage("0");
+		                                                else
+		                                                    yAxisMinimumFrequency.setEnabled(true);
+		                                            });
 		
-		yAxisMinimumFrequencyIsZeroCheckbox = new WidgetCheckbox("Zero",
-		                                                         "y-axis minimum frequency is zero",
-		                                                         yAxisMinimumFrequencyIsZero,
-		                                                         isZero -> {
-		                                                             yAxisMinimumFrequencyIsZero = isZero;
-		                                                             if(yAxisMinimumFrequencyIsZero)
-		                                                                 yAxisMinimumFrequencyTextfield.disableWithMessage("0");
-		                                                             else
-		                                                                 yAxisMinimumFrequencyTextfield.setEnabled(true);
+		yAxisMaximumFrequency = WidgetTextfield.ofInt(0, Integer.MAX_VALUE, 1000)
+		                                       .setPrefix("Maximum")
+		                                       .setExportLabel("y-axis maximum frequency")
+		                                       .onChange((newMaximum, oldMaximum) -> {
+		                                                     if(newMaximum < yAxisMinimumFrequency.get())
+		                                                         yAxisMinimumFrequency.set(newMaximum);
+		                                                     return true;
+		                                                 });
+		
+		yAxisMaximumFrequencyAutomatic = new WidgetCheckbox("Automatic", true)
+		                                     .setExportLabel("y-axis maximum frequency automatic")
+		                                     .onChange(isAutomatic -> {
+		                                                   if(isAutomatic)
+		                                                       yAxisMaximumFrequency.disableWithMessage("Automatic");
+		                                                   else
+		                                                       yAxisMaximumFrequency.setEnabled(true);
+		                                               });
+		
+		yAxisMinimumRelativeFrequency = WidgetTextfield.ofFloat(0, 1, 0)
+		                                               .setPrefix("Minimum")
+		                                               .setExportLabel("y-axis minimum relative frequency")
+		                                               .onChange((newMinimum, oldMinimum) -> {
+		                                                             if(newMinimum > yAxisMaximumRelativeFrequency.get())
+		                                                                 yAxisMaximumRelativeFrequency.set(newMinimum);
+		                                                             return true;
 		                                                         });
 		
-		yAxisMaximumFrequencyTextfield = new WidgetTextfieldInt("Maximum",
-		                                                        "y-axis maximum frequency",
-		                                                        null,
-		                                                        0,
-		                                                        Integer.MAX_VALUE,
-		                                                        yAxisMaximumFrequency,
-		                                                        newMaximum -> {
-		                                                            yAxisMaximumFrequency = newMaximum;
-		                                                            if(yAxisMaximumFrequency < yAxisMinimumFrequency)
-		                                                                yAxisMinimumFrequencyTextfield.setNumber(yAxisMaximumFrequency);
-		                                                        });
+		yAxisMinimumRelativeFrequencyIsZero = new WidgetCheckbox("Zero", true)
+		                                          .setExportLabel("y-axis minimum relative frequency is zero")
+		                                          .onChange(isZero -> {
+		                                                        if(isZero)
+		                                                            yAxisMinimumRelativeFrequency.disableWithMessage("0");
+		                                                        else
+		                                                            yAxisMinimumRelativeFrequency.setEnabled(true);
+		                                                    });
 		
-		yAxisMaximumFrequencyAutomaticCheckbox = new WidgetCheckbox("Automatic",
-		                                                            "y-axis maximum frequency automatic",
-		                                                            yAxisMaximumFrequencyAutomatic,
-		                                                            isAutomatic -> {
-		                                                                yAxisMaximumFrequencyAutomatic = isAutomatic;
-		                                                                if(yAxisMaximumFrequencyAutomatic)
-		                                                                    yAxisMaximumFrequencyTextfield.disableWithMessage("Automatic");
-		                                                                else
-		                                                                    yAxisMaximumFrequencyTextfield.setEnabled(true);
-		                                                            });
+		yAxisMaximumRelativeFrequency = WidgetTextfield.ofFloat(0, 1, 1)
+		                                               .setPrefix("Maximum")
+		                                               .setExportLabel("y-axis maximum relative frequency")
+		                                               .onChange((newMaximum, oldMaximum) -> {
+		                                                             if(newMaximum < yAxisMinimumRelativeFrequency.get())
+		                                                                 yAxisMinimumRelativeFrequency.set(newMaximum);
+		                                                             return true;
+		                                                         });
 		
-		yAxisMinimumRelativeFrequencyTextfield = new WidgetTextfieldFloat("Minimum",
-		                                                                  "y-axis minimum relative frequency",
-		                                                                  null,
-		                                                                  0,
-		                                                                  1,
-		                                                                  yAxisMinimumRelativeFrequency,
-		                                                                  newMinimum -> {
-		                                                                      yAxisMinimumRelativeFrequency = newMinimum;
-		                                                                      if(yAxisMinimumRelativeFrequency > yAxisMaximumRelativeFrequency)
-		                                                                          yAxisMaximumRelativeFrequencyTextfield.setNumber(yAxisMinimumRelativeFrequency);
-		                                                                  });
+		yAxisMaximumRelativeFrequencyAutomatic = new WidgetCheckbox("Automatic", true)
+		                                             .setExportLabel("y-axis maximum relative frequency automatic")
+		                                             .onChange(isAutomatic -> {
+		                                                           if(isAutomatic)
+		                                                               yAxisMaximumRelativeFrequency.disableWithMessage("Automatic");
+		                                                           else
+		                                                               yAxisMaximumRelativeFrequency.setEnabled(true);
+		                                                       });
 		
-		yAxisMinimumRelativeFrequencyIsZeroCheckbox = new WidgetCheckbox("Zero",
-		                                                                 "y-axis minimum relative frequency is zero",
-		                                                                 yAxisMinimumRelativeFrequencyIsZero,
-		                                                                 isZero -> {
-		                                                                     yAxisMinimumRelativeFrequencyIsZero = isZero;
-		                                                                     if(yAxisMinimumRelativeFrequencyIsZero)
-		                                                                         yAxisMinimumRelativeFrequencyTextfield.disableWithMessage("0");
-		                                                                     else
-		                                                                         yAxisMinimumRelativeFrequencyTextfield.setEnabled(true);
-		                                                                 });
+		yAxisScale = new WidgetToggleButtonEnum<YAxisScale>("Scale",
+		                                                    "y-axis scale",
+		                                                    YAxisScale.values(),
+		                                                    YAxisScale.RELATIVE_FREQUENCY,
+		                                                    newScale -> {
+		                                                        yAxisMinimumFrequency.setVisible(newScale == YAxisScale.FREQUENCY);
+		                                                        yAxisMinimumFrequencyIsZero.setVisible(newScale == YAxisScale.FREQUENCY);
+		                                                        yAxisMaximumFrequency.setVisible(newScale == YAxisScale.FREQUENCY);
+		                                                        yAxisMaximumFrequencyAutomatic.setVisible(newScale == YAxisScale.FREQUENCY);
+		                                                        yAxisMinimumRelativeFrequency.setVisible(newScale != YAxisScale.FREQUENCY);
+		                                                        yAxisMinimumRelativeFrequencyIsZero.setVisible(newScale != YAxisScale.FREQUENCY);
+		                                                        yAxisMaximumRelativeFrequency.setVisible(newScale != YAxisScale.FREQUENCY);
+		                                                        yAxisMaximumRelativeFrequencyAutomatic.setVisible(newScale != YAxisScale.FREQUENCY);
+		                                                    });
 		
-		yAxisMaximumRelativeFrequencyTextfield = new WidgetTextfieldFloat("Maximum",
-		                                                                  "y-axis maximum relative frequency",
-		                                                                  null,
-		                                                                  0,
-		                                                                  1,
-		                                                                  yAxisMaximumRelativeFrequency,
-		                                                                  newMaximum -> {
-		                                                                      yAxisMaximumRelativeFrequency = newMaximum;
-		                                                                      if(yAxisMaximumRelativeFrequency < yAxisMinimumRelativeFrequency)
-		                                                                          yAxisMinimumRelativeFrequencyTextfield.setNumber(yAxisMaximumRelativeFrequency);
-		                                                                  });
+		yAxisTicksVisibility = new WidgetCheckbox("Show Ticks", true)
+		                           .setExportLabel("y-axis show ticks");
 		
-		yAxisMaximumRelativeFrequencyAutomaticCheckbox = new WidgetCheckbox("Automatic",
-		                                                                    "y-axis maximum relative frequency automatic",
-		                                                                    yAxisMaximumRelativeFrequencyAutomatic,
-		                                                                    isAutomatic -> {
-		                                                                        yAxisMaximumRelativeFrequencyAutomatic = isAutomatic;
-		                                                                        if(yAxisMaximumRelativeFrequencyAutomatic)
-		                                                                            yAxisMaximumRelativeFrequencyTextfield.disableWithMessage("Automatic");
-		                                                                        else
-		                                                                            yAxisMaximumRelativeFrequencyTextfield.setEnabled(true);
-		                                                                    });
-		
-		yAxisScaleButtons = new WidgetToggleButtonEnum<YAxisScale>("Scale",
-		                                                           "y-axis scale",
-		                                                           YAxisScale.values(),
-		                                                           yAxisScale,
-		                                                           newScale -> {
-		                                                               yAxisScale = newScale;
-		                                                               yAxisMinimumFrequencyTextfield.setVisible(yAxisScale == YAxisScale.FREQUENCY);
-		                                                               yAxisMinimumFrequencyIsZeroCheckbox.setVisible(yAxisScale == YAxisScale.FREQUENCY);
-		                                                               yAxisMaximumFrequencyTextfield.setVisible(yAxisScale == YAxisScale.FREQUENCY);
-		                                                               yAxisMaximumFrequencyAutomaticCheckbox.setVisible(yAxisScale == YAxisScale.FREQUENCY);
-		                                                               yAxisMinimumRelativeFrequencyTextfield.setVisible(yAxisScale != YAxisScale.FREQUENCY);
-		                                                               yAxisMinimumRelativeFrequencyIsZeroCheckbox.setVisible(yAxisScale != YAxisScale.FREQUENCY);
-		                                                               yAxisMaximumRelativeFrequencyTextfield.setVisible(yAxisScale != YAxisScale.FREQUENCY);
-		                                                               yAxisMaximumRelativeFrequencyAutomaticCheckbox.setVisible(yAxisScale != YAxisScale.FREQUENCY);
-		                                                           });
-		
-		yAxisTicksCheckbox = new WidgetCheckbox("Show Ticks",
-		                                        "y-axis show ticks",
-		                                        yAxisTicksVisible,
-		                                        isVisible -> yAxisTicksVisible = isVisible);
-		
-		yAxisTitleCheckbox = new WidgetCheckbox("Show Title",
-		                                        "y-axis show title",
-		                                        yAxisTitleVisible,
-		                                        isVisible -> yAxisTitleVisible = isVisible);
+		yAxisTitleVisibility = new WidgetCheckbox("Show Title", true)
+		                           .setExportLabel("y-axis show title");
 		
 		widgets.add(datasetsWidget);
 		widgets.add(durationWidget);
-		widgets.add(legendCheckbox);
-		widgets.add(xAxisScaleButtons);
-		widgets.add(xAxisMinimumTextfield);
-		widgets.add(xAxisMinimumAutomaticCheckbox);
-		widgets.add(xAxisMaximumTextfield);
-		widgets.add(xAxisMaximumAutomaticCheckbox);
-		widgets.add(xAxisCenterTextfield);
-		widgets.add(xAxisSpanTextfield);
-		widgets.add(xAxisSpanAutomaticCheckbox);
-		widgets.add(binCountTextfield);
-		widgets.add(xAxisTicksCheckbox);
-		widgets.add(xAxisTitleCheckbox);
-		widgets.add(yAxisScaleButtons);
-		widgets.add(yAxisMinimumFrequencyTextfield);
-		widgets.add(yAxisMinimumFrequencyIsZeroCheckbox);
-		widgets.add(yAxisMaximumFrequencyTextfield);
-		widgets.add(yAxisMaximumFrequencyAutomaticCheckbox);
-		widgets.add(yAxisMinimumRelativeFrequencyTextfield);
-		widgets.add(yAxisMinimumRelativeFrequencyIsZeroCheckbox);
-		widgets.add(yAxisMaximumRelativeFrequencyTextfield);
-		widgets.add(yAxisMaximumRelativeFrequencyAutomaticCheckbox);
-		widgets.add(yAxisTicksCheckbox);
-		widgets.add(yAxisTitleCheckbox);
+		widgets.add(legendVisibility);
+		widgets.add(xAxisScale);
+		widgets.add(xAxisMinimum);
+		widgets.add(xAxisMinimumAutomatic);
+		widgets.add(xAxisMaximum);
+		widgets.add(xAxisMaximumAutomatic);
+		widgets.add(xAxisCenter);
+		widgets.add(xAxisSpan);
+		widgets.add(xAxisSpanAutomatic);
+		widgets.add(binCount);
+		widgets.add(xAxisTicksVisibility);
+		widgets.add(xAxisTitleVisibility);
+		widgets.add(yAxisScale);
+		widgets.add(yAxisMinimumFrequency);
+		widgets.add(yAxisMinimumFrequencyIsZero);
+		widgets.add(yAxisMaximumFrequency);
+		widgets.add(yAxisMaximumFrequencyAutomatic);
+		widgets.add(yAxisMinimumRelativeFrequency);
+		widgets.add(yAxisMinimumRelativeFrequencyIsZero);
+		widgets.add(yAxisMaximumRelativeFrequency);
+		widgets.add(yAxisMaximumRelativeFrequencyAutomatic);
+		widgets.add(yAxisTicksVisibility);
+		widgets.add(yAxisTitleVisibility);
 		
 	}
 	
 	@Override public void getConfigurationGui(JPanel gui) {
 		
-		JPanel dataPanel = Theme.newWidgetsPanel("Data");
-		datasetsWidget.appendToGui(dataPanel);
-		dataPanel.add(durationWidget, "split 2, sizegroup 0");
-		dataPanel.add(legendCheckbox, "sizegroup 0");
+		gui.add(Theme.newWidgetsPanel("Data")
+		             .with(datasetsWidget)
+		             .with(durationWidget, "split 2, sizegroup 0")
+		             .with(legendVisibility, "sizegroup 0")
+		             .getPanel());
 		
-		JPanel xAxisPanel = Theme.newWidgetsPanel("X-Axis");
-		xAxisScaleButtons.appendToGui(xAxisPanel);
-		xAxisPanel.add(xAxisMinimumTextfield, "split 2, grow");
-		xAxisPanel.add(xAxisMinimumAutomaticCheckbox, "sizegroup 1");
-		xAxisPanel.add(xAxisMaximumTextfield, "split 2, grow");
-		xAxisPanel.add(xAxisMaximumAutomaticCheckbox, "sizegroup 1");
-		xAxisPanel.add(xAxisCenterTextfield, "split 2, grow");
-		xAxisPanel.add(xAxisCenterPlaceholder, "sizegroup 1");
-		xAxisPanel.add(xAxisSpanTextfield, "split 2, grow");
-		xAxisPanel.add(xAxisSpanAutomaticCheckbox, "sizegroup 1");
-		xAxisPanel.add(Box.createVerticalStrut(Theme.padding));
-		xAxisPanel.add(binCountTextfield, "split 2, grow");
-		xAxisPanel.add(new JLabel(" "), "sizegroup 1");
-		xAxisPanel.add(Box.createVerticalStrut(Theme.padding));
-		xAxisPanel.add(xAxisTicksCheckbox, "split 2");
-		xAxisPanel.add(xAxisTitleCheckbox);
+		gui.add(Theme.newWidgetsPanel("X-Axis")
+		             .with(xAxisScale)
+		             .with(xAxisMinimum,           "split 2, grow")
+		             .with(xAxisMinimumAutomatic,  "sizegroup 1")
+		             .with(xAxisMaximum,           "split 2, grow")
+		             .with(xAxisMaximumAutomatic,  "sizegroup 1")
+		             .with(xAxisCenter,            "split 2, grow")
+		             .with(xAxisCenterPlaceholder, "sizegroup 1")
+		             .with(xAxisSpan,              "split 2, grow")
+		             .with(xAxisSpanAutomatic,     "sizegroup 1")
+		             .withGap(Theme.padding)
+		             .with(binCount,               "split 2, grow")
+		             .with(new JLabel(" "),        "sizegroup 1")
+		             .withGap(Theme.padding)
+		             .with(xAxisTicksVisibility,   "split 2")
+		             .with(xAxisTitleVisibility)
+		             .getPanel());
 		
-		JPanel yAxisPanel = Theme.newWidgetsPanel("Y-Axis");
-		yAxisScaleButtons.appendToGui(yAxisPanel);
-		yAxisPanel.add(yAxisMinimumFrequencyTextfield, "split 2, grow");
-		yAxisPanel.add(yAxisMinimumFrequencyIsZeroCheckbox, "sizegroup 1");
-		yAxisPanel.add(yAxisMaximumFrequencyTextfield, "split 2, grow");
-		yAxisPanel.add(yAxisMaximumFrequencyAutomaticCheckbox, "sizegroup 1");
-		yAxisPanel.add(yAxisMinimumRelativeFrequencyTextfield, "split 2, grow");
-		yAxisPanel.add(yAxisMinimumRelativeFrequencyIsZeroCheckbox, "sizegroup 2");
-		yAxisPanel.add(yAxisMaximumRelativeFrequencyTextfield, "split 2, grow");
-		yAxisPanel.add(yAxisMaximumRelativeFrequencyAutomaticCheckbox, "sizegroup 2");
-		yAxisPanel.add(Box.createVerticalStrut(Theme.padding));
-		yAxisPanel.add(yAxisTicksCheckbox, "split 2");
-		yAxisPanel.add(yAxisTitleCheckbox);
-		
-		gui.add(dataPanel);
-		gui.add(xAxisPanel);
-		gui.add(yAxisPanel);
+		gui.add(Theme.newWidgetsPanel("Y-Axis")
+		             .with(yAxisScale)
+		             .with(yAxisMinimumFrequency,                  "split 2, grow")
+		             .with(yAxisMinimumFrequencyIsZero,            "sizegroup 1")
+		             .with(yAxisMaximumFrequency,                  "split 2, grow")
+		             .with(yAxisMaximumFrequencyAutomatic,         "sizegroup 1")
+		             .with(yAxisMinimumRelativeFrequency,          "split 2, grow")
+		             .with(yAxisMinimumRelativeFrequencyIsZero,    "sizegroup 2")
+		             .with(yAxisMaximumRelativeFrequency,          "split 2, grow")
+		             .with(yAxisMaximumRelativeFrequencyAutomatic, "sizegroup 2")
+		             .withGap(Theme.padding)
+		             .with(yAxisTicksVisibility,                   "split 2")
+		             .with(yAxisTitleVisibility)
+		             .getPanel());
 		
 	}
 	
@@ -516,7 +363,7 @@ public class OpenGLHistogramChart extends PositionedChart {
 		int datasetsCount = datasets.normalsCount();
 		if(sampleCount > 0)
 			for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
-				Dataset dataset = datasets.getNormal(datasetN);
+				Field dataset = datasets.getNormal(datasetN);
 				samples[datasetN] = datasets.getSamplesBuffer(dataset, firstSampleNumber, lastSampleNumber);
 			}
 
@@ -528,25 +375,26 @@ public class OpenGLHistogramChart extends PositionedChart {
 		// determine the plotted x-axis range
 		float minX = 0;
 		float maxX = 0;
-		if(xAxisScale == XAxisScale.CENTER_SPAN) {
-			float leftHalf  = (float) Math.abs(xAxisCenter - trueMinX);
-			float rightHalf = (float) Math.abs(xAxisCenter - trueMaxX);
-			float half = xAxisSpanAutomatic ? Float.max(leftHalf, rightHalf) : xAxisSpan / 2;
-			minX = xAxisCenter - half;
-			maxX = Math.nextUp(xAxisCenter + half); // increment because the bins are >=min, <max
+		if(xAxisScale.is(XAxisScale.CENTER_SPAN)) {
+			float leftHalf  = (float) Math.abs(xAxisCenter.get() - trueMinX);
+			float rightHalf = (float) Math.abs(xAxisCenter.get() - trueMaxX);
+			float half = xAxisSpanAutomatic.get() ? Float.max(leftHalf, rightHalf) : xAxisSpan.get() / 2;
+			minX = xAxisCenter.get() - half;
+			maxX = Math.nextUp(xAxisCenter.get() + half); // increment because the bins are >=min, <max
 		} else {
-			minX = xAxisMinimumAutomatic ?             trueMinX  :             xAxisMinimum;
-			maxX = xAxisMaximumAutomatic ? Math.nextUp(trueMaxX) : Math.nextUp(xAxisMaximum); // increment because the bins are >=min, <max
+			minX = xAxisMinimumAutomatic.get() ?             trueMinX  :             xAxisMinimum.get();
+			maxX = xAxisMaximumAutomatic.get() ? Math.nextUp(trueMaxX) : Math.nextUp(xAxisMaximum.get()); // increment because the bins are >=min, <max
 		}
 		float range = maxX - minX;
-		float binSize = range / (float) binCount;
+		int binsCount = binCount.get();
+		float binSize = range / (float) binsCount;
 
 		// calculate the histogram
 		int maxBinSize = 0;
 		if(sampleCount > 0) {
 			// empty the bins
 			for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
-				for(int binN = 0; binN < binCount; binN++)
+				for(int binN = 0; binN < binsCount; binN++)
 					bins[datasetN][binN] = 0;
 			
 			// fill the bins
@@ -554,8 +402,8 @@ public class OpenGLHistogramChart extends PositionedChart {
 				for(int sampleN = 0; sampleN < sampleCount; sampleN++) {
 					float sample = samples[datasetN].get();
 					if(sample >= minX && sample < maxX) {
-						int binN = (int) Math.floor((sample - minX) / range * binCount);
-						if(binN == binCount) binN--; // needed because of float math imperfection
+						int binN = (int) Math.floor((sample - minX) / range * binsCount);
+						if(binN == binsCount) binN--; // needed because of float math imperfection
 						bins[datasetN][binN]++;
 					}
 				}
@@ -563,7 +411,7 @@ public class OpenGLHistogramChart extends PositionedChart {
 			
 			// get the max
 			for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
-				for(int binN = 0; binN < binCount; binN++)
+				for(int binN = 0; binN < binsCount; binN++)
 					if(bins[datasetN][binN] > maxBinSize)
 						maxBinSize = bins[datasetN][binN];
 		}
@@ -579,21 +427,21 @@ public class OpenGLHistogramChart extends PositionedChart {
 		float maxYfreq = 0;
 		float yRelFreqRange = 0;
 		float yFreqRange = 0;
-		if(yAxisScale == YAxisScale.RELATIVE_FREQUENCY || yAxisScale == YAxisScale.BOTH) {
+		if(yAxisScale.is(YAxisScale.RELATIVE_FREQUENCY) || yAxisScale.is(YAxisScale.BOTH)) {
 			
 			// the range is determined by relative frequency, and frequency is forced to match it
-			minYrelFreq = yAxisMinimumRelativeFrequencyIsZero ? 0 : yAxisMinimumRelativeFrequency;
+			minYrelFreq = yAxisMinimumRelativeFrequencyIsZero.get() ? 0 : yAxisMinimumRelativeFrequency.get();
 			yAutoscaleRelativeFrequency.update(minYrelFreq, trueMaxYrelFreq);
-			maxYrelFreq = yAxisMaximumRelativeFrequencyAutomatic ? yAutoscaleRelativeFrequency.getMax() : yAxisMaximumRelativeFrequency;
+			maxYrelFreq = yAxisMaximumRelativeFrequencyAutomatic.get() ? yAutoscaleRelativeFrequency.getMax() : yAxisMaximumRelativeFrequency.get();
 			minYfreq = sampleCount < 1 ? minYrelFreq : minYrelFreq * (float) sampleCount;
 			maxYfreq = sampleCount < 1 ? maxYrelFreq : maxYrelFreq * (float) sampleCount;
 			
 		} else {
 			
 			// the range is determined by frequency, and relative frequency is forced to match it
-			minYfreq = yAxisMinimumFrequencyIsZero ? 0 : yAxisMinimumFrequency;
+			minYfreq = yAxisMinimumFrequencyIsZero.get() ? 0 : yAxisMinimumFrequency.get();
 			yAutoscaleFrequency.update(minYfreq, trueMaxYfreq);
-			maxYfreq = yAxisMaximumFrequencyAutomatic ? yAutoscaleFrequency.getMax() : yAxisMaximumFrequency;
+			maxYfreq = yAxisMaximumFrequencyAutomatic.get() ? yAutoscaleFrequency.getMax() : yAxisMaximumFrequency.get();
 			minYrelFreq = minYfreq / (float) sampleCount;
 			maxYrelFreq = maxYfreq / (float) sampleCount;
 			
@@ -609,12 +457,11 @@ public class OpenGLHistogramChart extends PositionedChart {
 		float yPlotBottom = Theme.tilePadding;
 		float plotHeight = yPlotTop - yPlotBottom;
 		
-		if(xAxisTitleVisible) {
-			yXaxisTitleTextBasline = Theme.tilePadding;
-			yXaxisTitleTextTop = yXaxisTitleTextBasline + OpenGL.largeTextHeight;
-			xAxisTitle = datasetsCount == 0 ? "(0 Samples)" : datasets.getNormal(0).unit + " (" + sampleCount + " Samples)";
-			xXaxisTitleTextLeft = xPlotLeft + (plotWidth  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			
+		float yXaxisTitleTextBasline = Theme.tilePadding;
+		float yXaxisTitleTextTop = yXaxisTitleTextBasline + OpenGL.largeTextHeight;
+		String xAxisTitle = datasetsCount == 0 ? "(0 Samples)" : datasets.getNormal(0).unit.get() + " (" + sampleCount + " Samples)";
+		float xXaxisTitleTextLeft = xPlotLeft + (plotWidth  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
+		if(xAxisTitleVisibility.get()) {
 			float temp = yXaxisTitleTextTop + Theme.tickTextPadding;
 			if(yPlotBottom < temp) {
 				yPlotBottom = temp;
@@ -622,19 +469,17 @@ public class OpenGLHistogramChart extends PositionedChart {
 			}
 		}
 		
-		if(legendVisible && datasetsCount > 0) {
-			xLegendBorderLeft = Theme.tilePadding;
-			yLegendBorderBottom = Theme.tilePadding;
-			yLegendTextBaseline = yLegendBorderBottom + Theme.legendTextPadding;
-			yLegendTextTop = yLegendTextBaseline + OpenGL.mediumTextHeight;
-			yLegendBorderTop = yLegendTextTop + Theme.legendTextPadding;
-
-			legendMouseoverCoordinates = new float[datasetsCount][4];
-			legendBoxCoordinates = new float[datasetsCount][4];
-			xLegendNameLeft = new float[datasetsCount];
-			
+		float xLegendBorderLeft = Theme.tilePadding;
+		float yLegendBorderBottom = Theme.tilePadding;
+		float yLegendTextBaseline = yLegendBorderBottom + Theme.legendTextPadding;
+		float yLegendTextTop = yLegendTextBaseline + OpenGL.mediumTextHeight;
+		float yLegendBorderTop = yLegendTextTop + Theme.legendTextPadding;
+		float[][] legendMouseoverCoordinates = new float[datasetsCount][4];
+		float[][] legendBoxCoordinates = new float[datasetsCount][4];
+		float[] xLegendNameLeft = new float[datasetsCount];
+		float xLegendBorderRight = 0;
+		if(legendVisibility.get() && datasetsCount > 0) {
 			float xOffset = xLegendBorderLeft + (Theme.lineWidth / 2) + Theme.legendTextPadding;
-			
 			for(int i = 0; i < datasetsCount; i++) {
 				legendMouseoverCoordinates[i][0] = xOffset - Theme.legendTextPadding;
 				legendMouseoverCoordinates[i][1] = yLegendBorderBottom;
@@ -646,14 +491,14 @@ public class OpenGLHistogramChart extends PositionedChart {
 				
 				xOffset += OpenGL.mediumTextHeight + Theme.legendTextPadding;
 				xLegendNameLeft[i] = xOffset;
-				xOffset += OpenGL.mediumTextWidth(gl, datasets.getNormal(i).name) + Theme.legendNamesPadding;
+				xOffset += OpenGL.mediumTextWidth(gl, datasets.getNormal(i).name.get()) + Theme.legendNamesPadding;
 				
 				legendMouseoverCoordinates[i][2] = xOffset - Theme.legendNamesPadding + Theme.legendTextPadding;
 				legendMouseoverCoordinates[i][3] = yLegendBorderTop;
 			}
 			
 			xLegendBorderRight = xOffset - Theme.legendNamesPadding + Theme.legendTextPadding + (Theme.lineWidth / 2);
-			if(xAxisTitleVisible)
+			if(xAxisTitleVisibility.get())
 				xXaxisTitleTextLeft = xLegendBorderRight + ((xPlotRight - xLegendBorderRight) / 2) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
 			
 			float temp = yLegendBorderTop + Theme.legendTextPadding;
@@ -663,12 +508,11 @@ public class OpenGLHistogramChart extends PositionedChart {
 			}
 		}
 		
-		if(xAxisTicksVisible) {
-			yXaxisTickTextBaseline = yPlotBottom;
-			yXaxisTickTextTop = yXaxisTickTextBaseline + OpenGL.smallTextHeight;
-			yXaxisTickBottom = yXaxisTickTextTop + Theme.tickTextPadding;
-			yXaxisTickTop = yXaxisTickBottom + Theme.tickLength;
-			
+		float yXaxisTickTextBaseline = yPlotBottom;
+		float yXaxisTickTextTop = yXaxisTickTextBaseline + OpenGL.smallTextHeight;
+		float yXaxisTickBottom = yXaxisTickTextTop + Theme.tickTextPadding;
+		float yXaxisTickTop = yXaxisTickBottom + Theme.tickLength;
+		if(xAxisTicksVisibility.get()) {
 			yPlotBottom = yXaxisTickTop;
 			plotHeight = yPlotTop - yPlotBottom;
 		}
@@ -677,21 +521,29 @@ public class OpenGLHistogramChart extends PositionedChart {
 		Map<Float, String> yDivisionsFrequency = ChartUtils.getYdivisions125(plotHeight, minYfreq, maxYfreq);
 		Map<Float, String> yDivisionsRelativeFrequency = ChartUtils.getYdivisions125(plotHeight, minYrelFreq, maxYrelFreq);
 		
-		if(yAxisTitleVisible) {
+		float xYaxisLeftTitleTextTop = 0;
+		float xYaxisLeftTitleTextBaseline = 0;
+		String yAxisLeftTitle = null;
+		float yYaxisLeftTitleTextLeft = 0;
+		float xYaxisRightTitleTextTop = 0;
+		float xYaxisRightTitleTextBaseline = 0;
+		String yAxisRightTitle = null;
+		float yYaxisRightTitleTextLeft = 0;
+		if(yAxisTitleVisibility.get()) {
 			// the left y-axis is for Relative Frequency unless only Frequency will be shown
 			xYaxisLeftTitleTextTop = xPlotLeft;
 			xYaxisLeftTitleTextBaseline = xYaxisLeftTitleTextTop + OpenGL.largeTextHeight;
-			yAxisLeftTitle = (yAxisScale == YAxisScale.RELATIVE_FREQUENCY || yAxisScale == YAxisScale.BOTH) ? "Relative Frequency" : "Frequency";
+			yAxisLeftTitle = (yAxisScale.is(YAxisScale.RELATIVE_FREQUENCY) || yAxisScale.is(YAxisScale.BOTH)) ? "Relative Frequency" : "Frequency";
 			yYaxisLeftTitleTextLeft = yPlotBottom + (plotHeight / 2.0f) - (OpenGL.largeTextWidth(gl, yAxisLeftTitle) / 2.0f);
 			
 			xPlotLeft = xYaxisLeftTitleTextBaseline + Theme.tickTextPadding;
 			plotWidth = xPlotRight - xPlotLeft;
 			
-			if(xAxisTitleVisible && !legendVisible)
+			if(xAxisTitleVisibility.get() && !legendVisibility.get())
 				xXaxisTitleTextLeft = xPlotLeft + (plotWidth  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
 			
 			// the right y-axis is always for Frequency
-			if(yAxisScale == YAxisScale.BOTH) {
+			if(yAxisScale.is(YAxisScale.BOTH)) {
 				xYaxisRightTitleTextTop = xPlotRight;
 				xYaxisRightTitleTextBaseline = xYaxisRightTitleTextTop - OpenGL.largeTextHeight;
 				yAxisRightTitle = "Frequency";
@@ -700,15 +552,21 @@ public class OpenGLHistogramChart extends PositionedChart {
 				xPlotRight = xYaxisRightTitleTextBaseline - Theme.tickTextPadding;
 				plotWidth = xPlotRight - xPlotLeft;
 				
-				if(xAxisTitleVisible && !legendVisible)
+				if(xAxisTitleVisibility.get() && !legendVisibility.get())
 					xXaxisTitleTextLeft = xPlotLeft + (plotWidth  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
 			}
 		}
 		
-		if(yAxisTicksVisible) {
+		float xYaxisLeftTickTextRight = 0;
+		float xYaxisLeftTickLeft = 0;
+		float xYaxisLeftTickRight = 0;
+		float xYaxisRightTickTextLeft = 0;
+		float xYaxisRightTickLeft = 0;
+		float xYaxisRightTickRight = 0;
+		if(yAxisTicksVisibility.get()) {
 			// the left y-axis is for Relative Frequency unless only Frequency will be shown
 			float maxTextWidth = 0;
-			for(String text : (yAxisScale == YAxisScale.FREQUENCY) ? yDivisionsFrequency.values() : yDivisionsRelativeFrequency.values())
+			for(String text : yAxisScale.is(YAxisScale.FREQUENCY) ? yDivisionsFrequency.values() : yDivisionsRelativeFrequency.values())
 				maxTextWidth = Math.max(maxTextWidth, OpenGL.smallTextWidth(gl, text));
 			
 			xYaxisLeftTickTextRight = xPlotLeft + maxTextWidth;
@@ -718,11 +576,11 @@ public class OpenGLHistogramChart extends PositionedChart {
 			xPlotLeft = xYaxisLeftTickRight;
 			plotWidth = xPlotRight - xPlotLeft;
 			
-			if(xAxisTitleVisible && !legendVisible)
+			if(xAxisTitleVisibility.get() && !legendVisibility.get())
 				xXaxisTitleTextLeft = xPlotLeft + (plotWidth  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
 			
 			// the right y-axis is always for Frequency
-			if(yAxisScale == YAxisScale.BOTH) {
+			if(yAxisScale.is(YAxisScale.BOTH)) {
 				maxTextWidth = 0;
 				for(String text : yDivisionsFrequency.values())
 					maxTextWidth = Math.max(maxTextWidth, OpenGL.smallTextWidth(gl, text));
@@ -734,13 +592,13 @@ public class OpenGLHistogramChart extends PositionedChart {
 				xPlotRight = xYaxisRightTickLeft;
 				plotWidth = xPlotRight - xPlotLeft;
 				
-				if(xAxisTitleVisible && !legendVisible)
+				if(xAxisTitleVisibility.get() && !legendVisibility.get())
 					xXaxisTitleTextLeft = xPlotLeft + (plotWidth  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
 			}
 		}
 		
 		// get the x divisions now that we know the final plot width
-		xDivisions = ChartUtils.getFloatXdivisions125(gl, plotWidth, minX, maxX);
+		Map<Float, String> xDivisions = ChartUtils.getFloatXdivisions125(gl, plotWidth, minX, maxX);
 		
 		// stop if the plot is too small
 		if(plotWidth < 1 || plotHeight < 1)
@@ -750,7 +608,7 @@ public class OpenGLHistogramChart extends PositionedChart {
 		OpenGL.drawQuad2D(gl, Theme.plotBackgroundColor, xPlotLeft, yPlotBottom, xPlotRight, yPlotTop);
 		
 		// draw the x-axis scale
-		if(xAxisTicksVisible) {
+		if(xAxisTicksVisibility.get()) {
 			OpenGL.buffer.rewind();
 			for(Float xValue : xDivisions.keySet()) {
 				float x = ((xValue - minX) / range * plotWidth) + xPlotLeft;
@@ -772,10 +630,10 @@ public class OpenGLHistogramChart extends PositionedChart {
 		}
 		
 		// draw the y-axis scale
-		if(yAxisTicksVisible) {
+		if(yAxisTicksVisibility.get()) {
 		
 			// draw right y-axis scale if showing both frequency and relative frequency
-			if(yAxisScale == YAxisScale.BOTH) {
+			if(yAxisScale.is(YAxisScale.BOTH)) {
 				OpenGL.buffer.rewind();
 				for(Float entry : yDivisionsFrequency.keySet()) {
 					float y = (entry - minYfreq) / yFreqRange * plotHeight + yPlotBottom;
@@ -798,7 +656,7 @@ public class OpenGLHistogramChart extends PositionedChart {
 			}
 			
 			// relative frequency is drawn on the left unless only frequency is to be drawn
-			if(yAxisScale == YAxisScale.FREQUENCY) {
+			if(yAxisScale.is(YAxisScale.FREQUENCY)) {
 				
 				OpenGL.buffer.rewind();
 				for(Float entry : yDivisionsFrequency.keySet()) {
@@ -825,7 +683,7 @@ public class OpenGLHistogramChart extends PositionedChart {
 				for(Float entry : yDivisionsRelativeFrequency.keySet()) {
 					float y = (entry - minYrelFreq) / yRelFreqRange * plotHeight + yPlotBottom;
 					OpenGL.buffer.put(xPlotLeft);  OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.divisionLinesColor);
-					OpenGL.buffer.put(xPlotRight); OpenGL.buffer.put(y); OpenGL.buffer.put(yAxisScale == YAxisScale.BOTH ? Theme.divisionLinesFadedColor : Theme.divisionLinesColor);
+					OpenGL.buffer.put(xPlotRight); OpenGL.buffer.put(y); OpenGL.buffer.put(yAxisScale.is(YAxisScale.BOTH) ? Theme.divisionLinesFadedColor : Theme.divisionLinesColor);
 
 					OpenGL.buffer.put(xYaxisLeftTickLeft);  OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.tickLinesColor);
 					OpenGL.buffer.put(xYaxisLeftTickRight); OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.tickLinesColor);
@@ -845,31 +703,31 @@ public class OpenGLHistogramChart extends PositionedChart {
 		}
 		
 		// draw the legend, if space is available
-		if(legendVisible && datasetsCount > 0 && xLegendBorderRight < width - Theme.tilePadding) {
+		if(legendVisibility.get() && datasetsCount > 0 && xLegendBorderRight < width - Theme.tilePadding) {
 			OpenGL.drawQuad2D(gl, Theme.legendBackgroundColor, xLegendBorderLeft, yLegendBorderBottom, xLegendBorderRight, yLegendBorderTop);
 			
 			for(int i = 0; i < datasetsCount; i++) {
-				Dataset d = datasets.getNormal(i);
+				Field d = datasets.getNormal(i);
 				if(mouseX >= legendMouseoverCoordinates[i][0] && mouseX <= legendMouseoverCoordinates[i][2] && mouseY >= legendMouseoverCoordinates[i][1] && mouseY <= legendMouseoverCoordinates[i][3]) {
 					OpenGL.drawQuadOutline2D(gl, Theme.tickLinesColor, legendMouseoverCoordinates[i][0], legendMouseoverCoordinates[i][1], legendMouseoverCoordinates[i][2], legendMouseoverCoordinates[i][3]);
 					handler = EventHandler.onPress(event -> ConfigureView.instance.forDataset(d));
 				}
-				OpenGL.drawQuad2D(gl, d.glColor, legendBoxCoordinates[i][0], legendBoxCoordinates[i][1], legendBoxCoordinates[i][2], legendBoxCoordinates[i][3]);
-				OpenGL.drawMediumText(gl, d.name, (int) xLegendNameLeft[i], (int) yLegendTextBaseline, 0);
+				OpenGL.drawQuad2D(gl, d.color.getGl(), legendBoxCoordinates[i][0], legendBoxCoordinates[i][1], legendBoxCoordinates[i][2], legendBoxCoordinates[i][3]);
+				OpenGL.drawMediumText(gl, d.name.get(), (int) xLegendNameLeft[i], (int) yLegendTextBaseline, 0);
 			}
 		}
 					
 		// draw the x-axis title, if space is available
-		if(xAxisTitleVisible)
-			if((!legendVisible && xXaxisTitleTextLeft > xPlotLeft) || (legendVisible && xXaxisTitleTextLeft > xLegendBorderRight + Theme.legendTextPadding))
+		if(xAxisTitleVisibility.get())
+			if((!legendVisibility.get() && xXaxisTitleTextLeft > xPlotLeft) || (legendVisibility.get() && xXaxisTitleTextLeft > xLegendBorderRight + Theme.legendTextPadding))
 				OpenGL.drawLargeText(gl, xAxisTitle, (int) xXaxisTitleTextLeft, (int) yXaxisTitleTextBasline, 0);
 		
 		// draw the left y-axis title, if space is available
-		if(yAxisTitleVisible && yYaxisLeftTitleTextLeft >= yPlotBottom)
+		if(yAxisTitleVisibility.get() && yYaxisLeftTitleTextLeft >= yPlotBottom)
 			OpenGL.drawLargeText(gl, yAxisLeftTitle, (int) xYaxisLeftTitleTextBaseline, (int) yYaxisLeftTitleTextLeft, 90);
 		
 		// draw the right y-axis title, if applicable, and if space is available
-		if(yAxisTitleVisible && yAxisScale == YAxisScale.BOTH && yYaxisRightTitleTextLeft <= yPlotTop)
+		if(yAxisTitleVisibility.get() && yAxisScale.is(YAxisScale.BOTH) && yYaxisRightTitleTextLeft <= yPlotTop)
 			OpenGL.drawLargeText(gl, yAxisRightTitle, (int) xYaxisRightTitleTextBaseline, (int) yYaxisRightTitleTextLeft, -90);
 
 		// clip to the plot region
@@ -881,7 +739,7 @@ public class OpenGLHistogramChart extends PositionedChart {
 		if(sampleCount > 0) {
 			for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
 				binsAsTriangles[datasetN].rewind();
-				for(int binN = 0; binN < binCount; binN++) {
+				for(int binN = 0; binN < binsCount; binN++) {
 					
 					float min = minX + (binSize *  binN);      // inclusive
 					float max = minX + (binSize * (binN + 1)); // exclusive
@@ -889,7 +747,7 @@ public class OpenGLHistogramChart extends PositionedChart {
 					
 					float xBarCenter = ((center - minX) / range * plotWidth) + xPlotLeft;
 					float yBarTop = ((float) bins[datasetN][binN] - minYfreq) / yFreqRange * plotHeight + yPlotBottom;
-					float halfBarWidth = plotWidth / binCount / 2f;
+					float halfBarWidth = plotWidth / binsCount / 2f;
 					
 					float x1 = xBarCenter - halfBarWidth; // top-left
 					float y1 = yBarTop;
@@ -904,7 +762,7 @@ public class OpenGLHistogramChart extends PositionedChart {
 					
 				}
 				binsAsTriangles[datasetN].rewind();
-				OpenGL.drawTrianglesXY(gl, GL3.GL_TRIANGLES, datasets.getNormal(datasetN).glColor, binsAsTriangles[datasetN], 6 * binCount);
+				OpenGL.drawTrianglesXY(gl, GL3.GL_TRIANGLES, datasets.getNormal(datasetN).color.getGl(), binsAsTriangles[datasetN], 6 * binsCount);
 			}
 		}
 
@@ -912,29 +770,21 @@ public class OpenGLHistogramChart extends PositionedChart {
 		gl.glScissor(originalScissorArgs[0], originalScissorArgs[1], originalScissorArgs[2], originalScissorArgs[3]);
 		
 		// draw the tooltip if the mouse is in the plot region
-		if(sampleCount > 0 && SettingsController.getTooltipVisibility() && mouseX >= xPlotLeft && mouseX <= xPlotRight && mouseY >= yPlotBottom && mouseY <= yPlotTop) {
-			int binN = (int) Math.floor(((float) mouseX - xPlotLeft) / plotWidth * binCount);
-			if(binN > binCount - 1)
-				binN = binCount - 1;
+		if(sampleCount > 0 && SettingsView.instance.tooltipsVisibility.get() && mouseX >= xPlotLeft && mouseX <= xPlotRight && mouseY >= yPlotBottom && mouseY <= yPlotTop) {
+			int binN = (int) Math.floor(((float) mouseX - xPlotLeft) / plotWidth * binsCount);
+			if(binN > binsCount - 1)
+				binN = binsCount - 1;
 			float min = minX + (binSize *  binN);      // inclusive
 			float max = minX + (binSize * (binN + 1)); // exclusive
-			List<TooltipEntry> entries = new ArrayList<TooltipEntry>(datasetsCount + 1);
-			entries.add(new TooltipEntry(null, ChartUtils.formattedNumber(min, 5) + " to " + ChartUtils.formattedNumber(max, 5) + " " + datasets.getNormal(0).unit));
-			for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
-				entries.add(new TooltipEntry(datasets.getNormal(datasetN).glColor, bins[datasetN][binN] + " samples (" + ChartUtils.formattedNumber((double) bins[datasetN][binN] / (double) sampleCount * 100f, 4) + "%)"));
-			float xBarCenter = ((binSize *  binN) + (binSize * (binN + 1))) / 2f / range * plotWidth + xPlotLeft;
-			if(datasetsCount > 1) {
-				OpenGL.buffer.rewind();
-				OpenGL.buffer.put(xBarCenter); OpenGL.buffer.put(yPlotTop);
-				OpenGL.buffer.put(xBarCenter); OpenGL.buffer.put(yPlotBottom);
-				OpenGL.buffer.rewind();
-				OpenGL.drawLinesXy(gl, GL3.GL_LINES, Theme.tooltipVerticalBarColor, OpenGL.buffer, 2);
-				drawTooltip(gl, entries, (int) xBarCenter, mouseY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
-			} else {
-				int anchorY = (int) (((float) bins[0][binN] - minYfreq) / yFreqRange * plotHeight + yPlotBottom);
-				anchorY = Math.max(anchorY, (int) yPlotBottom);
-				drawTooltip(gl, entries, (int) xBarCenter, anchorY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);				
+			Tooltip tooltip = new Tooltip();
+			tooltip.addRow(ChartUtils.formattedNumber(min, 5) + " to " + ChartUtils.formattedNumber(max, 5) + " " + datasets.getNormal(0).unit.get());
+			for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
+				tooltip.addRow(datasets.getNormal(datasetN).color.getGl(),
+				               bins[datasetN][binN] + " samples (" + ChartUtils.formattedNumber((double) bins[datasetN][binN] / (double) sampleCount * 100f, 4) + "%)",
+				               (float) Math.max((int) (((float) bins[datasetN][binN] - minYfreq) / yFreqRange * plotHeight + yPlotBottom), (int) yPlotBottom));
 			}
+			float xBarCenter = ((binSize *  binN) + (binSize * (binN + 1))) / 2f / range * plotWidth + xPlotLeft;
+			tooltip.draw(gl, xBarCenter, mouseX, mouseY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
 		}
 		
 		// draw the plot border

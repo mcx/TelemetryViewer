@@ -2,13 +2,9 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.GridLayout;
 import java.awt.event.ActionListener;
-import java.awt.event.FocusEvent;
-import java.awt.event.FocusListener;
 import javax.swing.JButton;
-import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
-import javax.swing.JTextField;
 import javax.swing.JToggleButton;
 import javax.swing.border.EmptyBorder;
 
@@ -34,7 +30,7 @@ public class ConfigureView extends JPanel {
 		super();
 		
 		widgetsPanel = new JPanel();
-		widgetsPanel.setLayout(new MigLayout("hidemode 3, wrap 1, insets " + Theme.padding + " " + Theme.padding / 2 + " " + Theme.padding + " " + Theme.padding + ", gapy " + Theme.padding*3, "[fill,grow]"));
+		widgetsPanel.setLayout(new MigLayout("hidemode 3, wrap 1, insets " + Theme.padding + " " + Theme.padding / 2 + " " + Theme.padding + " " + Theme.padding + ", gapy " + Theme.padding*2, "[fill,grow]"));
 		scrollableRegion = new JScrollPane(widgetsPanel, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
 		scrollableRegion.setBorder(null);
 		scrollableRegion.getVerticalScrollBar().setUnitIncrement(10);
@@ -66,7 +62,7 @@ public class ConfigureView extends JPanel {
 		
 		// resize the widgets region if the scrollbar is needed
 		Dimension scrollSize = widgetsPanel.getPreferredSize();
-		if(getSize().height < scrollSize.height + Theme.padding + buttonsPanel.getSize().height) {
+		if(getSize().height < scrollSize.height + buttonsPanel.getSize().height) {
 			scrollSize.width += scrollableRegion.getVerticalScrollBar().getPreferredSize().width;
 			scrollableRegion.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
 		} else {
@@ -132,7 +128,8 @@ public class ConfigureView extends JPanel {
 				int x2 = activeChart.bottomRightX;
 				int y2 = activeChart.bottomRightY;
 				ChartsController.removeChart(activeChart);
-				PositionedChart newChart = ChartsController.createAndAddChart(clickedButton.getText(), x1, y1, x2, y2);
+				PositionedChart newChart = ChartsController.createAndAddChart(clickedButton.getText());
+				newChart.setPosition(x1, y1, x2, y2);
 				instance.forNewChart(newChart);
 			}
 		};
@@ -175,52 +172,26 @@ public class ConfigureView extends JPanel {
 	 * 
 	 * @param dataset    The dataset to configure.
 	 */
-	public void forDataset(Dataset dataset) {
+	public void forDataset(Field dataset) {
 		
 		activeChart = null;
 		
-		JTextField nameTextfield = new JTextField(dataset.name, 15);
-		JButton colorButton = new JButton("\u25B2");
-		JTextField unitTextfield = new JTextField(dataset.unit, 15);
+		JButton doneButton = new JButton("Done");
+		doneButton.addActionListener(event -> close());
 		
-		JButton cancelButton = new JButton("Cancel");
-		cancelButton.addActionListener(event -> close());
-		JButton applyButton = new JButton("Apply");
-		applyButton.addActionListener(event -> {
-			dataset.setNameColorUnit(nameTextfield.getText(), colorButton.getForeground(), unitTextfield.getText());
-			close();
-		});
 		buttonsPanel.removeAll();
-		buttonsPanel.add(cancelButton, "growx, cell 0 0");
-		buttonsPanel.add(applyButton, "growx, cell 2 0");
-
-		ActionListener pressEnterToApply = event -> applyButton.doClick();
+		buttonsPanel.add(doneButton,  "growx, cell 2 0");
 		
-		nameTextfield.addActionListener(pressEnterToApply);
-		nameTextfield.addFocusListener(new FocusListener() {
-			@Override public void focusLost(FocusEvent e)   { nameTextfield.setText(nameTextfield.getText().trim()); }
-			@Override public void focusGained(FocusEvent e) { nameTextfield.selectAll(); }
-		});
-		
-		colorButton.setForeground(dataset.color);
-		colorButton.addActionListener(event -> colorButton.setForeground(ColorPickerView.getColor(nameTextfield.getText(), colorButton.getForeground(), true)));
-		
-		unitTextfield.addActionListener(pressEnterToApply);
-		unitTextfield.addFocusListener(new FocusListener() {
-			@Override public void focusLost(FocusEvent arg0)   { unitTextfield.setText(unitTextfield.getText().trim()); }
-			@Override public void focusGained(FocusEvent arg0) { unitTextfield.selectAll(); }
-		});
-		
-		JPanel datasetPanel = Theme.newWidgetsPanel("Dataset");
-		datasetPanel.add(new JLabel("Name: "), "split 2, sizegroup 0");
-		datasetPanel.add(nameTextfield, "grow, sizegroup 1");
-		datasetPanel.add(new JLabel("Color: "), "split 2, sizegroup 0");
-		datasetPanel.add(colorButton, "grow, sizegroup 1");
-		datasetPanel.add(new JLabel("Unit: "), "split 2, sizegroup 0");
-		datasetPanel.add(unitTextfield, "grow, sizegroup 1");
-		
+		widgetsPanel.setVisible(false); // hiding during removeAll() massively speeds up removeAll()
 		widgetsPanel.removeAll();
-		widgetsPanel.add(datasetPanel);
+		widgetsPanel.setVisible(true);
+		
+		// important: redefine any onEnter handlers because they may have been written assuming the data structure is still being defined!
+		widgetsPanel.add(Theme.newWidgetsPanel("Dataset")
+		                      .with(dataset.name.onEnter(event -> close()), "sizegroup 1")
+		                      .with(dataset.color,                          "sizegroup 1")
+		                      .with(dataset.unit.onEnter(event -> close()), "sizegroup 1")
+		                      .getPanel());
 		
 		scrollableRegion.getVerticalScrollBar().setValue(0);
 

@@ -1,4 +1,3 @@
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -10,9 +9,6 @@ import com.jogamp.opengl.GL3;
 public class OpenGLTimelineChart extends PositionedChart {
 	
 	// timeline region
-	boolean showTimeline;
-	float yTimelineTextBaseline;
-	float yTimelineTextTop;
 	float yTimelineTickBottom;
 	float yTimelineTickTop;
 	float xTimelineLeft;
@@ -23,27 +19,8 @@ public class OpenGLTimelineChart extends PositionedChart {
 	float timelineHeight;
 	
 	// playback controls
-	boolean showControls = true;
-	long previousFrameTimestamp;
-	boolean paused;
-	boolean playing;
-	boolean rewinding;
-	int playingSpeed;
-	int rewindingSpeed;
-	float buttonSize;
 	float yButtonsBottom;
 	int yButtonsTextBaseline;
-	float yButtonsTop;
-	float xBeginButtonLeft;
-	float xBeginButtonRight;
-	float xRewindButtonLeft;
-	float xRewindButtonRight;
-	float xPauseButtonLeft;
-	float xPauseButtonRight;
-	float xPlayButtonLeft;
-	float xPlayButtonRight;
-	float xEndButtonLeft;
-	float xEndButtonRight;
 	
 	long minTimestamp;
 	long maxTimestamp;
@@ -52,22 +29,16 @@ public class OpenGLTimelineChart extends PositionedChart {
 	float markerWidth;
 	
 	// time label region
-	boolean showTime;
-	float yTimeTop;
 	float yTimeBaseline1;
 	float yTimeBaseline2; // only used if label uses 2 lines
-	float timeHeight;
-	float xTimeLeft1;
-	float xTimeLeft2; // only used if label uses 2 lines
 	float xTimeRight;
-	float timeWidth;
 	
 	BitfieldEvents events;
 	
 	// user settings
-	WidgetCheckbox showControlsWidget;
-	WidgetCheckbox showTimeWidget;
-	WidgetCheckbox showTimelineWidget;
+	WidgetCheckbox showControls;
+	WidgetCheckbox showTime;
+	WidgetCheckbox showTimeline;
 	WidgetDatasetCheckboxes datasetsWidget;
 	
 	@Override public String toString() {
@@ -76,9 +47,7 @@ public class OpenGLTimelineChart extends PositionedChart {
 		
 	}
 	
-	public OpenGLTimelineChart(int x1, int y1, int x2, int y2) {
-		
-		super(x1, y1, x2, y2);
+	public OpenGLTimelineChart() {
 		
 		datasetsWidget = new WidgetDatasetCheckboxes(null,
 		                                             newBitfieldEdges  -> { datasets.setEdges(newBitfieldEdges);   events = null; },
@@ -86,51 +55,28 @@ public class OpenGLTimelineChart extends PositionedChart {
 		                                             null,
 		                                             false);
 		
-		showControlsWidget = new WidgetCheckbox("Show Controls", true, isSelected -> {
-		                                                                   showControls = isSelected;
-		                                                                   if(!showControls) {
-		                                                                       paused = !OpenGLChartsView.instance.isLiveView();
-		                                                                       playing = false;
-		                                                                       rewinding = false;
-		                                                                   }
-		                                                               });
+		showControls = new WidgetCheckbox("Show Controls", true);
 		
-		showTimeWidget = new WidgetCheckbox("Show Time", true, isSelected -> showTime = isSelected);
+		showTime = new WidgetCheckbox("Show Time", true);
 		
-		showTimelineWidget = new WidgetCheckbox("Show Timeline", true, isSelected -> {
-		                                                                   showTimeline = isSelected;
-		                                                                   datasetsWidget.setVisible(showTimeline);
-		                                                               });
+		showTimeline = new WidgetCheckbox("Show Timeline", true)
+		                   .onChange(isSelected -> datasetsWidget.setVisible(isSelected));
 		
-		widgets.add(showControlsWidget);
-		widgets.add(showTimeWidget);
-		widgets.add(showTimelineWidget);
+		widgets.add(showControls);
+		widgets.add(showTime);
+		widgets.add(showTimeline);
 		widgets.add(datasetsWidget);
-		
-		if(OpenGLChartsView.instance.isPausedView())
-			userIsTimeshifting();
 		
 	}
 	
 	@Override public void getConfigurationGui(JPanel gui) {
 		
-		JPanel settingsPanel = Theme.newWidgetsPanel("Settings");
-		
-		showControlsWidget.appendToGui(settingsPanel);
-		showTimeWidget.appendToGui(settingsPanel);
-		showTimelineWidget.appendToGui(settingsPanel);
-		datasetsWidget.appendToGui(settingsPanel);
-		datasetsWidget.setVisible(showTimeline);
-		
-		gui.add(settingsPanel);
-		
-	}
-	
-	public void userIsTimeshifting() {
-		
-		paused = true;
-		playing = false;
-		rewinding = false;
+		gui.add(Theme.newWidgetsPanel("Settings")
+		             .with(showControls)
+		             .with(showTime)
+		             .with(showTimeline)
+		             .with(datasetsWidget)
+		             .getPanel());
 		
 	}
 	
@@ -147,35 +93,35 @@ public class OpenGLTimelineChart extends PositionedChart {
 		if(OpenGLChartsView.instance.isLiveView())
 			maxTimestamp = nowTimestamp;
 		
-		boolean twoLineTimestamps = SettingsController.isTimeFormatTwoLines();
-		String timeText = haveTelemetry ? SettingsController.formatTimestampToMilliseconds(nowTimestamp) : "[waiting for telemetry]";
+		boolean twoLineTimestamps = SettingsView.isTimeFormatTwoLines();
+		String timeText = haveTelemetry ? SettingsView.formatTimestampToMilliseconds(nowTimestamp) : "[waiting for telemetry]";
 		String[] timeTextLine = timeText.split("\n");
 		boolean useTwoLines = haveTelemetry ? twoLineTimestamps && OpenGL.largeTextWidth(gl, timeText.replace('\n', ' ')) > (width - 2*Theme.tilePadding) : false;
-		timeHeight = useTwoLines ? 2.3f * OpenGL.largeTextHeight : OpenGL.largeTextHeight;
+		float timeHeight = useTwoLines ? 2.3f * OpenGL.largeTextHeight : OpenGL.largeTextHeight;
 		
-		if(showControls) {
+		if(showControls.isTrue()) {
 			
 			// x and y locations
-			buttonSize = OpenGL.largeTextHeight + 2 * Theme.tilePadding;
+			float buttonSize = OpenGL.largeTextHeight + 2 * Theme.tilePadding;
 			yButtonsBottom = height - Theme.tilePadding - buttonSize;
-			if(!showTimeline && !showTime)
+			if(showTimeline.isFalse() && showTime.isFalse())
 				yButtonsBottom = (height / 2f) - (buttonSize / 2f);
-			else if(!showTimeline && showTime)
+			else if(showTimeline.isFalse() && showTime.isTrue())
 				yButtonsBottom = (height / 2f) - (buttonSize / 2f) + (Theme.tilePadding / 2f) + (timeHeight / 2f);
 				
 			yButtonsTextBaseline = (int) (yButtonsBottom + Theme.tilePadding);
-			yButtonsTop = yButtonsBottom + buttonSize;
+			float yButtonsTop = yButtonsBottom + buttonSize;
 			float xCenter = width / 2f;
-			xBeginButtonLeft   = xCenter - (0.5f * buttonSize) - Theme.tilePadding - buttonSize - Theme.tilePadding - buttonSize;
-			xBeginButtonRight  = xBeginButtonLeft + buttonSize;
-			xRewindButtonLeft  = xBeginButtonRight + Theme.tilePadding;
-			xRewindButtonRight = xRewindButtonLeft + buttonSize;
-			xPauseButtonLeft   = xRewindButtonRight + Theme.tilePadding;
-			xPauseButtonRight  = xPauseButtonLeft + buttonSize;
-			xPlayButtonLeft    = xPauseButtonRight + Theme.tilePadding;
-			xPlayButtonRight   = xPlayButtonLeft + buttonSize;
-			xEndButtonLeft     = xPlayButtonRight + Theme.tilePadding;
-			xEndButtonRight    = xEndButtonLeft + buttonSize;
+			float xBeginButtonLeft   = xCenter - (0.5f * buttonSize) - Theme.tilePadding - buttonSize - Theme.tilePadding - buttonSize;
+			float xBeginButtonRight  = xBeginButtonLeft + buttonSize;
+			float xRewindButtonLeft  = xBeginButtonRight + Theme.tilePadding;
+			float xRewindButtonRight = xRewindButtonLeft + buttonSize;
+			float xPauseButtonLeft   = xRewindButtonRight + Theme.tilePadding;
+			float xPauseButtonRight  = xPauseButtonLeft + buttonSize;
+			float xPlayButtonLeft    = xPauseButtonRight + Theme.tilePadding;
+			float xPlayButtonRight   = xPlayButtonLeft + buttonSize;
+			float xEndButtonLeft     = xPlayButtonRight + Theme.tilePadding;
+			float xEndButtonRight    = xEndButtonLeft + buttonSize;
 			
 			// draw the buttons
 			OpenGL.drawBox(gl, Theme.legendBackgroundColor, xBeginButtonLeft,  yButtonsBottom, buttonSize, buttonSize);
@@ -211,144 +157,75 @@ public class OpenGLTimelineChart extends PositionedChart {
 			                                                xEndButtonRight - buttonSize*10f/12f,  yButtonsBottom + buttonSize/5f,
 			                                                xEndButtonRight - buttonSize*10f/12f,  yButtonsBottom + buttonSize*4f/5f);
 			
-			if(playing && playingSpeed > 1) {
-				String s = Integer.toString(playingSpeed);
+			if(OpenGLChartsView.playSpeed > 1) {
+				String s = Integer.toString(OpenGLChartsView.playSpeed);
 				float w = OpenGL.smallTextWidth(gl, s);
 				OpenGL.drawSmallText(gl, s, (int) (xPlayButtonRight - Theme.lineWidth - w), (int) (yButtonsBottom + 2*Theme.lineWidth), 0);
-			}
-			
-			if(rewinding && rewindingSpeed > 1) {
-				String s = Integer.toString(rewindingSpeed);
+			} else if(OpenGLChartsView.playSpeed < -1) {
+				String s = Integer.toString(-1 * OpenGLChartsView.playSpeed);
 				OpenGL.drawSmallText(gl, s, (int) (xRewindButtonLeft + Theme.lineWidth), (int) (yButtonsBottom + 2*Theme.lineWidth), 0);
 			}
 			
-			// handle mouseover logic
+			// outline a button if the mouse is over it
 			if(mouseX >= xBeginButtonLeft && mouseX <= xBeginButtonRight && mouseY >= yButtonsBottom && mouseY <= yButtonsTop) {
 				OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xBeginButtonLeft, yButtonsBottom, buttonSize, buttonSize);
-				handler = EventHandler.onPress(event -> {
-					paused = true;
-					playing = false;
-					rewinding = false;
-					OpenGLChartsView.instance.setPausedView(ConnectionsController.getFirstTimestamp(), null, 0, false);
-				});
-			}
-			
-			if(mouseX >= xRewindButtonLeft && mouseX <= xRewindButtonRight && mouseY >= yButtonsBottom && mouseY <= yButtonsTop) {
+				handler = EventHandler.onPress(event -> OpenGLChartsView.instance.setPaused(ConnectionsController.getFirstTimestamp(), null, 0));
+			} else if(mouseX >= xRewindButtonLeft && mouseX <= xRewindButtonRight && mouseY >= yButtonsBottom && mouseY <= yButtonsTop) {
 				OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xRewindButtonLeft, yButtonsBottom, buttonSize, buttonSize);
-				handler = EventHandler.onPress(event -> {
-					rewindingSpeed = !rewinding ? 1 : rewindingSpeed < 8 ? rewindingSpeed + 1 : rewindingSpeed;
-					paused = false;
-					playing = false;
-					rewinding = true;
-					previousFrameTimestamp = System.currentTimeMillis();
-				});
-			}
-			
-			if(mouseX >= xPauseButtonLeft && mouseX <= xPauseButtonRight && mouseY >= yButtonsBottom && mouseY <= yButtonsTop) {
+				handler = EventHandler.onPress(event -> OpenGLChartsView.instance.setPlayBackwards());
+			} else if(mouseX >= xPauseButtonLeft && mouseX <= xPauseButtonRight && mouseY >= yButtonsBottom && mouseY <= yButtonsTop) {
 				OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xPauseButtonLeft, yButtonsBottom, buttonSize, buttonSize);
 				long now = nowTimestamp;
-				handler = EventHandler.onPress(event -> {
-					paused = true;
-					playing = false;
-					rewinding = false;
-					OpenGLChartsView.instance.setPausedView(now, null, 0, false);
-				});
-			}
-			
-			if(mouseX >= xPlayButtonLeft && mouseX <= xPlayButtonRight && mouseY >= yButtonsBottom && mouseY <= yButtonsTop) {
+				handler = EventHandler.onPress(event -> OpenGLChartsView.instance.setPaused(now, null, 0));
+			} else if(mouseX >= xPlayButtonLeft && mouseX <= xPlayButtonRight && mouseY >= yButtonsBottom && mouseY <= yButtonsTop) {
 				OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xPlayButtonLeft, yButtonsBottom, buttonSize, buttonSize);
-				handler = EventHandler.onPress(event -> {
-					playingSpeed = !playing ? 1 : playingSpeed < 8 ? playingSpeed + 1 : playingSpeed;
-					paused = false;
-					playing = true;
-					rewinding = false;
-					previousFrameTimestamp = System.currentTimeMillis();
-				});
-			}
-			
-			if(mouseX >= xEndButtonLeft && mouseX <= xEndButtonRight && mouseY >= yButtonsBottom && mouseY <= yButtonsTop) {
+				handler = EventHandler.onPress(event -> OpenGLChartsView.instance.setPlayForwards());
+			} else if(mouseX >= xEndButtonLeft && mouseX <= xEndButtonRight && mouseY >= yButtonsBottom && mouseY <= yButtonsTop) {
 				OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xEndButtonLeft, yButtonsBottom, buttonSize, buttonSize);
-				handler = EventHandler.onPress(event -> {
-					paused = false;
-					playing = false;
-					rewinding = false;
-					OpenGLChartsView.instance.setLiveView();
-				});
+				handler = EventHandler.onPress(event -> OpenGLChartsView.instance.setPlayLive());
 			}
 			
 			// highlight the currently active button if the mouse is not already over a button
-			if(paused && handler == null)
-				OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xPauseButtonLeft,  yButtonsBottom, buttonSize, buttonSize);
-			if(rewinding && handler == null)
-				OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xRewindButtonLeft, yButtonsBottom, buttonSize, buttonSize);
-			if(playing && handler == null)
-				OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xPlayButtonLeft,   yButtonsBottom, buttonSize, buttonSize);
-			if(OpenGLChartsView.instance.isLiveView() && handler == null)
-				OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xEndButtonLeft,    yButtonsBottom, buttonSize, buttonSize);
-			
-			// perform the actual rewinding or playing if appropriate
-			if(rewinding) {
-				long now = System.currentTimeMillis();
-				long delta = (now - previousFrameTimestamp) * rewindingSpeed;
-				long newTimestamp = nowTimestamp - delta;
-				long firstTimestamp = ConnectionsController.getFirstTimestamp();
-				if(newTimestamp < firstTimestamp) {
-					newTimestamp = firstTimestamp;
-					paused = true;
-					rewinding = false;
+			if(handler == null)
+				switch(OpenGLChartsView.state) {
+					case REWINDING    -> OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xRewindButtonLeft, yButtonsBottom, buttonSize, buttonSize);
+					case PLAYING      -> OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xPlayButtonLeft,   yButtonsBottom, buttonSize, buttonSize);
+					case PLAYING_LIVE -> OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xEndButtonLeft,    yButtonsBottom, buttonSize, buttonSize);
+					case PAUSED       -> { if(nowTimestamp == ConnectionsController.getFirstTimestamp())
+					                           OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xBeginButtonLeft, yButtonsBottom, buttonSize, buttonSize);
+					                       else
+					                           OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xPauseButtonLeft,  yButtonsBottom, buttonSize, buttonSize);}
+					case TRIGGERED    -> OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xEndButtonLeft,    yButtonsBottom, buttonSize, buttonSize);
 				}
-				OpenGLChartsView.instance.setPausedView(newTimestamp, null, 0, false);
-				previousFrameTimestamp = now;
-			}
-			
-			if(playing) {
-				long now = System.currentTimeMillis();
-				long delta = (now - previousFrameTimestamp) * playingSpeed;
-				long newTimestamp = nowTimestamp + delta;
-				if(newTimestamp > ConnectionsController.getLastTimestamp()) {
-					paused = false;
-					rewinding = false;
-					playing = false;
-					OpenGLChartsView.instance.setLiveView();
-				} else {
-					OpenGLChartsView.instance.setPausedView(newTimestamp, null, 0, false);
-				}
-				previousFrameTimestamp = now;
-			}
-			
-			if(paused && OpenGLChartsView.instance.isLiveView())
-				paused = false;
 			
 		}
 		
-		if(showTime) {
+		if(showTime.isTrue()) {
 			
-			yTimeTop = showControls ? yButtonsBottom - Theme.tilePadding :
-			           showTimeline ? height - Theme.tilePadding :
-			                          (height / 2f) + (timeHeight / 2f);
+			float yTimeTop = showControls.isTrue() ? yButtonsBottom - Theme.tilePadding :
+			                 showTimeline.isTrue() ? height - Theme.tilePadding :
+			                                         (height / 2f) + (timeHeight / 2f);
 			yTimeBaseline1 = yTimeTop - OpenGL.largeTextHeight;
 			yTimeBaseline2 = useTwoLines ? yTimeBaseline1 - (1.3f * OpenGL.largeTextHeight) : yTimeBaseline1;
 			if(yTimeBaseline2 > 0)
 				if(useTwoLines) {
-					xTimeLeft1 = (width / 2) - (OpenGL.largeTextWidth(gl, timeTextLine[0]) / 2);
-					xTimeLeft2 = (width / 2) - (OpenGL.largeTextWidth(gl, timeTextLine[1]) / 2);
-					timeWidth = Float.max(OpenGL.largeTextWidth(gl, timeTextLine[0]), OpenGL.largeTextWidth(gl, timeTextLine[1]));
+					float xTimeLeft1 = (width / 2) - (OpenGL.largeTextWidth(gl, timeTextLine[0]) / 2);
+					float xTimeLeft2 = (width / 2) - (OpenGL.largeTextWidth(gl, timeTextLine[1]) / 2);
 					OpenGL.drawLargeText(gl, timeTextLine[0], (int) xTimeLeft1, (int) yTimeBaseline1, 0);
 					OpenGL.drawLargeText(gl, timeTextLine[1], (int) xTimeLeft2, (int) yTimeBaseline2, 0);
 				} else {
 					timeText = timeText.replace('\n', ' ');
-					xTimeLeft1 = (width / 2) - (OpenGL.largeTextWidth(gl, timeText) / 2);
-					timeWidth = OpenGL.largeTextWidth(gl, timeText);
+					float xTimeLeft1 = (width / 2) - (OpenGL.largeTextWidth(gl, timeText) / 2);
 					OpenGL.drawLargeText(gl, timeText, (int) xTimeLeft1, (int) yTimeBaseline1, 0);
 				}
 			
 		}
 		
-		if(showTimeline && width > 2*Theme.tilePadding) {
+		if(showTimeline.isTrue() && width > 2*Theme.tilePadding) {
 			
 			// x and y locations of the timeline
-			yTimelineTextBaseline = Theme.tilePadding;
-			yTimelineTextTop = yTimelineTextBaseline + OpenGL.smallTextHeight;
+			float yTimelineTextBaseline = Theme.tilePadding;
+			float yTimelineTextTop = yTimelineTextBaseline + OpenGL.smallTextHeight;
 			if(twoLineTimestamps)
 				yTimelineTextTop += 1.3 * OpenGL.smallTextHeight;
 			yTimelineTickBottom = yTimelineTextTop + Theme.tickTextPadding;
@@ -362,7 +239,7 @@ public class OpenGLTimelineChart extends PositionedChart {
 			markerWidth = 6 * ChartsController.getDisplayScalingFactor();
 			
 			// only draw the timeline if there's space for it
-			if(yTimelineTop > height || (showTime && yTimelineTop > yTimeBaseline2) || (showControls && yTimelineTop > yButtonsBottom))
+			if(yTimelineTop > height || (showTime.isTrue() && yTimelineTop > yTimeBaseline2) || (showControls.isTrue() && yTimelineTop > yButtonsBottom))
 				return handler;
 			
 			// get the divisions
@@ -419,7 +296,7 @@ public class OpenGLTimelineChart extends PositionedChart {
 				long max = maxTimestamp;
 				List<BitfieldEvents.EdgeMarker>  edgeMarkers  = events.getEdgeMarkersMillisecondsMode(min, max - min, (int) timelineWidth);
 				List<BitfieldEvents.LevelMarker> levelMarkers = events.getLevelMarkersMillisecondsMode(min, max - min, (int) timelineWidth);
-				EventHandler h = ChartUtils.drawMarkers(gl, datasets, edgeMarkers, levelMarkers, xTimelineLeft, showTime ? yTimeBaseline2 - Theme.tickTextPadding - Theme.lineWidth : height - Theme.lineWidth, xTimelineRight, y + 2*markerWidth, mouseX, mouseY);
+				EventHandler h = ChartUtils.drawMarkers(gl, datasets, edgeMarkers, levelMarkers, xTimelineLeft, showTime.isTrue() ? yTimeBaseline2 - Theme.tickTextPadding - Theme.lineWidth : height - Theme.lineWidth, xTimelineRight, y + 2*markerWidth, mouseX, mouseY);
 				if(handler == null)
 					handler = h;
 				gl.glScissor(originalScissorArgs[0], originalScissorArgs[1], originalScissorArgs[2], originalScissorArgs[3]);
@@ -430,6 +307,7 @@ public class OpenGLTimelineChart extends PositionedChart {
 				
 				double mousePercentage = (mouseX - xTimelineLeft) / timelineWidth;
 				long mouseTimestamp = minTimestamp + (long) (mousePercentage * (double) (maxTimestamp - minTimestamp));
+				float anchorY = (yTimelineTop + yTimelineBottom) / 2;
 				
 				if(!ConnectionsController.telemetryConnections.isEmpty() && ConnectionsController.cameraConnections.isEmpty()) {
 
@@ -437,71 +315,65 @@ public class OpenGLTimelineChart extends PositionedChart {
 					ConnectionsController.SampleDetails details = ConnectionsController.getClosestSampleDetailsFor(mouseTimestamp);
 					
 					mouseTimestamp = details.timestamp;
-					List<TooltipEntry> entries = new ArrayList<TooltipEntry>(twoLineTimestamps ? 3 : 2);
-					entries.add(new TooltipEntry(null, "Sample " + details.sampleNumber));
+					Tooltip tooltip = new Tooltip();
+					tooltip.addRow("Sample " + details.sampleNumber);
 					if(twoLineTimestamps) {
-						String[] timestampLine = SettingsController.formatTimestampToMilliseconds(mouseTimestamp).split("\n");
-						entries.add(new TooltipEntry(null, timestampLine[0]));
-						entries.add(new TooltipEntry(null, timestampLine[1]));
+						String[] timestampLine = SettingsView.formatTimestampToMilliseconds(mouseTimestamp).split("\n");
+						tooltip.addRow(timestampLine[0]);
+						tooltip.addRow(timestampLine[1], anchorY);
 					} else {
-						entries.add(new TooltipEntry(null, SettingsController.formatTimestampToMilliseconds(mouseTimestamp)));
+						tooltip.addRow(SettingsView.formatTimestampToMilliseconds(mouseTimestamp), anchorY);
 					}
 					float tooltipX = (float) (mouseTimestamp - minTimestamp) / (float) (maxTimestamp - minTimestamp) * timelineWidth + xTimelineLeft;
-					drawTooltip(gl, entries, tooltipX, (yTimelineTop + yTimelineBottom)/2, 0, height, width, 0);
+					tooltip.draw(gl, tooltipX, mouseX, mouseY, 0, height, width, 0);
 					
 				} else {
 					
 					// cameras exist, so find the closest timestamp
 					float tooltipX = (float) (mouseTimestamp - minTimestamp) / (float) (maxTimestamp - minTimestamp) * timelineWidth + xTimelineLeft;
-					List<TooltipEntry> entries = new ArrayList<TooltipEntry>(twoLineTimestamps ? 2 : 1);
+					Tooltip tooltip = new Tooltip();
 					if(twoLineTimestamps) {
-						String[] timestampLine = SettingsController.formatTimestampToMilliseconds(mouseTimestamp).split("\n");
-						entries.add(new TooltipEntry(null, timestampLine[0]));
-						entries.add(new TooltipEntry(null, timestampLine[1]));
+						String[] timestampLine = SettingsView.formatTimestampToMilliseconds(mouseTimestamp).split("\n");
+						tooltip.addRow(timestampLine[0]);
+						tooltip.addRow(timestampLine[1], anchorY);
 					} else {
-						entries.add(new TooltipEntry(null, SettingsController.formatTimestampToMilliseconds(mouseTimestamp)));
+						tooltip.addRow(SettingsView.formatTimestampToMilliseconds(mouseTimestamp), anchorY);
 					}
-					drawTooltip(gl, entries, tooltipX, (yTimelineTop + yTimelineBottom)/2, 0, height, width, 0);
+					tooltip.draw(gl, tooltipX, mouseX, mouseY, 0, height, width, 0);
 					
 				}
 
-				handler = EventHandler.onPressOrDrag(null, newMouseLocation -> pauseAtMouseX(newMouseLocation.x), null, this, Theme.clickableCursor);
+				handler = EventHandler.onPressOrDrag(null, newMouseLocation -> {
+						if(newMouseLocation.x < xTimelineLeft)
+							newMouseLocation.x = (int) xTimelineLeft;
+						if(newMouseLocation.x > xTimelineRight)
+							newMouseLocation.x = (int) xTimelineRight;
+							
+						double newMousePercentage = (newMouseLocation.x - xTimelineLeft) / timelineWidth;
+						long newMouseTimestamp = minTimestamp + (long) (newMousePercentage * (double) (maxTimestamp - minTimestamp));
+						
+						if(!ConnectionsController.telemetryConnections.isEmpty() && ConnectionsController.cameraConnections.isEmpty()) {
+							
+							// only telemetry connections exist, so find the closest sample number
+							ConnectionsController.SampleDetails details = ConnectionsController.getClosestSampleDetailsFor(newMouseTimestamp);
+							OpenGLChartsView.instance.setPaused(details.timestamp, details.connection, details.sampleNumber);
+							
+						} else {
+							
+							// cameras exist, so use the timestamp
+							OpenGLChartsView.instance.setPaused(newMouseTimestamp, null, 0);
+							
+						}
+					},
+					null,
+					this,
+					Theme.clickableCursor);
 
 			}
 			
 		}
 		
 		return handler;
-		
-	}
-	
-	/**
-	 * Pauses the view because the user has clicked at some location along the timeline.
-	 * 
-	 * @param mouseX    Location of the mouse, in pixels, relative to this chart.
-	 */
-	private void pauseAtMouseX(int mouseX) {
-		
-		if(mouseX < xTimelineLeft)
-			mouseX = (int) xTimelineLeft;
-		if(mouseX > xTimelineRight)
-			mouseX = (int) xTimelineRight;
-			
-		double mousePercentage = (mouseX - xTimelineLeft) / timelineWidth;
-		long mouseTimestamp = minTimestamp + (long) (mousePercentage * (double) (maxTimestamp - minTimestamp));
-		
-		if(!ConnectionsController.telemetryConnections.isEmpty() && ConnectionsController.cameraConnections.isEmpty()) {
-			
-			// only telemetry connections exist, so find the closest sample number
-			ConnectionsController.SampleDetails details = ConnectionsController.getClosestSampleDetailsFor(mouseTimestamp);
-			OpenGLChartsView.instance.setPausedView(details.timestamp, details.connection, details.sampleNumber, true);
-			
-		} else {
-			
-			// cameras exist, so use the timestamp
-			OpenGLChartsView.instance.setPausedView(mouseTimestamp, null, 0, true);
-			
-		}
 		
 	}
 

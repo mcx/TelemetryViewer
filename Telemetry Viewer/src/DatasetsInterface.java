@@ -13,11 +13,11 @@ import java.util.function.BiConsumer;
  */
 public class DatasetsInterface {
 	
-	public List<Dataset> normalDatasets = new ArrayList<>();
-	public List<Dataset.Bitfield.State> edgeStates = new ArrayList<>();
-	public List<Dataset.Bitfield.State> levelStates = new ArrayList<>();
+	public List<Field> normalDatasets = new ArrayList<>();
+	public List<Field.Bitfield.State> edgeStates = new ArrayList<>();
+	public List<Field.Bitfield.State> levelStates = new ArrayList<>();
 	public ConnectionTelemetry connection = null;
-	private Map<Dataset, StorageFloats.Cache> sampleCaches = new HashMap<>();
+	private Map<Field, StorageFloats.Cache> sampleCaches = new HashMap<>();
 	private StorageTimestamps.Cache timestampsCache = null;
 	
 	public DatasetsInterface() { }
@@ -34,7 +34,7 @@ public class DatasetsInterface {
 	 * 
 	 * @param newDatasets    Normal datasets to use.
 	 */
-	public void setNormals(List<Dataset> newDatasets) {
+	public void setNormals(List<Field> newDatasets) {
 		
 		// update normal datasets
 		normalDatasets.clear();
@@ -62,7 +62,7 @@ public class DatasetsInterface {
 	 * 
 	 * @param newEdges    Bitfield edge states to use.
 	 */
-	public void setEdges(List<Dataset.Bitfield.State> newEdges) {
+	public void setEdges(List<Field.Bitfield.State> newEdges) {
 		
 		// update edge datasets
 		edgeStates.clear();
@@ -90,7 +90,7 @@ public class DatasetsInterface {
 	 * 
 	 * @param newLevels    Bitfield level states to use.
 	 */
-	public void setLevels(List<Dataset.Bitfield.State> newLevels) {
+	public void setLevels(List<Field.Bitfield.State> newLevels) {
 		
 		// update edge datasets
 		levelStates.clear();
@@ -117,7 +117,7 @@ public class DatasetsInterface {
 	 * @param datasetN    Index of a normal dataset (this is NOT the dataset location, but the setNormals() list index.)
 	 * @return            Corresponding normal dataset.
 	 */
-	public Dataset getNormal(int datasetN) {
+	public Field getNormal(int datasetN) {
 		return normalDatasets.get(datasetN);
 	}
 	
@@ -125,7 +125,7 @@ public class DatasetsInterface {
 	 * @param dataset    Dataset to check for.
 	 * @return           True if this object references the Dataset (as a normal/edge/level.)
 	 */
-	public boolean contains(Dataset dataset) {
+	public boolean contains(Field dataset) {
 		return sampleCaches.keySet().contains(dataset);
 	}
 	
@@ -171,7 +171,7 @@ public class DatasetsInterface {
 	 * @param sampleNumber    Sample number.
 	 * @return                The sample, as a float32.
 	 */
-	public float getSample(Dataset dataset, int sampleNumber) {
+	public float getSample(Field dataset, int sampleNumber) {
 		
 		return dataset.getSample(sampleNumber, cacheFor(dataset));
 		
@@ -184,7 +184,7 @@ public class DatasetsInterface {
 	 * @param sampleNumber    Sample number.
 	 * @return                The sample, as a String.
 	 */
-	public String getSampleAsString(Dataset dataset, int sampleNumber) {
+	public String getSampleAsString(Field dataset, int sampleNumber) {
 		
 		return dataset.getSampleAsString(sampleNumber, cacheFor(dataset));
 		
@@ -198,7 +198,7 @@ public class DatasetsInterface {
 	 * @param maxSampleNumber    Last sample number, inclusive.
 	 * @return                   A float[] of the samples.
 	 */
-	public float[] getSamplesArray(Dataset dataset, int minSampleNumber, int maxSampleNumber) {
+	public float[] getSamplesArray(Field dataset, int minSampleNumber, int maxSampleNumber) {
 		
 		return dataset.getSamplesArray(minSampleNumber, maxSampleNumber, cacheFor(dataset));
 		
@@ -212,7 +212,7 @@ public class DatasetsInterface {
 	 * @param maxSampleNumber    Last sample number, inclusive.
 	 * @return                   A FloatBuffer of the samples.
 	 */
-	public FloatBuffer getSamplesBuffer(Dataset dataset, int minSampleNumber, int maxSampleNumber) {
+	public FloatBuffer getSamplesBuffer(Field dataset, int minSampleNumber, int maxSampleNumber) {
 		
 		return dataset.getSamplesBuffer(minSampleNumber, maxSampleNumber, cacheFor(dataset));
 		
@@ -286,7 +286,7 @@ public class DatasetsInterface {
 	 *                           If there are no normal datasets, [-1, 1] will be returned.
 	 *                           If the range is a single value, [value +/- 0.001] will be returned.
 	 */
-	public float[] getRange(Dataset dataset, int minSampleNumber, int maxSampleNumber) {
+	public float[] getRange(Field dataset, int minSampleNumber, int maxSampleNumber) {
 		
 		float[] minMax = new float[] {Float.MAX_VALUE, -Float.MAX_VALUE};
 
@@ -314,9 +314,9 @@ public class DatasetsInterface {
 	 * 
 	 * @param consumer    BiConsumer that accepts a dataset and its corresponding samples cache.
 	 */
-	public void forEachNormal(BiConsumer<Dataset, StorageFloats.Cache> consumer) {
+	public void forEachNormal(BiConsumer<Field, StorageFloats.Cache> consumer) {
 		for(int i = 0; i < normalDatasets.size(); i++) {
-			Dataset dataset = normalDatasets.get(i);
+			Field dataset = normalDatasets.get(i);
 			consumer.accept(dataset, sampleCaches.get(dataset));
 		}
 	}
@@ -328,7 +328,7 @@ public class DatasetsInterface {
 	 * @param maxSampleNumber    Last sample number to check, inclusive.
 	 * @param consumer           BiConsumer that accepts a bitfield state and its corresponding edge event sample number.
 	 */
-	public void forEachEdge(int minSampleNumber, int maxSampleNumber, BiConsumer<Dataset.Bitfield.State, Integer> consumer) {
+	public void forEachEdge(int minSampleNumber, int maxSampleNumber, BiConsumer<Field.Bitfield.State, Integer> consumer) {
 		
 		edgeStates.forEach(state -> {
 			state.getEdgeEventsBetween(minSampleNumber, maxSampleNumber, cacheFor(state.dataset)).forEach(eventSampleNumber -> {
@@ -345,7 +345,7 @@ public class DatasetsInterface {
 	 * @param maxSampleNumber    Last sample number to check, inclusive.
 	 * @param consumer           BiConsumer that accepts a bitfield state and its corresponding sample number range ([0] = start, [1] = end.)
 	 */
-	public void forEachLevel(int minSampleNumber, int maxSampleNumber, BiConsumer<Dataset.Bitfield.State, int[]> consumer) {
+	public void forEachLevel(int minSampleNumber, int maxSampleNumber, BiConsumer<Field.Bitfield.State, int[]> consumer) {
 		
 		levelStates.forEach(state -> {
 			state.getLevelsBetween(minSampleNumber, maxSampleNumber, cacheFor(state.dataset)).forEach(range -> {
@@ -359,7 +359,7 @@ public class DatasetsInterface {
 	 * @param dataset    Dataset (normal/edge/level.)
 	 * @return           Corresponding samples cache.
 	 */
-	private StorageFloats.Cache cacheFor(Dataset dataset) {
+	private StorageFloats.Cache cacheFor(Field dataset) {
 		
 		return sampleCaches.get(dataset);
 		

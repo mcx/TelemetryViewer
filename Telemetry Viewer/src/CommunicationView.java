@@ -1,5 +1,5 @@
 import java.awt.Desktop;
-import java.awt.event.ActionListener;
+import java.awt.Dimension;
 import java.net.URI;
 import java.util.AbstractMap;
 import java.util.ArrayList;
@@ -76,10 +76,10 @@ public class CommunicationView extends JPanel {
 			
 			for(ConnectionTelemetry connection : ConnectionsController.telemetryConnections)
 				if(connection.getSampleCount() > 0)
-					csvFileCheckboxes.add(new AbstractMap.SimpleEntry<JCheckBox, ConnectionTelemetry>(new JCheckBox("CSV file for \"" + connection.name + "\" (the acquired samples and corresponding timestamps)", true), connection));
+					csvFileCheckboxes.add(new AbstractMap.SimpleEntry<JCheckBox, ConnectionTelemetry>(new JCheckBox("CSV file for \"" + connection.name.get() + "\" (the acquired samples and corresponding timestamps)", true), connection));
 			for(ConnectionCamera camera : ConnectionsController.cameraConnections)
 				if(camera.getSampleCount() > 0)
-					cameraFileCheckboxes.add(new AbstractMap.SimpleEntry<JCheckBox, ConnectionCamera>(new JCheckBox("MKV file for \"" + camera.name + "\" (the acquired images and corresponding timestamps)", true), camera));
+					cameraFileCheckboxes.add(new AbstractMap.SimpleEntry<JCheckBox, ConnectionCamera>(new JCheckBox("MKV file for \"" + camera.name.get() + "\" (the acquired images and corresponding timestamps)", true), camera));
 			
 			JButton cancelButton = new JButton("Cancel");
 			cancelButton.addActionListener(event2 -> exportWindow.dispose());
@@ -186,73 +186,129 @@ public class CommunicationView extends JPanel {
 		});
 		
 		connectionButton = new JButton("New Connection");
-		connectionButton.addActionListener(event -> ConnectionsController.addConnection());
+		connectionButton.addActionListener(event -> ConnectionsController.addConnection(null));
 		
 		// show the components
 		redraw();
 		
 	}
 	
+	/**
+	 * Redraws the bottom panel. This should be done when any of the following events occur:
+	 * 
+	 *     When importing:
+	 *         import/export buttons are disabled
+	 *         the newConnection button can be used to cancel importing
+	 *         connection names become "Importing [Name]"
+	 *         all connection widgets are disabled
+	 *         
+	 *     When exporting:
+	 *         import/export buttons are disabled
+	 *         newConnection button can be used to cancel exporting
+	 *         all connection widgets are disabled
+	 *         
+	 *     When connected:
+	 *         connect/disconnect button text set to "Disconnect"
+	 *         all connection widgets are disabled
+	 *         
+	 *     When disconnected:
+	 *         connect/disconnect button text set to "Connect"
+	 *         all connection widgets are enabled
+	 *         
+	 *     When the first sample/frame is received:
+	 *         export button is enabled
+	 *         
+	 *     When zero samples/frames exist:
+	 *         export button is disabled
+	 *         
+	 *     When the packet type is changed:
+	 *         sampleRate disabled if using TC66 mode
+	 *         
+	 *     When a connection is created or removed
+	 *         the connection widgets will be shown or not
+	 *         
+	 *     Note regarding demo mode and stress test mode:
+	 *         sampleRate and protocol are always disabled
+	 */
 	public void redraw() {
 		
-		SwingUtilities.invokeLater(() -> {
+		Runnable task = () -> {
 			
-			boolean connectionsDefined = false;
-			for(ConnectionTelemetry connection : ConnectionsController.telemetryConnections)
-				if(connection.isDataStructureDefined())
-					connectionsDefined = true;
-			for(ConnectionCamera connection : ConnectionsController.cameraConnections)
-				if(connection.connected || connection.getSampleCount() > 0)
-					connectionsDefined = true;
-			
-			importButton.setEnabled(!ConnectionsController.importing && !ConnectionsController.exporting);
-			exportButton.setEnabled(!ConnectionsController.importing && !ConnectionsController.exporting && connectionsDefined);
-			
+			// repopulate
 			removeAll();
 			add(settingsButton);
 			add(importButton);
 			add(exportButton);
 			add(helpButton);
 			add(connectionButton);
-			for(int i = 0; i < ConnectionsController.allConnections.size(); i++)
-				add(ConnectionsController.allConnections.get(i).getUpdatedConnectionGui(), "align right, cell 5 " + i);
-			
-			boolean importing = ConnectionsController.importing;
-			boolean exporting = ConnectionsController.exporting;
-			if(!importing && !exporting) {
-				// allow the user to add another connection if not currently importing/exporting
-				connectionButton.setText("New Connection");
-				for(ActionListener listener : connectionButton.getActionListeners())
-					connectionButton.removeActionListener(listener);
-				connectionButton.addActionListener(event -> ConnectionsController.addConnection());
-			} else if(importing) {
-				// allow the user to finish or cancel if currently importing
-				connectionButton.setText(ConnectionsController.realtimeImporting ? "Finish Importing" : "Cancel Importing");
-				for(ActionListener listener : connectionButton.getActionListeners())
-					connectionButton.removeActionListener(listener);
-				connectionButton.addActionListener(event -> {
-					for(Connection connection : ConnectionsController.allConnections)
-						connection.finishImporting();
-					CommunicationView.instance.redraw();
+			for(int i = 0; i < ConnectionsController.allConnections.size(); i++) {
+				Connection connection = ConnectionsController.allConnections.get(i);
+				JPanel panel = new JPanel(new MigLayout("hidemode 3, gap " + Theme.padding  + ", insets 0 " + Theme.padding + " 0 0"));
+				
+				if(ConnectionsController.importing)
+					connection.name.disableWithMessage("Importing [" + connection.name.get() + "]");
+				else
+					connection.name.setEnabled(!connection.isConnected() && !ConnectionsController.exporting);
+				
+				// connect/disconnect button
+				JButton connectButton = new JButton(connection.isConnected() ? "Disconnect" : "Connect") {
+					@Override public Dimension getPreferredSize() { // giving this button a fixed size so the GUI lines up nicely
+						return new JButton("Disconnect").getPreferredSize();
+					}
+				};
+				connectButton.addActionListener(event -> {
+					if(connectButton.getText().equals("Connect"))
+						connection.connect(true);
+					else if(connectButton.getText().equals("Disconnect"))
+						connection.disconnect(null);
 				});
-			} else {
-				// allow the user to cancel if currently exporting
-				connectionButton.setText("Cancel Exporting");
-				for(ActionListener listener : connectionButton.getActionListeners())
-					connectionButton.removeActionListener(listener);
-				connectionButton.addActionListener(event -> {
-					ConnectionsController.cancelExporting();
-					CommunicationView.instance.redraw();
-				});
+				connectButton.setEnabled(!ConnectionsController.importing && !ConnectionsController.exporting);
+				
+				// remove connection button
+				JButton removeButton = new JButton(Theme.removeSymbol);
+				removeButton.setBorder(Theme.narrowButtonBorder);
+				removeButton.addActionListener(event -> ConnectionsController.removeConnection(connection));
+				if(ConnectionsController.allConnections.size() < 2 || ConnectionsController.importing)
+					removeButton.setVisible(false);
+				
+				// populate
+				connection.getConfigurationWidgets().forEach(widget -> widget.appendTo(panel, ""));
+				connection.name.appendTo(panel, "");
+				panel.add(connectButton);
+				panel.add(removeButton);
+				add(panel, "align right, cell 5 " + i);
 			}
 			
+			// reconfigure
+			List.of(connectionButton.getActionListeners()).forEach(listener -> connectionButton.removeActionListener(listener));
+			if(!ConnectionsController.importing && !ConnectionsController.exporting) {
+				importButton.setEnabled(true);
+				exportButton.setEnabled(ConnectionsController.telemetryExists());
+				connectionButton.setText("New Connection");
+				connectionButton.addActionListener(event -> ConnectionsController.addConnection(null));
+			} else if(ConnectionsController.importing) {
+				importButton.setEnabled(false);
+				exportButton.setEnabled(false);
+				connectionButton.setText(ConnectionsController.realtimeImporting ? "Finish Importing" : "Cancel Importing");
+				connectionButton.addActionListener(event -> ConnectionsController.finishImporting());
+			} else if(ConnectionsController.exporting) {
+				importButton.setEnabled(false);
+				exportButton.setEnabled(false);
+				connectionButton.setText("Cancel Exporting");
+				connectionButton.addActionListener(event -> ConnectionsController.cancelExporting());
+			}
+			
+			// redraw
 			revalidate();
 			repaint();
-		
-			// also redraw the SettingsView because it contains the transmit GUIs
-			SettingsView.instance.redraw();
 			
-		});
+		};
+		
+		// after the first sample or frame is received, the data processing thread will call redraw(), so we can't assume we're on the EDT
+		if(SwingUtilities.isEventDispatchThread())
+			task.run();
+		else
+			SwingUtilities.invokeLater(task);
 		
 	}
 	

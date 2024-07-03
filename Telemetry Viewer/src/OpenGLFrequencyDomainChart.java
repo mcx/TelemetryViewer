@@ -6,7 +6,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
-import javax.swing.Box;
 import javax.swing.JPanel;
 import org.jtransforms.fft.DoubleFFT_1D;
 
@@ -27,66 +26,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 	                    int windowLength, // samples per FFT
 	                    List<List<float[]>> windows) {} // .get(windowN).get(datasetN)[binN]
 	
-	// plot region
-	float xPlotLeft;
-	float xPlotRight;
-	float plotWidth;
-	float yPlotTop;
-	float yPlotBottom;
-	float plotHeight;
-	
-	// legend
-	float xLegendBorderLeft;
-	float yLegendBorderBottom;
-	float yLegendTextBaseline;
-	float yLegendTextTop;
-	float yLegendBorderTop;
-	float[][] legendMouseoverCoordinates;
-	float[][] legendBoxCoordinates;
-	float[] xLegendNameLeft;
-	float xLegendBorderRight;
-	
-	// FFT info
-	String fftWindowLengthText;
-	float yFftWindowLengthTextBaseline;
-	float xFftWindowLenghtTextLeft;
-	String fftWindowCountText;
-	float yFftWindowCountTextBaseline;
-	float xFftWindowCountTextLeft;
-	String minPowerText;
-	String maxPowerText;
-	float yPowerTextBaseline;
-	float yPowerTextTop;
-	float xMaxPowerTextLeft;
-	float xPowerScaleRight;
-	float xPowerScaleLeft;
-	float xMinPowerTextLeft;
-	float xFftInfoTextLeft;
-	
-	// y-axis title
-	float xYaxisTitleTextTop;
-	float xYaxisTitleTextBaseline;
-	String yAxisTitle;
-	float yYaxisTitleTextLeft;
-	
-	// x-axis title
-	float yXaxisTitleTextBasline;
-	float yXaxisTitleTextTop;
-	String xAxisTitle;
-	float xXaxisTitleTextLeft;
-	
-	// x-axis scale
-	Map<Float, String> xDivisions;
-	float yXaxisTickTextBaseline;
-	float yXaxisTickTextTop;
-	float yXaxisTickBottom;
-	float yXaxisTickTop;
-	
 	// y-axis scale
-	Map<Float, String> yDivisions;
-	float xYaxisTickTextRight;
-	float xYaxisTickLeft;
-	float xYaxisTickRight;
 	AutoScale autoscalePower;
 	
 	// textures
@@ -95,66 +35,37 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 	
 	// user settings
 	private WidgetDatasetCheckboxes datasetsWidget;
-	
-	private WidgetTextfieldInt sampleCountTextfield;
-
-	private boolean legendVisible = true;
-	private WidgetCheckbox legendCheckbox;
+	private WidgetTextfield<Integer> sampleCountTextfield;
+	private WidgetCheckbox legendVisibility;
 	
 	public enum ChartStyle {
 		SINGLE    { @Override public String toString() { return "Single";    } },
 		HISTOGRAM { @Override public String toString() { return "Histogram"; } },
 		WATERFALL { @Override public String toString() { return "Waterfall"; } };
 	};
-	private ChartStyle chartStyle = ChartStyle.SINGLE;
-	private WidgetToggleButtonEnum<ChartStyle> chartStyleButtons;
-	
-	private int fftCount = 20;
-	private WidgetTextfieldInt fftCountTextfield;
+	private WidgetToggleButtonEnum<ChartStyle> chartStyle;
+	private WidgetTextfield<Integer> fftCount;
 	
 	private int xAxisBins = 128;
-	private WidgetTextfieldInt xAxisBinsTextfield;
+	private WidgetTextfield<Integer> xAxisBinsTextfield;
 	private int fftBinsPerPlotBin = 1;
 	
-	private boolean xAxisBinsAutomatic = false;
-	private WidgetCheckbox xAxisBinsAutomaticCheckbox;
+	private WidgetCheckbox xAxisBinsAutomatic;
 	
 	private int yAxisBins = 128;
-	private WidgetTextfieldInt yAxisBinsTextfield;
-	private int actualYaxisBins = 128;
+	private WidgetTextfield<Integer> yAxisBinsTextfield;
 	
-	private boolean yAxisBinsAutomatic = false;
-	private WidgetCheckbox yAxisBinsAutomaticCheckbox;
-	
-	private int gamma = 50;
-	private WidgetSlider gammaSlider;
-	
-	private float minimumPower = 1e-9f;
-	private WidgetTextfieldFloat minimumPowerTextfield;
-	
-	private boolean minimumPowerAutomatic = true;
-	private WidgetCheckbox minimumPowerAutomaticCheckbox;
-	
-	private float maximumPower = 1e9f;
-	private WidgetTextfieldFloat maximumPowerTextfield;
-	
-	private boolean maximumPowerAutomatic = true;
-	private WidgetCheckbox maximumPowerAutomaticCheckbox;
-	
-	private boolean fftInfoVisible = true;
-	private WidgetCheckbox fftInfoCheckbox;
-	
-	private boolean xAxisTicksVisible = true;
-	private WidgetCheckbox xAxisTicksCheckbox;
-	
-	private boolean xAxisTitleVisible = true;
-	private WidgetCheckbox xAxisTitleCheckbox;
-	
-	private boolean yAxisTicksVisible = true;
-	private WidgetCheckbox yAxisTicksCheckbox;
-	
-	private boolean yAxisTitleVisible = true;
-	private WidgetCheckbox yAxisTitleCheckbox;
+	private WidgetCheckbox yAxisBinsAutomatic;
+	private WidgetSlider gamma;
+	private WidgetTextfield<Float> minimumPower;
+	private WidgetCheckbox minimumPowerAutomatic;
+	private WidgetTextfield<Float> maximumPower;
+	private WidgetCheckbox maximumPowerAutomatic;
+	private WidgetCheckbox fftInfoVisibility;
+	private WidgetCheckbox xAxisTicksVisibility;
+	private WidgetCheckbox xAxisTitleVisibility;
+	private WidgetCheckbox yAxisTicksVisibility;
+	private WidgetCheckbox yAxisTitleVisibility;
 	
 	@Override public String toString() {
 		
@@ -162,9 +73,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		
 	}
 	
-	public OpenGLFrequencyDomainChart(int x1, int y1, int x2, int y2) {
-		
-		super(x1, y1, x2, y2);
+	public OpenGLFrequencyDomainChart() {
 		
 		autoscalePower = new AutoScale(AutoScale.MODE_EXPONENTIAL, 90, 0.20f);
 		
@@ -175,234 +84,190 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		                                             null,
 		                                             false);
 		
-		sampleCountTextfield = new WidgetTextfieldInt("",
-		                                              "sample count",
-		                                              "Samples",
-		                                              10,
-		                                              Integer.MAX_VALUE / 16,
-		                                              ConnectionsController.getDefaultChartDuration(),
-		                                              newDuration -> duration = newDuration);
+		sampleCountTextfield = WidgetTextfield.ofInt(10, Integer.MAX_VALUE / 16, ConnectionsController.getDefaultChartDuration())
+		                                      .setSuffix("Samples")
+		                                      .setExportLabel("sample count")
+		                                      .onChange((newDuration, oldDuration) -> {
+		                                          duration = newDuration;
+		                                          return true;
+		                                      });
 		
-		legendCheckbox = new WidgetCheckbox("Show Legend",
-		                                    legendVisible,
-		                                    newVisibility -> legendVisible = newVisibility);
+		legendVisibility = new WidgetCheckbox("Show Legend", true);
 		
-		fftCountTextfield = new WidgetTextfieldInt("",
-		                                           "histogram/waterfall fft count",
-		                                           "FFTs",
-		                                           2,
-		                                           100,
-		                                           fftCount,
-		                                           newCount -> fftCount = newCount);
+		fftCount = WidgetTextfield.ofInt(2, 100, 20)
+		                          .setSuffix("FFTs")
+		                          .setExportLabel("histogram/waterfall fft count");
 		
-		xAxisBinsTextfield = new WidgetTextfieldInt("X-Axis Bins",
-		                                            "histogram/waterfall x-axis bin count",
-		                                            "",
-		                                            2,
-		                                            4096,
-		                                            xAxisBins,
-		                                            true,
-		                                            0,
-		                                            "Automatic",
-		                                            newCount -> {
-		                                                if(newCount == 0)
-		                                                    xAxisBinsAutomaticCheckbox.setSelected(true);
-		                                                else
-		                                                    xAxisBins = newCount;
-		                                            });
+		xAxisBinsTextfield = WidgetTextfield.ofInt(2, 4096, xAxisBins, 0, "Automatic")
+		                                    .setPrefix("X-Axis Bins")
+		                                    .setExportLabel("histogram/waterfall x-axis bin count")
+		                                    .onChange((newCount, oldCount) -> {
+		                                                 if(newCount == 0)
+		                                                     xAxisBinsAutomatic.set(true);
+		                                                 else
+		                                                     xAxisBins = newCount;
+		                                                 return true;
+		                                             });
 		
-		xAxisBinsAutomaticCheckbox = new WidgetCheckbox("Automatic",
-		                                                "histogram/waterfall x-axis bin count automatic",
-		                                                xAxisBinsAutomatic,
-		                                                isAutomatic -> {
-		                                                    xAxisBinsAutomatic = isAutomatic;
-		                                                    if(isAutomatic) {
-		                                                        xAxisBinsTextfield.disableWithMessage("Automatic");
-		                                                    } else {
-		                                                        xAxisBinsTextfield.setNumber(xAxisBins);
-		                                                        xAxisBinsTextfield.setEnabled(true);
-		                                                    }
-		                                                });
+		xAxisBinsAutomatic = new WidgetCheckbox("Auto", false)
+		                                 .setExportLabel("histogram/waterfall x-axis bin count automatic")
+		                                 .onChange(isAutomatic -> {
+		                                              if(isAutomatic) {
+		                                                  xAxisBinsTextfield.disableWithMessage("Automatic");
+		                                              } else {
+		                                                  xAxisBinsTextfield.set(xAxisBins);
+		                                                  xAxisBinsTextfield.setEnabled(true);
+		                                              }
+		                                          });
 		
-		yAxisBinsTextfield = new WidgetTextfieldInt("Y-Axis Bins",
-		                                            "histogram y-axis bin count",
-		                                            "",
-		                                            2,
-		                                            4096,
-		                                            yAxisBins,
-		                                            true,
-		                                            0,
-		                                            "Automatic",
-		                                            newCount -> {
-		                                                if(newCount == 0)
-		                                                    yAxisBinsAutomaticCheckbox.setSelected(true);
-		                                                else
-		                                                    yAxisBins = newCount;
-		                                            });
+		yAxisBinsTextfield = WidgetTextfield.ofInt(2, 4096, yAxisBins, 0, "Automatic")
+		                                    .setPrefix("Y-Axis Bins")
+		                                    .setExportLabel("histogram y-axis bin count")
+		                                    .onChange((newCount, oldCount) -> {
+		                                                 if(newCount == 0)
+		                                                     yAxisBinsAutomatic.set(true);
+		                                                 else
+		                                                     yAxisBins = newCount;
+		                                                 return true;
+		                                             });
 		
-		yAxisBinsAutomaticCheckbox = new WidgetCheckbox("Automatic",
-		                                                "histogram y-axis bin count automatic",
-		                                                yAxisBinsAutomatic,
-		                                                isAutomatic -> {
-		                                                    yAxisBinsAutomatic = isAutomatic;
-		                                                    if(isAutomatic) {
-		                                                        yAxisBinsTextfield.disableWithMessage("Automatic");
-		                                                    } else {
-		                                                        yAxisBinsTextfield.setNumber(yAxisBins);
-		                                                        yAxisBinsTextfield.setEnabled(true);
-		                                                    }
-		                                                });
+		yAxisBinsAutomatic = new WidgetCheckbox("Auto", false)
+		                                 .setExportLabel("histogram y-axis bin count automatic")
+		                                 .onChange(isAutomatic -> {
+		                                              if(isAutomatic) {
+		                                                  yAxisBinsTextfield.disableWithMessage("Automatic");
+		                                              } else {
+		                                                  yAxisBinsTextfield.set(yAxisBins);
+		                                                  yAxisBinsTextfield.setEnabled(true);
+		                                              }
+		                                          });
 		
-		gammaSlider = new WidgetSlider("Gamma",
-		                               "histogram/waterfall fft gamma",
-		                               "%",
-		                               0,
-		                               100,
-		                               gamma,
-		                               newGamma -> gamma = newGamma);
+		gamma = new WidgetSlider("Gamma", 0, 10, 5)
+		                  .setExportLabel("histogram/waterfall fft gamma")
+		                  .setDividedByTen();
 		
-		chartStyleButtons = new WidgetToggleButtonEnum<ChartStyle>("Style",
+		chartStyle = new WidgetToggleButtonEnum<ChartStyle>("Style",
 		                                                           "fft style",
 		                                                           ChartStyle.values(),
-		                                                           chartStyle,
+		                                                           ChartStyle.SINGLE,
 		                                                           newStyle -> {
-		                                                               chartStyle = newStyle;
-		                                                               fftCountTextfield.setVisible(chartStyle != ChartStyle.SINGLE);
-		                                                               xAxisBinsTextfield.setVisible(chartStyle != ChartStyle.SINGLE);
-		                                                               xAxisBinsAutomaticCheckbox.setVisible(chartStyle != ChartStyle.SINGLE);
-		                                                               yAxisBinsTextfield.setVisible(chartStyle == ChartStyle.HISTOGRAM);
-		                                                               yAxisBinsAutomaticCheckbox.setVisible(chartStyle == ChartStyle.HISTOGRAM);
-		                                                               gammaSlider.setVisible(chartStyle == ChartStyle.HISTOGRAM);
+		                                                               fftCount.setVisible(newStyle != ChartStyle.SINGLE);
+		                                                               xAxisBinsTextfield.setVisible(newStyle != ChartStyle.SINGLE);
+		                                                               xAxisBinsAutomatic.setVisible(newStyle != ChartStyle.SINGLE);
+		                                                               yAxisBinsTextfield.setVisible(newStyle == ChartStyle.HISTOGRAM);
+		                                                               yAxisBinsAutomatic.setVisible(newStyle == ChartStyle.HISTOGRAM);
+		                                                               gamma.setVisible(newStyle == ChartStyle.HISTOGRAM);
 		                                                           });
 		
-		minimumPowerTextfield = new WidgetTextfieldFloat("Minimum Power",
-		                                                 "fft minimum power",
-		                                                 "Watts",
-		                                                 Float.MIN_VALUE,
-		                                                 Float.MAX_VALUE,
-		                                                 minimumPower,
-		                                                 newMinimum -> {
-		                                                     minimumPower = newMinimum;
-		                                                     if(minimumPower > maximumPower)
-		                                                         maximumPowerTextfield.setNumber(minimumPower);
-		                                                 });
+		maximumPower = WidgetTextfield.ofFloat(Float.MIN_VALUE, Float.MAX_VALUE, 1e9f)
+		                              .setPrefix("Max Power")
+		                              .setSuffix("Watts")
+		                              .setExportLabel("fft maximum power")
+		                              .onChange((newMaximum, oldMaximum) -> {
+		                                            if(newMaximum < minimumPower.get())
+		                                                minimumPower.set(newMaximum);
+		                                            return true;
+		                                        });
 		
-		minimumPowerAutomaticCheckbox = new WidgetCheckbox("Automatic",
-		                                                   "fft minimum power automatic",
-		                                                   minimumPowerAutomatic,
-		                                                   isAutomatic -> {
-		                                                       minimumPowerAutomatic = isAutomatic;
-		                                                       if(isAutomatic)
-		                                                           minimumPowerTextfield.disableWithMessage("Automatic");
-		                                                       else
-		                                                           minimumPowerTextfield.setEnabled(true);
-		                                                   });
+		maximumPowerAutomatic = new WidgetCheckbox("Auto", true)
+		                                    .setExportLabel("fft maximum power automatic")
+		                                    .onChange(isAutomatic -> {
+		                                                 if(isAutomatic)
+		                                                     maximumPower.disableWithMessage("Automatic");
+		                                                 else
+		                                                     maximumPower.setEnabled(true);
+		                                             });
 		
-		maximumPowerTextfield = new WidgetTextfieldFloat("Maximum Power",
-		                                                 "fft maximum power",
-		                                                 "Watts",
-		                                                 Float.MIN_VALUE,
-		                                                 Float.MAX_VALUE,
-		                                                 maximumPower,
-		                                                 newMaximum -> {
-		                                                     maximumPower = newMaximum;
-		                                                     if(maximumPower < minimumPower)
-		                                                         minimumPowerTextfield.setNumber(maximumPower);
-		                                                 });
+		minimumPower = WidgetTextfield.ofFloat(Float.MIN_VALUE, Float.MAX_VALUE, 1e-9f)
+		                              .setPrefix("Min Power")
+		                              .setSuffix("Watts")
+		                              .setExportLabel("fft minimum power")
+		                              .onChange((newMinimum, oldMinimum) -> {
+		                                            if(newMinimum > maximumPower.get())
+		                                                maximumPower.set(newMinimum);
+		                                            return true;
+		                                        });
 		
-		maximumPowerAutomaticCheckbox = new WidgetCheckbox("Automatic",
-		                                                   "fft maximum power automatic",
-		                                                   maximumPowerAutomatic,
-		                                                   isAutomatic -> {
-		                                                       maximumPowerAutomatic = isAutomatic;
-		                                                       if(isAutomatic)
-		                                                           maximumPowerTextfield.disableWithMessage("Automatic");
-		                                                       else
-		                                                           maximumPowerTextfield.setEnabled(true);
-		                                                   });
+		minimumPowerAutomatic = new WidgetCheckbox("Auto", true)
+		                                    .setExportLabel("fft minimum power automatic")
+		                                    .onChange(isAutomatic -> {
+		                                                 if(isAutomatic)
+		                                                     minimumPower.disableWithMessage("Automatic");
+		                                                 else
+		                                                     minimumPower.setEnabled(true);
+		                                             });
 		
-		fftInfoCheckbox = new WidgetCheckbox("Show FFT Info",
-		                                     "fft show info",
-		                                     fftInfoVisible,
-		                                     newVisibility -> fftInfoVisible = newVisibility);
+		fftInfoVisibility = new WidgetCheckbox("Show FFT Info", true)
+		                        .setExportLabel("fft show info");
 		
-		xAxisTicksCheckbox = new WidgetCheckbox("Show Ticks",
-		                                        "x-axis show ticks",
-		                                        xAxisTicksVisible,
-		                                        newVisibility -> xAxisTicksVisible = newVisibility);
+		xAxisTicksVisibility = new WidgetCheckbox("Show Ticks", true)
+		                           .setExportLabel("x-axis show ticks");
 		
-		xAxisTitleCheckbox = new WidgetCheckbox("Show Title",
-		                                        "x-axis show title",
-		                                        xAxisTitleVisible,
-		                                        newVisibility -> xAxisTitleVisible = newVisibility);
+		xAxisTitleVisibility = new WidgetCheckbox("Show Title", true)
+		                           .setExportLabel("x-axis show title");
 		
-		yAxisTicksCheckbox = new WidgetCheckbox("Show Ticks",
-		                                        "y-axis show ticks",
-		                                        yAxisTicksVisible,
-		                                        newVisibility -> yAxisTicksVisible = newVisibility);
+		yAxisTicksVisibility = new WidgetCheckbox("Show Ticks", true)
+		                           .setExportLabel("y-axis show ticks");
 		
-		yAxisTitleCheckbox = new WidgetCheckbox("Show Title",
-		                                        "y-axis show title",
-		                                        yAxisTitleVisible,
-		                                        newVisibility -> yAxisTitleVisible = newVisibility);
+		yAxisTitleVisibility = new WidgetCheckbox("Show Title", true)
+		                           .setExportLabel("y-axis show title");
 		
 		widgets.add(datasetsWidget);
 		widgets.add(sampleCountTextfield);
-		widgets.add(legendCheckbox);
-		widgets.add(chartStyleButtons);
-		widgets.add(fftCountTextfield);
-		widgets.add(gammaSlider);
+		widgets.add(legendVisibility);
+		widgets.add(chartStyle);
+		widgets.add(maximumPower);
+		widgets.add(maximumPowerAutomatic);
+		widgets.add(minimumPower);
+		widgets.add(minimumPowerAutomatic);
+		widgets.add(fftCount);
+		widgets.add(gamma);
 		widgets.add(xAxisBinsTextfield);
-		widgets.add(xAxisBinsAutomaticCheckbox);
+		widgets.add(xAxisBinsAutomatic);
 		widgets.add(yAxisBinsTextfield);
-		widgets.add(yAxisBinsAutomaticCheckbox);
-		widgets.add(minimumPowerTextfield);
-		widgets.add(minimumPowerAutomaticCheckbox);
-		widgets.add(maximumPowerTextfield);
-		widgets.add(maximumPowerAutomaticCheckbox);
-		widgets.add(fftInfoCheckbox);
-		widgets.add(xAxisTicksCheckbox);
-		widgets.add(xAxisTitleCheckbox);
-		widgets.add(yAxisTicksCheckbox);
-		widgets.add(yAxisTitleCheckbox);
+		widgets.add(yAxisBinsAutomatic);
+		widgets.add(fftInfoVisibility);
+		widgets.add(xAxisTicksVisibility);
+		widgets.add(xAxisTitleVisibility);
+		widgets.add(yAxisTicksVisibility);
+		widgets.add(yAxisTitleVisibility);
 		
 	}
 	
 	@Override public void getConfigurationGui(JPanel gui) {
 		
-		JPanel dataPanel = Theme.newWidgetsPanel("Data");
-		datasetsWidget.appendToGui(dataPanel);
-		dataPanel.add(sampleCountTextfield, "span 4, split 2, grow x, grow y, sizegroup 0");
-		dataPanel.add(legendCheckbox, "grow x, grow y, sizegroup 0");
+		gui.add(Theme.newWidgetsPanel("Data")
+		             .with(datasetsWidget)
+		             .with(sampleCountTextfield,  "split 2, grow x, grow y, sizegroup 0")
+		             .with(legendVisibility,      "grow x, grow y, sizegroup 0")
+		             .getPanel());
 		
-		JPanel fftPanel = Theme.newWidgetsPanel("FFTs");
-		chartStyleButtons.appendToGui(fftPanel);
-		fftPanel.add(fftCountTextfield, "grow x, grow y");
-		fftPanel.add(xAxisBinsTextfield, "split 2, grow x, grow y");
-		fftPanel.add(xAxisBinsAutomaticCheckbox, "sizegroup 1");
-		fftPanel.add(yAxisBinsTextfield, "split 2, grow x, grow y");
-		fftPanel.add(yAxisBinsAutomaticCheckbox, "sizegroup 1");
-		gammaSlider.appendToGui(fftPanel);
-		fftPanel.add(Box.createVerticalStrut(Theme.padding), "span 4");
-		fftPanel.add(minimumPowerTextfield, "split 2, grow x, grow y");
-		fftPanel.add(minimumPowerAutomaticCheckbox, "sizegroup 1");
-		fftPanel.add(maximumPowerTextfield, "split 2, grow x, grow y");
-		fftPanel.add(maximumPowerAutomaticCheckbox, "sizegroup 1");
-		fftPanel.add(Box.createVerticalStrut(Theme.padding), "span 4");
-		fftPanel.add(fftInfoCheckbox, "grow x, grow y");
+		gui.add(Theme.newWidgetsPanel("FFTs")
+		             .with(chartStyle)
+		             .with(maximumPower,          "split 2, grow x, grow y")
+		             .with(maximumPowerAutomatic, "sizegroup 1")
+		             .with(minimumPower,          "split 2, grow x, grow y")
+		             .with(minimumPowerAutomatic, "sizegroup 1")
+		             .withGap(Theme.padding)
+		             .with(fftCount,              "grow x, grow y")
+		             .with(xAxisBinsTextfield,    "split 2, grow x, grow y")
+		             .with(xAxisBinsAutomatic,    "sizegroup 1")
+		             .with(yAxisBinsTextfield,    "split 2, grow x, grow y")
+		             .with(yAxisBinsAutomatic,    "sizegroup 1")
+		             .with(gamma)
+		             .withGap(Theme.padding)
+		             .with(fftInfoVisibility)
+		             .getPanel());
 		
-		JPanel xAxisPanel = Theme.newWidgetsPanel("X-Axis");
-		xAxisPanel.add(xAxisTicksCheckbox, "split 2, grow x");
-		xAxisPanel.add(xAxisTitleCheckbox, "grow x");
+		gui.add(Theme.newWidgetsPanel("X-Axis")
+		             .with(xAxisTicksVisibility,  "split 2")
+		             .with(xAxisTitleVisibility)
+		             .getPanel());
 		
-		JPanel yAxisPanel = Theme.newWidgetsPanel("Y-Axis");
-		yAxisPanel.add(yAxisTicksCheckbox, "split 2, grow x");
-		yAxisPanel.add(yAxisTitleCheckbox, "grow x");
-		
-		gui.add(dataPanel);
-		gui.add(fftPanel);
-		gui.add(xAxisPanel);
-		gui.add(yAxisPanel);
+		gui.add(Theme.newWidgetsPanel("Y-Axis")
+		             .with(yAxisTicksVisibility,  "split 2")
+		             .with(yAxisTitleVisibility)
+		             .getPanel());
 		
 	}
 	
@@ -414,7 +279,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		int datasetsCount = datasets.normalsCount();
 		
 		// calculate the FFTs
-		FFTs fft = cache.getFFT(endSampleNumber, duration, fftCount, datasets, chartStyle);
+		FFTs fft = cache.getFFT(endSampleNumber, duration, fftCount.get(), datasets, chartStyle.get());
 		
 		// calculate the domain
 		float plotMinX = fft.minHz;
@@ -425,7 +290,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		// the y-axis is power (single/histogram modes) or time (waterfall mode)
 		float sampleRate = haveDatasets ? datasets.connection.getSampleRate() : 1;
 		float plotMinTime = 0;
-		float plotMaxTime = (float) (duration * fftCount) / sampleRate;
+		float plotMaxTime = (float) (duration * fftCount.get()) / sampleRate;
 
 		float plotMinPower = fft.minPower;
 		float plotMaxPower = fft.maxPower;
@@ -436,41 +301,39 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		}
 		autoscalePower.update(plotMinPower, plotMaxPower);
 		
-		if(!minimumPowerAutomatic)
-			plotMinPower = (float) Math.log10(minimumPower);
-		else if(minimumPowerAutomatic && chartStyle != ChartStyle.WATERFALL)
+		if(!minimumPowerAutomatic.get())
+			plotMinPower = (float) Math.log10(minimumPower.get());
+		else if(minimumPowerAutomatic.get() && !chartStyle.is(ChartStyle.WATERFALL))
 			plotMinPower = autoscalePower.getMin();
 		
-		if(!maximumPowerAutomatic)
-			plotMaxPower = (float) Math.log10(maximumPower);
-		else if(maximumPowerAutomatic && chartStyle != ChartStyle.WATERFALL)
+		if(!maximumPowerAutomatic.get())
+			plotMaxPower = (float) Math.log10(maximumPower.get());
+		else if(maximumPowerAutomatic.get() && !chartStyle.is(ChartStyle.WATERFALL))
 			plotMaxPower = autoscalePower.getMax();
 
-		float plotMinY = chartStyle == ChartStyle.WATERFALL ? plotMinTime : plotMinPower;
-		float plotMaxY = chartStyle == ChartStyle.WATERFALL ? plotMaxTime : plotMaxPower;
+		float plotMinY = chartStyle.is(ChartStyle.WATERFALL) ? plotMinTime : plotMinPower;
+		float plotMaxY = chartStyle.is(ChartStyle.WATERFALL) ? plotMaxTime : plotMaxPower;
 		float plotRange = plotMaxY - plotMinY;
 		
 		// calculate x and y positions of everything
-		xPlotLeft = Theme.tilePadding;
-		xPlotRight = width - Theme.tilePadding;
-		plotWidth = xPlotRight - xPlotLeft;
-		yPlotTop = height - Theme.tilePadding;
-		yPlotBottom = Theme.tilePadding;
-		plotHeight = yPlotTop - yPlotBottom;
+		float xPlotLeft = Theme.tilePadding;
+		float xPlotRight = width - Theme.tilePadding;
+		float plotWidth = xPlotRight - xPlotLeft;
+		float yPlotTop = height - Theme.tilePadding;
+		float yPlotBottom = Theme.tilePadding;
+		float plotHeight = yPlotTop - yPlotBottom;
 		
-		if(legendVisible && haveDatasets) {
-			xLegendBorderLeft = Theme.tilePadding;
-			yLegendBorderBottom = Theme.tilePadding;
-			yLegendTextBaseline = yLegendBorderBottom + Theme.legendTextPadding;
-			yLegendTextTop = yLegendTextBaseline + OpenGL.mediumTextHeight;
-			yLegendBorderTop = yLegendTextTop + Theme.legendTextPadding;
-
-			legendMouseoverCoordinates = new float[datasetsCount][4];
-			legendBoxCoordinates = new float[datasetsCount][4];
-			xLegendNameLeft = new float[datasetsCount];
-			
+		float xLegendBorderLeft = Theme.tilePadding;
+		float yLegendBorderBottom = Theme.tilePadding;
+		float yLegendTextBaseline = yLegendBorderBottom + Theme.legendTextPadding;
+		float yLegendTextTop = yLegendTextBaseline + OpenGL.mediumTextHeight;
+		float yLegendBorderTop = yLegendTextTop + Theme.legendTextPadding;
+		float[][] legendMouseoverCoordinates = new float[datasetsCount][4];
+		float[][] legendBoxCoordinates = new float[datasetsCount][4];
+		float[] xLegendNameLeft = new float[datasetsCount];
+		float xLegendBorderRight = 0;
+		if(legendVisibility.get() && haveDatasets) {
 			float xOffset = xLegendBorderLeft + (Theme.lineWidth / 2) + Theme.legendTextPadding;
-			
 			for(int i = 0; i < datasetsCount; i++) {
 				legendMouseoverCoordinates[i][0] = xOffset - Theme.legendTextPadding;
 				legendMouseoverCoordinates[i][1] = yLegendBorderBottom;
@@ -482,7 +345,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 				
 				xOffset += OpenGL.mediumTextHeight + Theme.legendTextPadding;
 				xLegendNameLeft[i] = xOffset;
-				xOffset += OpenGL.mediumTextWidth(gl, datasets.getNormal(i).name) + Theme.legendNamesPadding;
+				xOffset += OpenGL.mediumTextWidth(gl, datasets.getNormal(i).name.get()) + Theme.legendNamesPadding;
 				
 				legendMouseoverCoordinates[i][2] = xOffset - Theme.legendNamesPadding + Theme.legendTextPadding;
 				legendMouseoverCoordinates[i][3] = yLegendBorderTop;
@@ -497,124 +360,139 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 			}
 		}
 		
-		if(fftInfoVisible) {
-			if(chartStyle == ChartStyle.SINGLE) {
-				
-				fftWindowLengthText = fft.windowLength + " sample rectangular window";
-				yFftWindowLengthTextBaseline = Theme.tilePadding;
-				xFftWindowLenghtTextLeft = width - Theme.tilePadding - OpenGL.smallTextWidth(gl, fftWindowLengthText);
-				
-				xFftInfoTextLeft = xFftWindowLenghtTextLeft;
-				
-				float temp = yFftWindowLengthTextBaseline + OpenGL.smallTextHeight + Theme.tickTextPadding;
-				if(yPlotBottom < temp) {
-					yPlotBottom = temp;
-					plotHeight = yPlotTop - yPlotBottom;
+		String fftWindowLengthText = null;
+		float yFftWindowLengthTextBaseline = 0;
+		float xFftWindowLenghtTextLeft = 0;
+		String fftWindowCountText = null;
+		float yFftWindowCountTextBaseline = 0;
+		float xFftWindowCountTextLeft = 0;
+		String minPowerText = null;
+		String maxPowerText = null;
+		float yPowerTextBaseline = 0;
+		float yPowerTextTop = 0;
+		float xMaxPowerTextLeft = 0;
+		float xPowerScaleRight = 0;
+		float xPowerScaleLeft = 0;
+		float xMinPowerTextLeft = 0;
+		float xFftInfoTextLeft = 0;
+		if(fftInfoVisibility.get()) {
+			switch(chartStyle.get()) {
+				case SINGLE -> {
+					fftWindowLengthText = fft.windowLength + " sample rectangular window";
+					yFftWindowLengthTextBaseline = Theme.tilePadding;
+					xFftWindowLenghtTextLeft = width - Theme.tilePadding - OpenGL.smallTextWidth(gl, fftWindowLengthText);
+					
+					xFftInfoTextLeft = xFftWindowLenghtTextLeft;
+					
+					float temp = yFftWindowLengthTextBaseline + OpenGL.smallTextHeight + Theme.tickTextPadding;
+					if(yPlotBottom < temp) {
+						yPlotBottom = temp;
+						plotHeight = yPlotTop - yPlotBottom;
+					}
 				}
-				
-			} else if(chartStyle == ChartStyle.HISTOGRAM) {
-				
-				int windowCount = fft.windows.size();
-				int windowLength = fft.windowLength;
-				int trueTotalSampleCount = windowCount * windowLength;
-				fftWindowCountText = windowCount + " windows (total of " + trueTotalSampleCount + " samples)";
-				yFftWindowCountTextBaseline = Theme.tilePadding;
-				xFftWindowCountTextLeft = width - Theme.tilePadding - OpenGL.smallTextWidth(gl, fftWindowCountText);
-				
-				fftWindowLengthText = windowLength + " sample rectangular window";
-				yFftWindowLengthTextBaseline = yFftWindowCountTextBaseline + OpenGL.smallTextHeight + Theme.tickTextPadding;
-				xFftWindowLenghtTextLeft = width - Theme.tilePadding - OpenGL.smallTextWidth(gl, fftWindowLengthText);
-				
-				xFftInfoTextLeft = Float.min(xFftWindowCountTextLeft, xFftWindowLenghtTextLeft);
-				
-				float temp = yFftWindowLengthTextBaseline + OpenGL.smallTextHeight + Theme.tickTextPadding;
-				if(yPlotBottom < temp) {
-					yPlotBottom = temp;
-					plotHeight = yPlotTop - yPlotBottom;
+				case HISTOGRAM -> {
+					int windowCount = fft.windows.size();
+					int windowLength = fft.windowLength;
+					int trueTotalSampleCount = windowCount * windowLength;
+					fftWindowCountText = windowCount + " windows (total of " + trueTotalSampleCount + " samples)";
+					yFftWindowCountTextBaseline = Theme.tilePadding;
+					xFftWindowCountTextLeft = width - Theme.tilePadding - OpenGL.smallTextWidth(gl, fftWindowCountText);
+					
+					fftWindowLengthText = windowLength + " sample rectangular window";
+					yFftWindowLengthTextBaseline = yFftWindowCountTextBaseline + OpenGL.smallTextHeight + Theme.tickTextPadding;
+					xFftWindowLenghtTextLeft = width - Theme.tilePadding - OpenGL.smallTextWidth(gl, fftWindowLengthText);
+					
+					xFftInfoTextLeft = Float.min(xFftWindowCountTextLeft, xFftWindowLenghtTextLeft);
+					
+					float temp = yFftWindowLengthTextBaseline + OpenGL.smallTextHeight + Theme.tickTextPadding;
+					if(yPlotBottom < temp) {
+						yPlotBottom = temp;
+						plotHeight = yPlotTop - yPlotBottom;
+					}
 				}
-				
-			} else if(chartStyle == ChartStyle.WATERFALL) {
-				
-				minPowerText = "Power Range: 1e" + Math.round(plotMinPower);
-				maxPowerText = "1e" + Math.round(plotMaxPower);
-				yPowerTextBaseline = Theme.tilePadding;
-				yPowerTextTop = yPowerTextBaseline + OpenGL.smallTextHeight;
-				xMaxPowerTextLeft = width - Theme.tilePadding - OpenGL.smallTextWidth(gl, maxPowerText);
-				xPowerScaleRight = xMaxPowerTextLeft - Theme.tickTextPadding;
-				xPowerScaleLeft = xPowerScaleRight - (100 * ChartsController.getDisplayScalingFactor());
-				xMinPowerTextLeft = xPowerScaleLeft - Theme.tickTextPadding - OpenGL.smallTextWidth(gl, minPowerText);
-				
-				int windowCount = fft.windows.size();
-				int windowLength = fft.windowLength;
-				int trueTotalSampleCount = windowCount * windowLength;
-				fftWindowCountText = windowCount + " windows (total of " + trueTotalSampleCount + " samples)";
-				yFftWindowCountTextBaseline = yPowerTextTop + Theme.tickTextPadding;
-				xFftWindowCountTextLeft = width - Theme.tilePadding - OpenGL.smallTextWidth(gl, fftWindowCountText);
-				
-				fftWindowLengthText = windowLength + " sample rectangular window";
-				yFftWindowLengthTextBaseline = yFftWindowCountTextBaseline + OpenGL.smallTextHeight + Theme.tickTextPadding;
-				xFftWindowLenghtTextLeft = width - Theme.tilePadding - OpenGL.smallTextWidth(gl, fftWindowLengthText);
-				
-				xFftInfoTextLeft = Float.min(xFftWindowCountTextLeft, xFftWindowLenghtTextLeft);
-				xFftInfoTextLeft = Float.min(xMinPowerTextLeft, xFftInfoTextLeft);
-				
-				float temp = yFftWindowLengthTextBaseline + OpenGL.smallTextHeight + Theme.tickTextPadding;
-				if(yPlotBottom < temp) {
-					yPlotBottom = temp;
-					plotHeight = yPlotTop - yPlotBottom;
+				case WATERFALL -> {
+					minPowerText = "Power Range: 1e" + Math.round(plotMinPower);
+					maxPowerText = "1e" + Math.round(plotMaxPower);
+					yPowerTextBaseline = Theme.tilePadding;
+					yPowerTextTop = yPowerTextBaseline + OpenGL.smallTextHeight;
+					xMaxPowerTextLeft = width - Theme.tilePadding - OpenGL.smallTextWidth(gl, maxPowerText);
+					xPowerScaleRight = xMaxPowerTextLeft - Theme.tickTextPadding;
+					xPowerScaleLeft = xPowerScaleRight - (100 * ChartsController.getDisplayScalingFactor());
+					xMinPowerTextLeft = xPowerScaleLeft - Theme.tickTextPadding - OpenGL.smallTextWidth(gl, minPowerText);
+					
+					int windowCount = fft.windows.size();
+					int windowLength = fft.windowLength;
+					int trueTotalSampleCount = windowCount * windowLength;
+					fftWindowCountText = windowCount + " windows (total of " + trueTotalSampleCount + " samples)";
+					yFftWindowCountTextBaseline = yPowerTextTop + Theme.tickTextPadding;
+					xFftWindowCountTextLeft = width - Theme.tilePadding - OpenGL.smallTextWidth(gl, fftWindowCountText);
+					
+					fftWindowLengthText = windowLength + " sample rectangular window";
+					yFftWindowLengthTextBaseline = yFftWindowCountTextBaseline + OpenGL.smallTextHeight + Theme.tickTextPadding;
+					xFftWindowLenghtTextLeft = width - Theme.tilePadding - OpenGL.smallTextWidth(gl, fftWindowLengthText);
+					
+					xFftInfoTextLeft = Float.min(xFftWindowCountTextLeft, xFftWindowLenghtTextLeft);
+					xFftInfoTextLeft = Float.min(xMinPowerTextLeft, xFftInfoTextLeft);
+					
+					float temp = yFftWindowLengthTextBaseline + OpenGL.smallTextHeight + Theme.tickTextPadding;
+					if(yPlotBottom < temp) {
+						yPlotBottom = temp;
+						plotHeight = yPlotTop - yPlotBottom;
+					}
 				}
-				
-			}
+			};
 		}
 		
-		if(yAxisTitleVisible) {
-			xYaxisTitleTextTop = xPlotLeft;
-			xYaxisTitleTextBaseline = xYaxisTitleTextTop + OpenGL.largeTextHeight;
-			yAxisTitle = (chartStyle == ChartStyle.WATERFALL) ? "Time (Seconds)" : "Power (Watts)";
-			yYaxisTitleTextLeft = yPlotBottom + (plotHeight / 2.0f) - (OpenGL.largeTextWidth(gl, yAxisTitle) / 2.0f);
-			
+		float xYaxisTitleTextTop = xPlotLeft;
+		float xYaxisTitleTextBaseline = xYaxisTitleTextTop + OpenGL.largeTextHeight;
+		String yAxisTitle = chartStyle.is(ChartStyle.WATERFALL) ? "Time (Seconds)" : "Power (Watts)";
+		float yYaxisTitleTextLeft = yPlotBottom + (plotHeight / 2.0f) - (OpenGL.largeTextWidth(gl, yAxisTitle) / 2.0f);
+		if(yAxisTitleVisibility.get()) {
 			xPlotLeft = xYaxisTitleTextBaseline + Theme.tickTextPadding;
 			plotWidth = xPlotRight - xPlotLeft;
 		}
 		
-		if(xAxisTitleVisible) {
-			yXaxisTitleTextBasline = Theme.tilePadding;
-			yXaxisTitleTextTop = yXaxisTitleTextBasline + OpenGL.largeTextHeight;
-			xAxisTitle = "Frequency (Hertz)";
-			
-			if(!legendVisible && !fftInfoVisible)
+		float yXaxisTitleTextBasline = Theme.tilePadding;
+		float yXaxisTitleTextTop = yXaxisTitleTextBasline + OpenGL.largeTextHeight;
+		String xAxisTitle = "Frequency (Hertz)";
+		float xXaxisTitleTextLeft = 0;
+		if(xAxisTitleVisibility.get()) {
+			if(!legendVisibility.get() && !fftInfoVisibility.get())
 				xXaxisTitleTextLeft = xPlotLeft + (plotWidth / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			else if(legendVisible && fftInfoVisible)
+			else if(legendVisibility.get() && fftInfoVisibility.get())
 				xXaxisTitleTextLeft = xLegendBorderRight + ((xFftInfoTextLeft - xLegendBorderRight) / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			else if(legendVisible)
+			else if(legendVisibility.get())
 				xXaxisTitleTextLeft = xLegendBorderRight + ((width - Theme.tilePadding - xLegendBorderRight)  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			else if(fftInfoVisible)
+			else if(fftInfoVisibility.get())
 				xXaxisTitleTextLeft = xPlotLeft + ((xFftInfoTextLeft - xPlotLeft) / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
 			
 			float temp = yXaxisTitleTextTop + Theme.tickTextPadding;
 			if(yPlotBottom < temp) {
 				yPlotBottom = temp;
 				plotHeight = yPlotTop - yPlotBottom;
-				if(yAxisTitleVisible)
+				if(yAxisTitleVisibility.get())
 					yYaxisTitleTextLeft = yPlotBottom + (plotHeight / 2.0f) - (OpenGL.largeTextWidth(gl, yAxisTitle) / 2.0f);
 			}
 		}
 		
-		if(xAxisTicksVisible) {
-			yXaxisTickTextBaseline = yPlotBottom;
-			yXaxisTickTextTop = yXaxisTickTextBaseline + OpenGL.smallTextHeight;
-			yXaxisTickBottom = yXaxisTickTextTop + Theme.tickTextPadding;
-			yXaxisTickTop = yXaxisTickBottom + Theme.tickLength;
-			
+		float yXaxisTickTextBaseline = yPlotBottom;
+		float yXaxisTickTextTop = yXaxisTickTextBaseline + OpenGL.smallTextHeight;
+		float yXaxisTickBottom = yXaxisTickTextTop + Theme.tickTextPadding;
+		float yXaxisTickTop = yXaxisTickBottom + Theme.tickLength;
+		if(xAxisTicksVisibility.get()) {
 			yPlotBottom = yXaxisTickTop;
 			plotHeight = yPlotTop - yPlotBottom;
-			if(yAxisTitleVisible)
+			if(yAxisTitleVisibility.get())
 				yYaxisTitleTextLeft = yPlotBottom + (plotHeight / 2.0f) - (OpenGL.largeTextWidth(gl, yAxisTitle) / 2.0f);
 		}
 		
-		if(yAxisTicksVisible) {
-			yDivisions = (chartStyle == ChartStyle.WATERFALL) ? ChartUtils.getYdivisions125(plotHeight, plotMinY, plotMaxY) :
-			                                                    ChartUtils.getLogYdivisions(plotHeight, plotMinY, plotMaxY);
+		Map<Float, String> yDivisions = null;
+		float xYaxisTickTextRight = 0;
+		float xYaxisTickLeft = 0;
+		float xYaxisTickRight = 0;
+		if(yAxisTicksVisibility.get()) {
+			yDivisions = chartStyle.is(ChartStyle.WATERFALL) ? ChartUtils.getYdivisions125(plotHeight, plotMinY, plotMaxY) :
+			                                                   ChartUtils.getLogYdivisions(plotHeight, plotMinY, plotMaxY);
 			float maxTextWidth = 0;
 			for(String text : yDivisions.values()) {
 				float textWidth = OpenGL.smallTextWidth(gl, text);
@@ -629,18 +507,18 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 			xPlotLeft = xYaxisTickRight;
 			plotWidth = xPlotRight - xPlotLeft;
 			
-			if(xAxisTitleVisible && !legendVisible && !fftInfoVisible)
+			if(xAxisTitleVisibility.get() && !legendVisibility.get() && !fftInfoVisibility.get())
 				xXaxisTitleTextLeft = xPlotLeft + (plotWidth / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			else if(xAxisTitleVisible && legendVisible && fftInfoVisible)
+			else if(xAxisTitleVisibility.get() && legendVisibility.get() && fftInfoVisibility.get())
 				xXaxisTitleTextLeft = xLegendBorderRight + ((xFftInfoTextLeft - xLegendBorderRight) / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			else if(xAxisTitleVisible && legendVisible)
+			else if(xAxisTitleVisibility.get() && legendVisibility.get())
 				xXaxisTitleTextLeft = xLegendBorderRight + ((width - Theme.tilePadding - xLegendBorderRight)  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			else if(xAxisTitleVisible && fftInfoVisible)
+			else if(xAxisTitleVisibility.get() && fftInfoVisibility.get())
 				xXaxisTitleTextLeft = xPlotLeft + ((xFftInfoTextLeft - xPlotLeft) / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
 		}
 		
 		// get the x divisions now that we know the final plot width
-		xDivisions = ChartUtils.getFloatXdivisions125(gl, plotWidth, plotMinX, plotMaxX);
+		Map<Float, String> xDivisions = ChartUtils.getFloatXdivisions125(gl, plotWidth, plotMinX, plotMaxX);
 		
 		// stop if the plot is too small
 		if(plotWidth < 1 || plotHeight < 1)
@@ -650,7 +528,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		OpenGL.drawQuad2D(gl, Theme.plotBackgroundColor, xPlotLeft, yPlotBottom, xPlotRight, yPlotTop);
 		
 		// draw the x-axis scale
-		if(xAxisTicksVisible) {
+		if(xAxisTicksVisibility.get()) {
 			OpenGL.buffer.rewind();
 			for(Float xValue : xDivisions.keySet()) {
 				float x = (xValue - plotMinX) / domain * plotWidth + xPlotLeft;
@@ -672,7 +550,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		}
 		
 		// draw the y-axis scale
-		if(yAxisTicksVisible) {
+		if(yAxisTicksVisibility.get()) {
 			OpenGL.buffer.rewind();
 			for(Float entry : yDivisions.keySet()) {
 				float y = (entry - plotMinY) / plotRange * plotHeight + yPlotBottom;
@@ -694,76 +572,72 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		}
 		
 		// draw the legend, if space is available
-		if(legendVisible && haveDatasets && xLegendBorderRight < width - Theme.tilePadding) {
+		if(legendVisibility.get() && haveDatasets && xLegendBorderRight < width - Theme.tilePadding) {
 			OpenGL.drawQuad2D(gl, Theme.legendBackgroundColor, xLegendBorderLeft, yLegendBorderBottom, xLegendBorderRight, yLegendBorderTop);
 			
 			for(int i = 0; i < datasetsCount; i++) {
-				Dataset dataset = datasets.getNormal(i);
+				Field dataset = datasets.getNormal(i);
 				if(mouseX >= legendMouseoverCoordinates[i][0] && mouseX <= legendMouseoverCoordinates[i][2] && mouseY >= legendMouseoverCoordinates[i][1] && mouseY <= legendMouseoverCoordinates[i][3]) {
 					OpenGL.drawQuadOutline2D(gl, Theme.tickLinesColor, legendMouseoverCoordinates[i][0], legendMouseoverCoordinates[i][1], legendMouseoverCoordinates[i][2], legendMouseoverCoordinates[i][3]);
 					handler = EventHandler.onPress(event -> ConfigureView.instance.forDataset(dataset));
 				}
-				OpenGL.drawQuad2D(gl, dataset.glColor, legendBoxCoordinates[i][0], legendBoxCoordinates[i][1], legendBoxCoordinates[i][2], legendBoxCoordinates[i][3]);
-				OpenGL.drawMediumText(gl, dataset.name, (int) xLegendNameLeft[i], (int) yLegendTextBaseline, 0);
+				OpenGL.drawQuad2D(gl, dataset.color.getGl(), legendBoxCoordinates[i][0], legendBoxCoordinates[i][1], legendBoxCoordinates[i][2], legendBoxCoordinates[i][3]);
+				OpenGL.drawMediumText(gl, dataset.name.get(), (int) xLegendNameLeft[i], (int) yLegendTextBaseline, 0);
 			}
 		}
 		
 		// draw the FFT info text if space is available
-		boolean spaceForFftInfoText = legendVisible ? xFftInfoTextLeft > xLegendBorderRight + Theme.legendTextPadding : xFftInfoTextLeft > 0;
-		if(fftInfoVisible && spaceForFftInfoText && haveDatasets) {
-			if(chartStyle == ChartStyle.SINGLE) {
-				
-				OpenGL.drawSmallText(gl, fftWindowLengthText, (int) xFftWindowLenghtTextLeft, (int) yFftWindowLengthTextBaseline, 0);
-				
-			} else if(chartStyle == ChartStyle.HISTOGRAM) {
-				
-				OpenGL.drawSmallText(gl, fftWindowLengthText, (int) xFftWindowLenghtTextLeft, (int) yFftWindowLengthTextBaseline, 0);
-				OpenGL.drawSmallText(gl, fftWindowCountText, (int) xFftWindowCountTextLeft, (int) yFftWindowCountTextBaseline, 0);
-				
-			} else if(chartStyle == ChartStyle.WATERFALL) {
-				
-				OpenGL.drawSmallText(gl, fftWindowLengthText, (int) xFftWindowLenghtTextLeft, (int) yFftWindowLengthTextBaseline, 0);
-				OpenGL.drawSmallText(gl, fftWindowCountText, (int) xFftWindowCountTextLeft, (int) yFftWindowCountTextBaseline, 0);
-				OpenGL.drawSmallText(gl, minPowerText, (int) xMinPowerTextLeft, (int) yPowerTextBaseline, 0);
-				OpenGL.drawSmallText(gl, maxPowerText, (int) xMaxPowerTextLeft, (int) yPowerTextBaseline, 0);
-				
-				OpenGL.drawQuad2D(gl, Theme.plotBackgroundColor, xPowerScaleLeft, yPowerTextBaseline, xPowerScaleRight, yPowerTextTop);
-				
-				for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
-					Dataset dataset = datasets.getNormal(datasetN);
-					float top = yPowerTextTop - (yPowerTextTop - yPowerTextBaseline) * datasetN / datasetsCount;
-					float bottom = top - (yPowerTextTop - yPowerTextBaseline) / datasetsCount;
-					float r = dataset.glColor[0];
-					float g = dataset.glColor[1];
-					float b = dataset.glColor[2];
-					OpenGL.buffer.rewind();
-					OpenGL.buffer.put(xPowerScaleLeft);  OpenGL.buffer.put(top);    OpenGL.buffer.put(r); OpenGL.buffer.put(g); OpenGL.buffer.put(b); OpenGL.buffer.put(0);
-					OpenGL.buffer.put(xPowerScaleLeft);  OpenGL.buffer.put(bottom); OpenGL.buffer.put(r); OpenGL.buffer.put(g); OpenGL.buffer.put(b); OpenGL.buffer.put(0);
-					OpenGL.buffer.put(xPowerScaleRight); OpenGL.buffer.put(top);    OpenGL.buffer.put(r); OpenGL.buffer.put(g); OpenGL.buffer.put(b); OpenGL.buffer.put(1);
-					OpenGL.buffer.put(xPowerScaleRight); OpenGL.buffer.put(bottom); OpenGL.buffer.put(r); OpenGL.buffer.put(g); OpenGL.buffer.put(b); OpenGL.buffer.put(1);
-					OpenGL.buffer.rewind();
-					OpenGL.drawTrianglesXYRGBA(gl, GL3.GL_TRIANGLE_STRIP, OpenGL.buffer, 4);
+		boolean spaceForFftInfoText = legendVisibility.get() ? xFftInfoTextLeft > xLegendBorderRight + Theme.legendTextPadding : xFftInfoTextLeft > 0;
+		if(fftInfoVisibility.get() && spaceForFftInfoText && haveDatasets) {
+			switch(chartStyle.get()) {
+				case SINGLE -> {
+					OpenGL.drawSmallText(gl, fftWindowLengthText, (int) xFftWindowLenghtTextLeft, (int) yFftWindowLengthTextBaseline, 0);
 				}
-				
-				OpenGL.drawQuadOutline2D(gl, Theme.legendBackgroundColor, xPowerScaleLeft, yPowerTextBaseline, xPowerScaleRight, yPowerTextTop);
-				
+				case HISTOGRAM -> {
+					OpenGL.drawSmallText(gl, fftWindowLengthText, (int) xFftWindowLenghtTextLeft, (int) yFftWindowLengthTextBaseline, 0);
+					OpenGL.drawSmallText(gl, fftWindowCountText, (int) xFftWindowCountTextLeft, (int) yFftWindowCountTextBaseline, 0);
+				}
+				case WATERFALL -> {
+					OpenGL.drawSmallText(gl, fftWindowLengthText, (int) xFftWindowLenghtTextLeft, (int) yFftWindowLengthTextBaseline, 0);
+					OpenGL.drawSmallText(gl, fftWindowCountText, (int) xFftWindowCountTextLeft, (int) yFftWindowCountTextBaseline, 0);
+					OpenGL.drawSmallText(gl, minPowerText, (int) xMinPowerTextLeft, (int) yPowerTextBaseline, 0);
+					OpenGL.drawSmallText(gl, maxPowerText, (int) xMaxPowerTextLeft, (int) yPowerTextBaseline, 0);
+					OpenGL.drawQuad2D(gl, Theme.plotBackgroundColor, xPowerScaleLeft, yPowerTextBaseline, xPowerScaleRight, yPowerTextTop);
+					for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
+						Field dataset = datasets.getNormal(datasetN);
+						float top = yPowerTextTop - (yPowerTextTop - yPowerTextBaseline) * datasetN / datasetsCount;
+						float bottom = top - (yPowerTextTop - yPowerTextBaseline) / datasetsCount;
+						float r = dataset.color.getGl()[0];
+						float g = dataset.color.getGl()[1];
+						float b = dataset.color.getGl()[2];
+						OpenGL.buffer.rewind();
+						OpenGL.buffer.put(xPowerScaleLeft);  OpenGL.buffer.put(top);    OpenGL.buffer.put(r); OpenGL.buffer.put(g); OpenGL.buffer.put(b); OpenGL.buffer.put(0);
+						OpenGL.buffer.put(xPowerScaleLeft);  OpenGL.buffer.put(bottom); OpenGL.buffer.put(r); OpenGL.buffer.put(g); OpenGL.buffer.put(b); OpenGL.buffer.put(0);
+						OpenGL.buffer.put(xPowerScaleRight); OpenGL.buffer.put(top);    OpenGL.buffer.put(r); OpenGL.buffer.put(g); OpenGL.buffer.put(b); OpenGL.buffer.put(1);
+						OpenGL.buffer.put(xPowerScaleRight); OpenGL.buffer.put(bottom); OpenGL.buffer.put(r); OpenGL.buffer.put(g); OpenGL.buffer.put(b); OpenGL.buffer.put(1);
+						OpenGL.buffer.rewind();
+						OpenGL.drawTrianglesXYRGBA(gl, GL3.GL_TRIANGLE_STRIP, OpenGL.buffer, 4);
+					}
+					OpenGL.drawQuadOutline2D(gl, Theme.legendBackgroundColor, xPowerScaleLeft, yPowerTextBaseline, xPowerScaleRight, yPowerTextTop);
+				}
 			}
 		}
 		
 		// draw the x-axis title if space is available
-		if(xAxisTitleVisible)
-			if((!legendVisible && xXaxisTitleTextLeft > xPlotLeft) || (legendVisible && xXaxisTitleTextLeft > xLegendBorderRight + Theme.legendTextPadding))
+		if(xAxisTitleVisibility.get())
+			if((!legendVisibility.get() && xXaxisTitleTextLeft > xPlotLeft) || (legendVisibility.get() && xXaxisTitleTextLeft > xLegendBorderRight + Theme.legendTextPadding))
 				OpenGL.drawLargeText(gl, xAxisTitle, (int) xXaxisTitleTextLeft, (int) yXaxisTitleTextBasline, 0);
 		
 		// draw the y-axis title if space is available
-		if(yAxisTitleVisible && yYaxisTitleTextLeft > yPlotBottom)
+		if(yAxisTitleVisibility.get() && yYaxisTitleTextLeft > yPlotBottom)
 			OpenGL.drawLargeText(gl, yAxisTitle, (int) xYaxisTitleTextBaseline, (int) yYaxisTitleTextLeft, 90);
 		
 		
 		// draw the FFTs
 		int[][][] histogram = null; // only populated in Histogram mode
+		int actualYaxisBins = 0;
 		if(fft.exists) {
-			if(chartStyle == ChartStyle.SINGLE) {
+			if(chartStyle.is(ChartStyle.SINGLE)) {
 				
 				// clip to the plot region
 				int[] originalScissorArgs = new int[4];
@@ -782,27 +656,27 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 				// draw the FFT line charts, and also draw points if there are relatively few bins on screen
 				for(int datasetN = 0; datasetN < datasets.normalDatasets.size(); datasetN++) {
 					FloatBuffer buffer = Buffers.newDirectFloatBuffer(fft.windows.get(0).get(datasetN));
-					OpenGL.drawLinesY(gl, GL3.GL_LINE_STRIP, datasets.normalDatasets.get(datasetN).glColor, buffer, fftBinCount, 0);
+					OpenGL.drawLinesY(gl, GL3.GL_LINE_STRIP, datasets.normalDatasets.get(datasetN).color.getGl(), buffer, fftBinCount, 0);
 					if(width / fftBinCount > 2 * Theme.pointWidth)
-						OpenGL.drawPointsY(gl, datasets.normalDatasets.get(datasetN).glColor, buffer, fftBinCount, 0);
+						OpenGL.drawPointsY(gl, datasets.normalDatasets.get(datasetN).color.getGl(), buffer, fftBinCount, 0);
 				}
 				
 				// restore the old matrix and stop clipping to the plot region
 				OpenGL.useMatrix(gl, chartMatrix);
 				gl.glScissor(originalScissorArgs[0], originalScissorArgs[1], originalScissorArgs[2], originalScissorArgs[3]);
 				
-			} else if(chartStyle == ChartStyle.HISTOGRAM) {
+			} else if(chartStyle.is(ChartStyle.HISTOGRAM)) {
 				
 				int xBinCount = fft.binCount;
 				int yBinCount = yAxisBins;
 				
 				fftBinsPerPlotBin = 1;
-				while((xAxisBinsAutomatic && xBinCount > plotWidth / 2) || (!xAxisBinsAutomatic && xBinCount > xAxisBins)) {
+				while((xAxisBinsAutomatic.get() && xBinCount > plotWidth / 2) || (!xAxisBinsAutomatic.get() && xBinCount > xAxisBins)) {
 					fftBinsPerPlotBin++;
 					xBinCount = (int) Math.ceil((double) fft.binCount / (double) fftBinsPerPlotBin);
 				}
 				
-				if(yAxisBinsAutomatic)
+				if(yAxisBinsAutomatic.get())
 					yBinCount = (int) plotHeight / 2;
 				actualYaxisBins = yBinCount;
 				
@@ -835,29 +709,29 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 							OpenGL.createHistogramTexture(gl, histogramTexHandle, xBinCount, yBinCount);
 						}
 						OpenGL.writeHistogramTexture(gl, histogramTexHandle, xBinCount, yBinCount, bytes.rewind());
-						OpenGL.drawHistogram(gl, histogramTexHandle, datasets.normalDatasets.get(datasetN).glColor, fullScale, (float) gamma / 100f, (int) xPlotLeft, (int) yPlotBottom, (int) plotWidth, (int) plotHeight, 1f/xBinCount/2f);
+						OpenGL.drawHistogram(gl, histogramTexHandle, datasets.normalDatasets.get(datasetN).color.getGl(), fullScale, gamma.getFloat(), (int) xPlotLeft, (int) yPlotBottom, (int) plotWidth, (int) plotHeight, 1f/xBinCount/2f);
 					}
 				}
 				
-			} else if(chartStyle == ChartStyle.WATERFALL) {
+			} else if(chartStyle.is(ChartStyle.WATERFALL)) {
 				
 				int binCount = fft.binCount;
 				
 				fftBinsPerPlotBin = 1;
-				while((xAxisBinsAutomatic && binCount > plotWidth / 2) || (!xAxisBinsAutomatic && binCount > xAxisBins)) {
+				while((xAxisBinsAutomatic.get() && binCount > plotWidth / 2) || (!xAxisBinsAutomatic.get() && binCount > xAxisBins)) {
 					fftBinsPerPlotBin++;
 					binCount = (int) Math.ceil((double) fft.binCount / (double) fftBinsPerPlotBin);
 				}
 				
 				if(binCount > 0) {
-					ByteBuffer bytes = Buffers.newDirectByteBuffer(binCount * fftCount * 4 * 4); // pixelCount * four float32 per pixel
+					ByteBuffer bytes = Buffers.newDirectByteBuffer(binCount * fftCount.get() * 4 * 4); // pixelCount * four float32 per pixel
 					FloatBuffer pixels = bytes.asFloatBuffer();
 					
 					// populate the pixels, simulating glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
 					for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
-						float newR = datasets.normalDatasets.get(datasetN).glColor[0];
-						float newG = datasets.normalDatasets.get(datasetN).glColor[1];
-						float newB = datasets.normalDatasets.get(datasetN).glColor[2];
+						float newR = datasets.normalDatasets.get(datasetN).color.getGl()[0];
+						float newG = datasets.normalDatasets.get(datasetN).color.getGl()[1];
+						float newB = datasets.normalDatasets.get(datasetN).color.getGl()[2];
 						
 						for(int windowN = 0; windowN < fft.windows.size(); windowN++) {
 							
@@ -899,18 +773,18 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 					
 					if(waterfallTexHandle == null) {
 						waterfallTexHandle = new int[1];
-						OpenGL.createTexture(gl, waterfallTexHandle, binCount, fftCount, GL3.GL_RGBA, GL3.GL_FLOAT, false);
+						OpenGL.createTexture(gl, waterfallTexHandle, binCount, fftCount.get(), GL3.GL_RGBA, GL3.GL_FLOAT, false);
 					}
-					OpenGL.writeTexture(gl, waterfallTexHandle, binCount, fftCount, GL3.GL_RGBA, GL3.GL_FLOAT, bytes);
+					OpenGL.writeTexture(gl, waterfallTexHandle, binCount, fftCount.get(), GL3.GL_RGBA, GL3.GL_FLOAT, bytes);
 					OpenGL.drawTexturedBox(gl, waterfallTexHandle, false, (int) xPlotLeft, (int) yPlotBottom, (int) plotWidth, (int) plotHeight, 1f/binCount/2f, false);
 				}
 			}
 		}
 		
 		// draw the tooltip if the mouse is in the plot region
-		if(fft.exists && SettingsController.getTooltipVisibility() && mouseX >= xPlotLeft && mouseX <= xPlotRight && mouseY >= yPlotBottom && mouseY <= yPlotTop) {
+		if(fft.exists && SettingsView.instance.tooltipsVisibility.get() && mouseX >= xPlotLeft && mouseX <= xPlotRight && mouseY >= yPlotBottom && mouseY <= yPlotTop) {
 			
-			if(chartStyle == ChartStyle.SINGLE) {
+			if(chartStyle.is(ChartStyle.SINGLE)) {
 				
 				// map mouseX to a frequency bin, and anchor the tooltip over that frequency bin
 				int binN = (int) (((float) mouseX - xPlotLeft) / plotWidth * (fft.binCount - 1) + 0.5f);
@@ -920,27 +794,18 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 				int anchorX = (int) ((frequency - plotMinX) / domain * plotWidth + xPlotLeft);
 				
 				// get the power levels for each dataset
-				List<TooltipEntry> entries = new ArrayList<TooltipEntry>();
+				Tooltip tooltip = new Tooltip();
+				tooltip.addRow(convertFrequencyRangeToString(binN, binN, fft));
 				List<float[]> fftOfDataset = fft.windows.get(0);
-				entries.add(new TooltipEntry(null, convertFrequencyRangeToString(binN, binN, fft)));
 				for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
-					entries.add(new TooltipEntry(datasets.getNormal(datasetN).glColor, convertPowerToString(fftOfDataset.get(datasetN)[binN])));
+					tooltip.addRow(datasets.getNormal(datasetN).color.getGl(),
+					               convertPowerToString(fftOfDataset.get(datasetN)[binN]),
+					               (float) Math.max((int) ((fftOfDataset.get(datasetN)[binN] - plotMinY) / plotRange * plotHeight + yPlotBottom), (int) yPlotBottom));
 				
 				// draw the tooltip
-				if(datasetsCount > 1) {
-					OpenGL.buffer.rewind();
-					OpenGL.buffer.put(anchorX); OpenGL.buffer.put(yPlotTop);
-					OpenGL.buffer.put(anchorX); OpenGL.buffer.put(yPlotBottom);
-					OpenGL.buffer.rewind();
-					OpenGL.drawLinesXy(gl, GL3.GL_LINES, Theme.tooltipVerticalBarColor, OpenGL.buffer, 2);
-					drawTooltip(gl, entries, anchorX, mouseY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
-				} else {
-					int anchorY = (int) ((fftOfDataset.get(0)[binN] - plotMinY) / plotRange * plotHeight + yPlotBottom);
-					anchorY = Math.max(anchorY, (int) yPlotBottom);
-					drawTooltip(gl, entries, anchorX, anchorY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
-				}
+				tooltip.draw(gl, anchorX, mouseX, mouseY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
 				
-			} else if(chartStyle == ChartStyle.HISTOGRAM) {
+			} else if(chartStyle.is(ChartStyle.HISTOGRAM)) {
 				
 				// map mouseX to a frequency bin, and anchor the tooltip over that frequency bin
 				// note: one histogram bin corresponds to 1 or >1 FFT bins
@@ -964,17 +829,24 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 				for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
 					windowCountForDataset[datasetN] = (int) Math.ceil((double) histogram[datasetN][powerBinN][histogramBinN] / (double) fftBinsPerPlotBin);
 				int windowCount = fft.windows.size();
-				List<TooltipEntry> entries = new ArrayList<TooltipEntry>();
-				entries.add(new TooltipEntry(null, convertFrequencyRangeToString(firstFftBin, lastFftBin, fft)));
-				entries.add(new TooltipEntry(null, convertPowerRangeToString(minPower, maxPower)));
+				
+				int anchorY = (int) (((float) powerBinN + 0.5f) / (float) actualYaxisBins * plotHeight + yPlotBottom);
+				Tooltip tooltip = new Tooltip();
+				tooltip.addRow(convertFrequencyRangeToString(firstFftBin, lastFftBin, fft));
+				tooltip.addRow(convertPowerRangeToString(minPower, maxPower));
 				for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
-					entries.add(new TooltipEntry(datasets.getNormal(datasetN).glColor, ChartUtils.formattedNumber((double) windowCountForDataset[datasetN] / (double) windowCount * 100.0, 3) + "% (" + windowCountForDataset[datasetN] + " of " + windowCount + " FFTs)"));
+					if(datasetN == 0)
+						tooltip.addRow(datasets.getNormal(datasetN).color.getGl(),
+						               ChartUtils.formattedNumber((double) windowCountForDataset[datasetN] / (double) windowCount * 100.0, 3) + "% (" + windowCountForDataset[datasetN] + " of " + windowCount + " FFTs)",
+						               (float) anchorY);
+					else
+						tooltip.addRow(datasets.getNormal(datasetN).color.getGl(),
+						               ChartUtils.formattedNumber((double) windowCountForDataset[datasetN] / (double) windowCount * 100.0, 3) + "% (" + windowCountForDataset[datasetN] + " of " + windowCount + " FFTs)");
 				
 				// draw the tooltip
-				int anchorY = (int) (((float) powerBinN + 0.5f) / (float) actualYaxisBins * plotHeight + yPlotBottom);
-				drawTooltip(gl, entries, anchorX, anchorY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
+				tooltip.draw(gl, anchorX, mouseX, mouseY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
 				
-			} else if(chartStyle == ChartStyle.WATERFALL) {
+			} else if(chartStyle.is(ChartStyle.WATERFALL)) {
 				
 				// map mouseX to a frequency bin, and anchor the tooltip over that frequency bin
 				// note: one histogram bin corresponds to 1 or >1 FFT bins
@@ -987,7 +859,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 				int lastFftBin  = Math.min(firstFftBin + fftBinsPerPlotBin - 1, fft.binCount - 1);
 				
 				// map mouseY to a time
-				int waterfallRowCount = fftCount;
+				int waterfallRowCount = fftCount.get();
 				int waterfallRowN = Math.round(((float) mouseY - yPlotBottom) / plotHeight * waterfallRowCount - 0.5f);
 				if(waterfallRowN > waterfallRowCount - 1)
 					waterfallRowN = waterfallRowCount - 1;
@@ -997,9 +869,10 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 				if(rowFirstSampleNumber >= 0) {
 					// mouse is over an FFT, so proceed with the tooltip
 					float secondsElapsed = ((float) waterfallRowN + 0.5f) / (float) waterfallRowCount * plotMaxTime;
-					List<TooltipEntry> entries = new ArrayList<TooltipEntry>();
-					entries.add(new TooltipEntry(null, convertFrequencyRangeToString(firstFftBin, lastFftBin, fft)));
-					entries.add(new TooltipEntry(null, ChartUtils.formattedNumber(secondsElapsed, 4) + " seconds ago"));
+					int anchorY = (int) (((float) waterfallRowN + 0.5f) / (float) waterfallRowCount * plotHeight + yPlotBottom);
+					Tooltip tooltip = new Tooltip();
+					tooltip.addRow(convertFrequencyRangeToString(firstFftBin, lastFftBin, fft));
+					tooltip.addRow(ChartUtils.formattedNumber(secondsElapsed, 4) + " seconds ago");
 					
 					// get the power levels for each dataset
 					for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
@@ -1007,12 +880,17 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 						for(int bin = firstFftBin; bin <= lastFftBin; bin++)
 							power += fft.windows.get(fft.windows.size() - waterfallRowN - 1).get(datasetN)[bin];
 						power /= lastFftBin - firstFftBin + 1;
-						entries.add(new TooltipEntry(datasets.getNormal(datasetN).glColor, convertPowerToString(power)));
+						if(datasetN == 0)
+							tooltip.addRow(datasets.getNormal(datasetN).color.getGl(),
+							               convertPowerToString(power),
+							               (float) anchorY);
+						else
+							tooltip.addRow(datasets.getNormal(datasetN).color.getGl(),
+							               convertPowerToString(power));
 					}
 					
 					// draw the tooltip
-					int anchorY = (int) (((float) waterfallRowN + 0.5f) / (float) waterfallRowCount * plotHeight + yPlotBottom);
-					drawTooltip(gl, entries, anchorX, anchorY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
+					tooltip.draw(gl, anchorX, mouseX, mouseY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
 				}
 			}
 			
@@ -1122,7 +1000,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		
 		private int previousSampleCount = 0;
 		private int previousFftsCount = 0;
-		private List<Dataset> previousDatasets = new ArrayList<Dataset>();
+		private List<Field> previousDatasets = new ArrayList<Field>();
 		private ChartStyle previousChartStyle = ChartStyle.SINGLE;
 		
 		private static class DFT {
@@ -1157,7 +1035,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 
 				previousSampleCount = sampleCount;
 				previousFftsCount = fftsCount;
-				previousDatasets = new ArrayList<Dataset>(datasets.normalDatasets); // must *duplicate* the list so we can detect changes
+				previousDatasets = new ArrayList<Field>(datasets.normalDatasets); // must *duplicate* the list so we can detect changes
 				previousChartStyle = chartStyle;
 				
 			}

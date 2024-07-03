@@ -1,8 +1,8 @@
 import java.awt.Component;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Queue;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -15,10 +15,10 @@ import javax.swing.JPanel;
 public class WidgetDatasetComboboxes implements Widget {
 	
 	private List<JLabel> comboboxLabels = new ArrayList<JLabel>();
-	private List<JComboBox<Dataset>> comboboxes = new ArrayList<JComboBox<Dataset>>();
+	private List<JComboBox<Field>> comboboxes = new ArrayList<JComboBox<Field>>();
 	
 	private String[] labels;
-	private Consumer<List<Dataset>> eventHandler;
+	private Consumer<List<Field>> eventHandler;
 	
 	/**
 	 * A widget that lets the user select a specific number of datasets via comboboxes.
@@ -26,7 +26,7 @@ public class WidgetDatasetComboboxes implements Widget {
 	 * @param labels          Labels for each combobox. Array size must be >0, and corresponds to number of comboboxes.
 	 * @param eventHandler    Will be notified of when the selected dataset(s) change.
 	 */
-	public WidgetDatasetComboboxes(String[] labels, Consumer<List<Dataset>> eventHandler) {
+	public WidgetDatasetComboboxes(String[] labels, Consumer<List<Field>> eventHandler) {
 		
 		this.labels = labels;
 		this.eventHandler = eventHandler;
@@ -41,8 +41,8 @@ public class WidgetDatasetComboboxes implements Widget {
 		comboboxLabels.clear();
 		comboboxes.clear();
 		
-		List<Dataset> list = new ArrayList<Dataset>();
-		ConnectionsController.telemetryConnections.forEach(connection -> list.addAll(connection.datasets.getList()));
+		List<Field> list = new ArrayList<Field>();
+		ConnectionsController.telemetryConnections.forEach(connection -> list.addAll(connection.getDatasetsList()));
 		list.removeIf(dataset -> dataset.isBitfield);
 		
 		boolean multipleConnections = false;
@@ -53,12 +53,12 @@ public class WidgetDatasetComboboxes implements Widget {
 		for(String label : labels) {
 			comboboxLabels.add((label != null && !label.isEmpty()) ? new JLabel(label + ": ") : null);
 			
-			JComboBox<Dataset> combobox = new JComboBox<Dataset>();
+			JComboBox<Field> combobox = new JComboBox<Field>();
 			list.forEach(dataset -> combobox.addItem(dataset));
 			if(multipleConnections)
 				combobox.setRenderer(new DefaultListCellRenderer() {
 					@Override public Component getListCellRendererComponent(final JList<?> list, Object value, final int index, final boolean isSelected, final boolean cellHasFocus) {
-						return super.getListCellRendererComponent(list, ((Dataset)value).connection.name + ": " + value.toString(), index, isSelected, cellHasFocus);
+						return super.getListCellRendererComponent(list, ((Field)value).connection.name + ": " + value.toString(), index, isSelected, cellHasFocus);
 					}
 				});
 			if(list.isEmpty())
@@ -69,7 +69,7 @@ public class WidgetDatasetComboboxes implements Widget {
 		
 	}
 	
-	public void setDataset(int comboboxN, Dataset newDataset) {
+	public void setDataset(int comboboxN, Field newDataset) {
 		
 		comboboxes.get(comboboxN).setSelectedItem(newDataset);
 		
@@ -77,12 +77,12 @@ public class WidgetDatasetComboboxes implements Widget {
 	
 	private boolean maskEvents = false;
 	
-	private void validateAndNotifyHandler(JComboBox<Dataset> eventSource) {
+	private void validateAndNotifyHandler(JComboBox<Field> eventSource) {
 		
 		// ensure all selected datasets are from the same connection
-		Dataset newDataset = (Dataset) eventSource.getSelectedItem();
+		Field newDataset = (Field) eventSource.getSelectedItem();
 		comboboxes.forEach(combobox -> {
-			Dataset d = (Dataset) combobox.getSelectedItem();
+			Field d = (Field) combobox.getSelectedItem();
 			if(d != null && d.connection != newDataset.connection) {
 				maskEvents = true;
 				combobox.setSelectedItem(newDataset);
@@ -91,9 +91,9 @@ public class WidgetDatasetComboboxes implements Widget {
 		});
 		
 		// important: provide the chart with a NEW list, to ensure comparisons fail and caches flush
-		List<Dataset> list = new ArrayList<Dataset>();
+		List<Field> list = new ArrayList<Field>();
 		comboboxes.forEach(combobox -> {
-			Dataset d = (Dataset) combobox.getSelectedItem();
+			Field d = (Field) combobox.getSelectedItem();
 			if(d != null)
 				list.add(d);
 		});
@@ -106,7 +106,7 @@ public class WidgetDatasetComboboxes implements Widget {
 	/**
 	 * Ensures this widget is in sync with its state.
 	 */
-	@Override public void appendToGui(JPanel gui) {
+	@Override public void appendTo(JPanel panel, String constraints) {
 		
 		// if available connections changed, recreate comboboxes but default to the previously selected datasets
 		Set<ConnectionTelemetry> oldConnections = new HashSet<ConnectionTelemetry>();
@@ -115,8 +115,8 @@ public class WidgetDatasetComboboxes implements Widget {
 			oldConnections.add(comboboxes.get(0).getItemAt(i).connection);
 		
 		if(!oldConnections.equals(newConnections)) {
-			List<Dataset> oldSelections = new ArrayList<Dataset>();
-			comboboxes.forEach(combobox -> oldSelections.add((Dataset) combobox.getSelectedItem()));
+			List<Field> oldSelections = new ArrayList<Field>();
+			comboboxes.forEach(combobox -> oldSelections.add((Field) combobox.getSelectedItem()));
 			createDatasetWidgets();
 			for(int i = 0; i < oldSelections.size(); i++) {
 				maskEvents = true;
@@ -128,10 +128,10 @@ public class WidgetDatasetComboboxes implements Widget {
 		// populate the GUI
 		for(int i = 0; i < comboboxLabels.size(); i++) {
 			JLabel label = comboboxLabels.get(i);
-			JComboBox<Dataset> combobox = comboboxes.get(i);
+			JComboBox<Field> combobox = comboboxes.get(i);
 			if(label != null)
-				gui.add(label, "split 2");
-			gui.add(combobox, "grow");
+				panel.add(label, "split 2");
+			panel.add(combobox, "grow");
 		}
 		
 	}
@@ -154,10 +154,10 @@ public class WidgetDatasetComboboxes implements Widget {
 	 * 
 	 * @param lines    A queue of remaining lines from the settings file.
 	 */
-	@Override public void importFrom(Queue<String> lines) {
+	@Override public void importFrom(ConnectionsController.QueueOfLines lines) throws AssertionError {
 		
 		// parse the telemetry datasets line
-		String line = ChartUtils.parseString(lines.remove(), "datasets = %s");
+		String line = lines.parseString("datasets = %s");
 		if(!line.equals("")) {
 			try {
 				String[] tokens = line.split(",");
@@ -166,7 +166,7 @@ public class WidgetDatasetComboboxes implements Widget {
 				for(int i = 0; i < tokens.length; i++) {
 					int connectionN = Integer.parseInt(tokens[i].split(" ")[1]);
 					int locationN   = Integer.parseInt(tokens[i].split(" ")[3]);
-					Dataset d = ConnectionsController.telemetryConnections.get(connectionN).datasets.getByLocation(locationN);
+					Field d = ConnectionsController.telemetryConnections.get(connectionN).getDatasetByLocation(locationN);
 					if(d == null)
 						throw new Exception();
 					comboboxes.get(i).setSelectedItem(d);
@@ -176,27 +176,22 @@ public class WidgetDatasetComboboxes implements Widget {
 		
 	}
 	
-	/**
-	 * Saves the current state to one or more lines of text.
-	 * 
-	 * @param    Append lines of text to this List.
-	 */
-	@Override public void exportTo(List<String> lines) {
+	@Override public void exportTo(PrintWriter file) {
 		
-		List<Dataset> list = new ArrayList<Dataset>();
+		List<Field> list = new ArrayList<Field>();
 		comboboxes.forEach(combobox -> {
-			Dataset d = (Dataset) combobox.getSelectedItem();
+			Field d = (Field) combobox.getSelectedItem();
 			if(d != null)
 				list.add(d);
 		});
 		
 		// selected datasets
 		String line = new String("datasets = ");
-		for(Dataset d : list)
-			line += "connection " + ConnectionsController.telemetryConnections.indexOf(d.connection) + " location " + d.location + ",";
+		for(Field d : list)
+			line += "connection " + ConnectionsController.telemetryConnections.indexOf(d.connection) + " location " + d.location.get() + ",";
 		if(line.endsWith(","))
 			line = line.substring(0, line.length() - 1);
-		lines.add(line);
+		file.println("\t" + line);
 		
 	}
 

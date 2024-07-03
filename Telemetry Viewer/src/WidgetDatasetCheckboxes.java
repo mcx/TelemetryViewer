@@ -1,11 +1,12 @@
 import java.awt.Component;
+import java.awt.Dimension;
 import java.awt.event.FocusEvent;
 import java.awt.event.FocusListener;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Queue;
 import java.util.Map.Entry;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -22,12 +23,12 @@ import javax.swing.SwingConstants;
 public class WidgetDatasetCheckboxes implements Widget {
 	
 	// "model"
-	List<Dataset>                selectedDatasets       = new ArrayList<Dataset>();
-	List<Dataset.Bitfield.State> selectedBitfieldEdges  = new ArrayList<Dataset.Bitfield.State>();
-	List<Dataset.Bitfield.State> selectedBitfieldLevels = new ArrayList<Dataset.Bitfield.State>();
+	List<Field>                selectedDatasets       = new ArrayList<Field>();
+	List<Field.Bitfield.State> selectedBitfieldEdges  = new ArrayList<Field.Bitfield.State>();
+	List<Field.Bitfield.State> selectedBitfieldLevels = new ArrayList<Field.Bitfield.State>();
 	long durationSampleCount;
 	long durationMilliseconds;
-	boolean userSpecifiedTheDuration = false;
+	boolean userSpecifiedTheDuration = false; // true if the user manually specified it, or imported a settings file
 	enum DurationUnit {
 		SAMPLES { @Override public String toString() { return "Samples"; } },
 		SECONDS { @Override public String toString() { return "Seconds"; } },
@@ -44,22 +45,23 @@ public class WidgetDatasetCheckboxes implements Widget {
 	AxisType axisType = AxisType.SAMPLE_COUNT;
 	
 	// "view"
-	Map<Dataset, JCheckBox>  datasetCheckboxes = new LinkedHashMap<Dataset, JCheckBox>();
-	Map<Dataset.Bitfield.State, JToggleButton> edgeButtons  = new LinkedHashMap<Dataset.Bitfield.State, JToggleButton>();
-	Map<Dataset.Bitfield.State, JToggleButton> levelButtons = new LinkedHashMap<Dataset.Bitfield.State, JToggleButton>();
-	Map<Dataset, JToggleButton> bitfieldEdgeButtonsForEntireDataset  = new LinkedHashMap<Dataset, JToggleButton>();
-	Map<Dataset, JToggleButton> bitfieldLevelButtonsForEntireDataset = new LinkedHashMap<Dataset, JToggleButton>();
+	Map<Field, JCheckBox>  datasetCheckboxes = new LinkedHashMap<Field, JCheckBox>();
+	Map<Field.Bitfield.State, JToggleButton> edgeButtons  = new LinkedHashMap<Field.Bitfield.State, JToggleButton>();
+	Map<Field.Bitfield.State, JToggleButton> levelButtons = new LinkedHashMap<Field.Bitfield.State, JToggleButton>();
+	Map<Field, JToggleButton> bitfieldEdgeButtonsForEntireDataset  = new LinkedHashMap<Field, JToggleButton>();
+	Map<Field, JToggleButton> bitfieldLevelButtonsForEntireDataset = new LinkedHashMap<Field, JToggleButton>();
 	JTextField durationTextfield = new JTextField(Long.toString(durationSampleCount));
 	JComboBox<DurationUnit> durationUnitCombobox = new JComboBox<DurationUnit>(DurationUnit.values());
 	JToggleButton sampleCountMode = new JToggleButton("Sample Count", true);
 	JToggleButton timestampsMode = new JToggleButton("Timestamps", false);
 	JToggleButton timeElapsedMode = new JToggleButton("Time Elapsed", false);
+	boolean isVisible = true;
 	
 	// "controller"
 	boolean  allowTime;
-	Consumer<List<Dataset>>                datasetsEventHandler;
-	Consumer<List<Dataset.Bitfield.State>> bitfieldEdgesEventHandler;
-	Consumer<List<Dataset.Bitfield.State>> bitfieldLevelsEventHandler;
+	Consumer<List<Field>>                datasetsEventHandler;
+	Consumer<List<Field.Bitfield.State>> bitfieldEdgesEventHandler;
+	Consumer<List<Field.Bitfield.State>> bitfieldLevelsEventHandler;
 	BiFunction<AxisType, Long, Long>       durationEventHandler;
 	
 	/**
@@ -71,7 +73,7 @@ public class WidgetDatasetCheckboxes implements Widget {
 	 * @param durationHandler          If not null, allow the user to specify the chart duration.
 	 * @param allowTime                If true, the chart duration can be specified as a sample count or length of time. If false, only a sample count is allowed.
 	 */
-	public WidgetDatasetCheckboxes(Consumer<List<Dataset>> datasetsHandler, Consumer<List<Dataset.Bitfield.State>> bitfieldEdgesHandler, Consumer<List<Dataset.Bitfield.State>> bitfieldLevelsHandler, BiFunction<AxisType, Long, Long> durationHandler, boolean allowTime) {
+	public WidgetDatasetCheckboxes(Consumer<List<Field>> datasetsHandler, Consumer<List<Field.Bitfield.State>> bitfieldEdgesHandler, Consumer<List<Field.Bitfield.State>> bitfieldLevelsHandler, BiFunction<AxisType, Long, Long> durationHandler, boolean allowTime) {
 		
 		super();
 		
@@ -108,7 +110,7 @@ public class WidgetDatasetCheckboxes implements Widget {
 		group.add(timestampsMode);
 		group.add(timeElapsedMode);
 		
-		appendToGui(null); // not actually appending, just initializing the widgets
+		appendTo(null, ""); // not actually appending, just initializing the widgets
 		
 	}
 	
@@ -117,7 +119,7 @@ public class WidgetDatasetCheckboxes implements Widget {
 	/**
 	 * Ensures this widget is in sync with its state.
 	 */
-	@Override public void appendToGui(JPanel gui) {
+	@Override public void appendTo(JPanel panel, String constraints) {
 		
 		widgets.clear();
 		
@@ -140,18 +142,18 @@ public class WidgetDatasetCheckboxes implements Widget {
 			
 			for(ConnectionTelemetry connection : ConnectionsController.telemetryConnections) {
 				
-				if(!connection.isDataStructureDefined())
+				if(!connection.isFieldsDefined())
 					continue;
 				
 				if(ConnectionsController.telemetryConnections.size() > 1)
-					widgets.put(new JLabel(connection.name, SwingConstants.CENTER), "");
+					widgets.put(new JLabel(connection.name.get() + " Datasets", SwingConstants.CENTER), "");
 				
-				for(Dataset dataset : connection.datasets.getList()) {
+				for(Field dataset : connection.getDatasetsList()) {
 					
 					if(dataset.isBitfield)
 						continue;
 					
-					JCheckBox checkbox = new JCheckBox(dataset.name);
+					JCheckBox checkbox = new JCheckBox(dataset.name.get());
 					checkbox.setSelected(selectedDatasets.contains(dataset));
 					checkbox.addActionListener(event -> setNormalDatasetSelected(dataset, checkbox.isSelected()));
 					datasetCheckboxes.put(dataset, checkbox);
@@ -168,13 +170,13 @@ public class WidgetDatasetCheckboxes implements Widget {
 			
 			for(ConnectionTelemetry connection : ConnectionsController.telemetryConnections) {
 				
-				if(!connection.isDataStructureDefined())
+				if(!connection.isFieldsDefined())
 					continue;
 				
 				int rowCount = 0;
-				String label = ConnectionsController.telemetryConnections.size() == 1 ? "Bitfields: " : connection.name + " Bitfields: ";
+				String label = ConnectionsController.telemetryConnections.size() == 1 ? "Bitfields" : connection.name.get() + " Bitfields";
 				
-				for(Dataset dataset : connection.datasets.getList()) {
+				for(Field dataset : connection.getDatasetsList()) {
 					
 					if(!dataset.isBitfield)
 						continue;
@@ -184,15 +186,15 @@ public class WidgetDatasetCheckboxes implements Widget {
 					allEdgesButton.setBorder(Theme.narrowButtonBorder);
 					allEdgesButton.setToolTipText("Show edges");
 					boolean allEdgesSelected = true;
-					for(Dataset.Bitfield b : dataset.bitfields)
-						for(Dataset.Bitfield.State s : b.states)
+					for(Field.Bitfield b : dataset.bitfields)
+						for(Field.Bitfield.State s : b.states)
 							if(!selectedBitfieldEdges.contains(s))
 								allEdgesSelected = false;
 					allEdgesButton.setSelected(allEdgesSelected);
 					allEdgesButton.addActionListener(event -> {
 						boolean selectAll = allEdgesButton.isSelected();
-						for(Dataset.Bitfield bitfield : dataset.bitfields)
-							for(Dataset.Bitfield.State state : bitfield.states)
+						for(Field.Bitfield bitfield : dataset.bitfields)
+							for(Field.Bitfield.State state : bitfield.states)
 								setBitfieldEdgeSelected(state, selectAll);
 					});
 					
@@ -200,29 +202,29 @@ public class WidgetDatasetCheckboxes implements Widget {
 					allLevelsButton.setBorder(Theme.narrowButtonBorder);
 					allLevelsButton.setToolTipText("Show levels");
 					boolean allLevelsSelected = true;
-					for(Dataset.Bitfield b : dataset.bitfields)
-						for(Dataset.Bitfield.State s : b.states)
+					for(Field.Bitfield b : dataset.bitfields)
+						for(Field.Bitfield.State s : b.states)
 							if(!selectedBitfieldLevels.contains(s))
 								allLevelsSelected = false;
 					allLevelsButton.setSelected(allLevelsSelected);
 					allLevelsButton.addActionListener(event -> {
 						boolean selectAll = allLevelsButton.isSelected();
-						for(Dataset.Bitfield bitfield : dataset.bitfields)
-							for(Dataset.Bitfield.State state : bitfield.states)
+						for(Field.Bitfield bitfield : dataset.bitfields)
+							for(Field.Bitfield.State state : bitfield.states)
 								setBitfieldLevelSelected(state, selectAll);
 					});
 					
-					widgets.put(new JLabel((rowCount++ == 0) ? label : ""), "");
+					widgets.put(new JLabel((rowCount++ == 0) ? label : "", SwingConstants.CENTER), "");
 					widgets.put(allEdgesButton, "split 3");
 					widgets.put(allLevelsButton, "");
-					widgets.put(new JLabel("<html><b>" + dataset.name + " (All / None)</b></html>"), "grow");
+					widgets.put(new JLabel("<html><b>" + dataset.name.get() + " (All / None)</b></html>"), "grow");
 					
 					bitfieldEdgeButtonsForEntireDataset.put(dataset, allEdgesButton);
 					bitfieldLevelButtonsForEntireDataset.put(dataset, allLevelsButton);
 					
 					// also show toggle buttons for each state of each bitfield
-					for(Dataset.Bitfield bitfield : dataset.bitfields) {
-						for(Dataset.Bitfield.State state : bitfield.states) {
+					for(Field.Bitfield bitfield : dataset.bitfields) {
+						for(Field.Bitfield.State state : bitfield.states) {
 							
 							JToggleButton edgeButton = new JToggleButton("_\u20D2\u203E");
 							edgeButton.setBorder(Theme.narrowButtonBorder);
@@ -272,14 +274,24 @@ public class WidgetDatasetCheckboxes implements Widget {
 		
 		notifyHandlers();
 		
-		if(gui != null)
-			widgets.forEach((component, constraints) -> gui.add(component, constraints));
+		if(panel != null) {
+			widgets.forEach((component, constraint) -> component.setVisible(isVisible));
+			widgets.forEach((component, constraint) -> panel.add(component, constraint));
+		}
 		
 	}
 	
 	@Override public void setVisible(boolean isVisible) {
 		
+		this.isVisible = isVisible;
 		widgets.forEach((component, constraints) -> component.setVisible(isVisible));
+		
+		// also resize the ConfigureView if it's on screen
+		if(!ConfigureView.instance.getPreferredSize().equals(new Dimension(0, 0))) {
+			ConfigureView.instance.setPreferredSize(null);
+			ConfigureView.instance.revalidate();
+			ConfigureView.instance.repaint();
+		}
 		
 	}
 
@@ -313,42 +325,47 @@ public class WidgetDatasetCheckboxes implements Widget {
 		                                                                    selectedBitfieldLevels.get(0).dataset.connection;
 		
 		// disable widgets for datasets from the other connections
-		for(Map.Entry<Dataset, JCheckBox> entry : datasetCheckboxes.entrySet())
+		for(Map.Entry<Field, JCheckBox> entry : datasetCheckboxes.entrySet())
 			if(entry.getKey().connection != connection)
 				entry.getValue().setEnabled(false);
 		
-		for(Entry<Dataset, JToggleButton> entry : bitfieldEdgeButtonsForEntireDataset.entrySet())
+		for(Entry<Field, JToggleButton> entry : bitfieldEdgeButtonsForEntireDataset.entrySet())
 			if(entry.getKey().connection != connection)
 				entry.getValue().setEnabled(false);
 		
-		for(Entry<Dataset, JToggleButton> entry : bitfieldLevelButtonsForEntireDataset.entrySet())
+		for(Entry<Field, JToggleButton> entry : bitfieldLevelButtonsForEntireDataset.entrySet())
 			if(entry.getKey().connection != connection)
 				entry.getValue().setEnabled(false);
 		
-		for(Entry<Dataset.Bitfield.State, JToggleButton> entry : edgeButtons.entrySet())
+		for(Entry<Field.Bitfield.State, JToggleButton> entry : edgeButtons.entrySet())
 			if(entry.getKey().dataset.connection != connection)
 				entry.getValue().setEnabled(false);
 		
-		for(Entry<Dataset.Bitfield.State, JToggleButton> entry : levelButtons.entrySet())
+		for(Entry<Field.Bitfield.State, JToggleButton> entry : levelButtons.entrySet())
 			if(entry.getKey().dataset.connection != connection)
 				entry.getValue().setEnabled(false);
 		
 	}
+	
+	private boolean maskNotifications = false;
 	
 	/**
 	 * Determines which normal datasets, bitfield edges and bitfield levels have been selected, then notifies the handlers.
 	 */
 	private void notifyHandlers() {
 		
+		if(maskNotifications)
+			return;
+		
 		// important: provide the chart with NEW lists, to ensure comparisons fail and caches flush
 		if(datasetsEventHandler != null)
-			datasetsEventHandler.accept(new ArrayList<Dataset>(selectedDatasets));
+			datasetsEventHandler.accept(new ArrayList<Field>(selectedDatasets));
 
 		if(bitfieldEdgesEventHandler != null)
-			bitfieldEdgesEventHandler.accept(new ArrayList<Dataset.Bitfield.State>(selectedBitfieldEdges));
+			bitfieldEdgesEventHandler.accept(new ArrayList<Field.Bitfield.State>(selectedBitfieldEdges));
 		
 		if(bitfieldLevelsEventHandler != null)
-			bitfieldLevelsEventHandler.accept(new ArrayList<Dataset.Bitfield.State>(selectedBitfieldLevels));
+			bitfieldLevelsEventHandler.accept(new ArrayList<Field.Bitfield.State>(selectedBitfieldLevels));
 		
 		if(durationEventHandler != null) {
 			long proposedDuration = (axisType == AxisType.SAMPLE_COUNT) ? durationSampleCount : durationMilliseconds;
@@ -367,21 +384,23 @@ public class WidgetDatasetCheckboxes implements Widget {
 	 * 
 	 * @param lines    A queue of remaining lines from the settings file.
 	 */
-	@Override public void importFrom(Queue<String> lines) {
+	@Override public void importFrom(ConnectionsController.QueueOfLines lines) throws AssertionError {
+		
+		maskNotifications = true;
 		
 		selectedDatasets.clear();
 		selectedBitfieldEdges.clear();
 		selectedBitfieldLevels.clear();
 		
 		// parse the telemetry datasets line
-		String line = ChartUtils.parseString(lines.remove(), "datasets = %s");
+		String line = lines.parseString("datasets = %s");
 		if(!line.equals("")) {
 			try {
 				String[] tokens = line.split(",");
 				for(String token : tokens) {
 					int connectionN = Integer.parseInt(token.split(" ")[1]);
 					int locationN   = Integer.parseInt(token.split(" ")[3]);
-					Dataset d = ConnectionsController.telemetryConnections.get(connectionN).datasets.getByLocation(locationN);
+					Field d = ConnectionsController.telemetryConnections.get(connectionN).getDatasetByLocation(locationN);
 					if(d == null)
 						throw new Exception();
 					selectedDatasets.add(d);
@@ -390,17 +409,17 @@ public class WidgetDatasetCheckboxes implements Widget {
 		}
 		
 		// parse the bitfield edge states line
-		line = ChartUtils.parseString(lines.remove(), "bitfield edge states = %s");
+		line = lines.parseString("bitfield edge states = %s");
 		if(!line.equals("")) {
 			try {
 				String[] states = line.split(",");
 				for(String state : states) {
 					boolean found = false;
 					for(ConnectionTelemetry connection : ConnectionsController.telemetryConnections)
-						for(Dataset dataset : connection.datasets.getList())
+						for(Field dataset : connection.getDatasetsList())
 							if(dataset.isBitfield)
-								for(Dataset.Bitfield bitfield : dataset.bitfields)
-									for(Dataset.Bitfield.State s : bitfield.states)
+								for(Field.Bitfield bitfield : dataset.bitfields)
+									for(Field.Bitfield.State s : bitfield.states)
 										if(s.toString().equals(state)) {
 											found = true;
 											selectedBitfieldEdges.add(s);
@@ -412,17 +431,17 @@ public class WidgetDatasetCheckboxes implements Widget {
 		}
 		
 		// parse the bitfield level states line
-		line = ChartUtils.parseString(lines.remove(), "bitfield level states = %s");
+		line = lines.parseString("bitfield level states = %s");
 		if(!line.equals("")) {
 			try {
 				String[] states = line.split(",");
 				for(String state : states) {
 					boolean found = false;
 					for(ConnectionTelemetry connection : ConnectionsController.telemetryConnections)
-						for(Dataset dataset : connection.datasets.getList())
+						for(Field dataset : connection.getDatasetsList())
 							if(dataset.isBitfield)
-								for(Dataset.Bitfield bitfield : dataset.bitfields)
-									for(Dataset.Bitfield.State s : bitfield.states)
+								for(Field.Bitfield bitfield : dataset.bitfields)
+									for(Field.Bitfield.State s : bitfield.states)
 										if(s.toString().equals(state)) {
 											found = true;
 											selectedBitfieldLevels.add(s);
@@ -435,15 +454,15 @@ public class WidgetDatasetCheckboxes implements Widget {
 		
 		// parse the duration if enabled
 		if(durationEventHandler != null) {
-			String number = ChartUtils.parseString(lines.remove(), "duration = %s");
-			String unit = ChartUtils.parseString(lines.remove(), "duration unit = %s");
+			String number = lines.parseString("duration = %s");
+			String unit   = lines.parseString("duration unit = %s");
 			DurationUnit unitEnum = null;
 			for(DurationUnit option : DurationUnit.values())
 				if(option.toString().equals(unit))
 					unitEnum = option;
 			if(unitEnum == null)
 				throw new AssertionError("Invalid duration unit.");
-			String type = ChartUtils.parseString(lines.remove(), "time axis shows = %s");
+			String type = lines.parseString("time axis shows = %s");
 			AxisType typeEnum = null;
 			for(AxisType option : AxisType.values())
 				if(option.toString().equals(type))
@@ -453,52 +472,48 @@ public class WidgetDatasetCheckboxes implements Widget {
 			
 			setDurationUnit(unitEnum);
 			setAxisType(typeEnum);
-			setDuration(number, false);
+			setDuration(number, true);
 		}
 		
 		// update the chart
+		maskNotifications = false;
 		notifyHandlers();
 		
 	}
 	
-	/**
-	 * Saves the current state to one or more lines of text.
-	 * 
-	 * @param    Append lines of text to this List.
-	 */
-	@Override public void exportTo(List<String> lines) {
+	@Override public void exportTo(PrintWriter file) {
 		
 		boolean durationEanbled = durationEventHandler != null;
 		
 		// selected datasets
 		String line = new String("datasets = ");
-		for(Dataset d : selectedDatasets)
-			line += "connection " + ConnectionsController.telemetryConnections.indexOf(d.connection) + " location " + d.location + ",";
+		for(Field d : selectedDatasets)
+			line += "connection " + ConnectionsController.telemetryConnections.indexOf(d.connection) + " location " + d.location.get() + ",";
 		if(line.endsWith(","))
 			line = line.substring(0, line.length() - 1);
-		lines.add(line);
+		file.println("\t" + line);
 		
 		// selected bitfield edges
 		line = new String("bitfield edge states = ");
-		for(Dataset.Bitfield.State s : selectedBitfieldEdges)
+		for(Field.Bitfield.State s : selectedBitfieldEdges)
 			line += s.toString() + ",";
 		if(line.endsWith(","))
 			line = line.substring(0, line.length() - 1);
-		lines.add(line);
+		file.println("\t" + line);
 		
 		// selected bitfield levels
 		line = new String("bitfield level states = ");
-		for(Dataset.Bitfield.State s : selectedBitfieldLevels)
+		for(Field.Bitfield.State s : selectedBitfieldLevels)
 			line += s.toString() + ",";
 		if(line.endsWith(","))
 			line = line.substring(0, line.length() - 1);
-		lines.add(line);
+		file.println("\t" + line);
 		
 		// duration
 		if(durationEanbled) {
-			lines.add("duration = " + ((durationUnit == DurationUnit.SAMPLES) ? Long.toString(durationSampleCount) : convertMillisecondsToDuration(durationMilliseconds)));
-			lines.add("duration unit = " + durationUnit);
-			lines.add("time axis shows = " + axisType);
+			file.println("\t" + "duration = " + ((durationUnit == DurationUnit.SAMPLES) ? Long.toString(durationSampleCount) : convertMillisecondsToDuration(durationMilliseconds)));
+			file.println("\t" + "duration unit = " + durationUnit);
+			file.println("\t" + "time axis shows = " + axisType);
 		}
 		
 	}
@@ -511,7 +526,7 @@ public class WidgetDatasetCheckboxes implements Widget {
 	 * @param dataset       The dataset to add or remove.
 	 * @param isSelected    True if the dataset is selected.
 	 */
-	private void setNormalDatasetSelected(Dataset dataset, boolean isSelected) {
+	public void setNormalDatasetSelected(Field dataset, boolean isSelected) {
 		
 		// ignore if no change or invalid
 		if((isSelected && selectedDatasets.contains(dataset)) || (!isSelected && !selectedDatasets.contains(dataset)))
@@ -549,7 +564,7 @@ public class WidgetDatasetCheckboxes implements Widget {
 	 * @param edge          The bitfield edge event to add or remove.
 	 * @param isSelected    True if the bitfield edge event is selected.
 	 */
-	private void setBitfieldEdgeSelected(Dataset.Bitfield.State edge, boolean isSelected) {
+	public void setBitfieldEdgeSelected(Field.Bitfield.State edge, boolean isSelected) {
 		
 		// ignore if no change or invalid
 		if((isSelected && selectedBitfieldEdges.contains(edge)) || (!isSelected && !selectedBitfieldEdges.contains(edge)))
@@ -574,8 +589,8 @@ public class WidgetDatasetCheckboxes implements Widget {
 		// update the view
 		edgeButtons.get(edge).setSelected(isSelected);
 		boolean allEdgesOfThisDatasetSelected = true;
-		for(Dataset.Bitfield bitfield : edge.dataset.bitfields)
-			for(Dataset.Bitfield.State state : bitfield.states)
+		for(Field.Bitfield bitfield : edge.dataset.bitfields)
+			for(Field.Bitfield.State state : bitfield.states)
 				if(!selectedBitfieldEdges.contains(state))
 					allEdgesOfThisDatasetSelected = false;
 		bitfieldEdgeButtonsForEntireDataset.get(edge.dataset).setSelected(allEdgesOfThisDatasetSelected);
@@ -593,7 +608,7 @@ public class WidgetDatasetCheckboxes implements Widget {
 	 * @param level         The bitfield level to add or remove.
 	 * @param isSelected    True if the bitfield level is selected.
 	 */
-	private void setBitfieldLevelSelected(Dataset.Bitfield.State level, boolean isSelected) {
+	public void setBitfieldLevelSelected(Field.Bitfield.State level, boolean isSelected) {
 		
 		// ignore if no change or invalid
 		if((isSelected && selectedBitfieldLevels.contains(level)) || (!isSelected && !selectedBitfieldLevels.contains(level)))
@@ -618,8 +633,8 @@ public class WidgetDatasetCheckboxes implements Widget {
 		// update the view
 		levelButtons.get(level).setSelected(isSelected);
 		boolean allLevelsOfThisDatasetSelected = true;
-		for(Dataset.Bitfield bitfield : level.dataset.bitfields)
-			for(Dataset.Bitfield.State state : bitfield.states)
+		for(Field.Bitfield bitfield : level.dataset.bitfields)
+			for(Field.Bitfield.State state : bitfield.states)
 				if(!selectedBitfieldLevels.contains(state))
 					allLevelsOfThisDatasetSelected = false;
 		bitfieldLevelButtonsForEntireDataset.get(level.dataset).setSelected(allLevelsOfThisDatasetSelected);
@@ -651,7 +666,7 @@ public class WidgetDatasetCheckboxes implements Widget {
 	 * @param text             The duration, which may be a sample count or number of seconds/minutes/hours/days (depending on durationUnit).
 	 * @param userSpecified    If true, the user specified this duration.
 	 */
-	private void setDuration(String text, boolean userSpecified) {
+	public void setDuration(String text, boolean userSpecified) {
 		
 		if(durationUnit == DurationUnit.SAMPLES) {
 			
@@ -711,7 +726,7 @@ public class WidgetDatasetCheckboxes implements Widget {
 	 * 
 	 * @param newUnit    The new duration unit: DurationUnit.SAMPLES or .SECONDS or .MINUTES or .HOURS or .DAYS
 	 */
-	private void setDurationUnit(DurationUnit newUnit) {
+	public void setDurationUnit(DurationUnit newUnit) {
 		
 		// update the model
 		if(durationUnit == DurationUnit.SAMPLES && newUnit != DurationUnit.SAMPLES) {
@@ -768,7 +783,7 @@ public class WidgetDatasetCheckboxes implements Widget {
 	 * 
 	 * @param newType    The new axis type: AxisType.SAMPLE_COUNT or .TIMESTAMPS or .TIME_ELAPSED
 	 */
-	private void setAxisType(AxisType newType) {
+	public void setAxisType(AxisType newType) {
 		
 		// ignore if invalid
 		if(newType == AxisType.SAMPLE_COUNT && durationUnit != DurationUnit.SAMPLES)

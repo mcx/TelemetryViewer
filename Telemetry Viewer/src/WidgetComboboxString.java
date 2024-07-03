@@ -1,87 +1,179 @@
+import java.awt.Component;
 import java.awt.Dimension;
-import java.awt.event.ActionListener;
+import java.awt.event.FocusEvent;
+import java.awt.event.FocusListener;
+import java.io.PrintWriter;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Queue;
+import java.util.Map;
 import java.util.function.Predicate;
-
+import javax.swing.DefaultListCellRenderer;
 import javax.swing.JComboBox;
+import javax.swing.JList;
 import javax.swing.JPanel;
+import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
 
 @SuppressWarnings("serial")
-public class WidgetComboboxString extends JComboBox<String> implements Widget {
+public class WidgetComboboxString implements Widget {
 	
-	private String value;
-	private String importExportLabel;
+	private String importExportLabel = "";
+	private volatile String value;
+	private JComboBox<String> combobox;
+	private Map<String, String> disabledItems = new HashMap<String,String>(); // <item,tooltip>
+	private Predicate<String> changeHandler;
+	private boolean changeHandlerCalled = false;
 
-	public WidgetComboboxString(String importExportText, List<String> values, String selectedValue, Predicate<String> handler) {
+	public WidgetComboboxString(List<String> values, String selectedValue) {
 		
-		// initialize
-		super();
-		importExportLabel = importExportText;
-		for(String value : values)
-			addItem(value);
-		if(values.contains(selectedValue)) {
-			setSelectedItem(selectedValue);
-		} else {
-			addItem(selectedValue);
-			setSelectedItem(selectedValue);
+		combobox = new JComboBox<String>(values.toArray(new String[values.size()])) {
+			@Override public Dimension getMinimumSize() { return getPreferredSize(); } // don't let it shrink
+		};
+		if(selectedValue != null) {
+			if(values.contains(selectedValue)) {
+				combobox.setSelectedItem(selectedValue);
+			} else {
+				combobox.addItem(selectedValue);
+				combobox.setSelectedItem(selectedValue);
+			}
 		}
 		value = selectedValue;
 		
-		// don't use scroll bars, just make the drop-down big enough
-		setMaximumRowCount(getItemCount());
+		combobox.setMaximumRowCount(combobox.getItemCount() + 1); // +1 so the user-specified item also fits on screen when setEditable(true)
 		
-		// when the user selects an option, ask the event handler if the choice is acceptable
-		addActionListener(event -> {
-			String newValue = (String) getSelectedItem();
+		combobox.addActionListener(event -> {
+			String newValue = (String) combobox.getSelectedItem();
+			
+			// ignore the event if the value has not changed, or if disabled-with-message
 			if(newValue.equals(value))
 				return;
+			if(disabledMessage != null)
+				return;
 			
-			if(handler == null) {
+			// reject the change if it's in the disabled items list
+			if(disabledItems.containsKey(newValue)) {
+				set(value);
+				return;
+			}
+			
+			// only reject the change if there's a handler and it rejected the change
+			if(changeHandler == null) {
 				value = newValue;
 			} else {
-				boolean accepted = handler.test(newValue);
+				changeHandlerCalled = true;
+				boolean accepted = changeHandler.test(newValue);
 				if(accepted)
 					value = newValue;
 				else
-					setSelectedItem(value);
+					set(value);
 			}
 		});
 		
-		// notify the event handler of the GUI's current state
-		if(handler != null)
-			handler.test((String) getSelectedItem());
+		combobox.setRenderer(new DefaultListCellRenderer() {
+			@Override public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+				setBackground(isSelected ? list.getSelectionBackground() : list.getBackground());
+				setForeground(isSelected ? list.getSelectionForeground() : list.getForeground());
+				setToolTipText(null);
+				setOpaque(combobox.isEnabled());
+				if(disabledItems.containsKey(value)) {
+					setBackground(list.getBackground());
+					setForeground(UIManager.getColor("Label.disabledForeground"));
+					setToolTipText("[Disabled] " + disabledItems.get(value));
+					// note: and the ActionListener defined above will reject selection of disabled items
+				}
+				setFont(list.getFont());
+				setText(value == null ? "" : value.toString());
+				return this;
+			}
+		});
 		
-	}
-	
-	@Override public void setSelectedItem(Object anObject) {
-		boolean found = false;
-		for(int i = 0; i < getItemCount(); i++)
-			if(getItemAt(i).equals(anObject))
-				found = true;
-		if(!found)
-			addItem(anObject.toString());
-		super.setSelectedItem(anObject);
-		for(ActionListener listener : getActionListeners())
-			listener.actionPerformed(null);
 	}
 	
 	/**
-	 * Keep track of the old validated text when disabling, so it can be restored when enabling.
+	 * @param label    Label to use when importing/exporting a settings file.
 	 */
-	private String preDisabledText;
-	private String disabledText;
-	@Override public void setEnabled(boolean enabled) {
+	public WidgetComboboxString setExportLabel(String label) {
 		
-		if(isEnabled() && !enabled)
-			preDisabledText = (String) getSelectedItem();
-		if(!isEnabled() && enabled) {
-			setSelectedItem(preDisabledText);
-			removeItem(disabledText);
-		}
-		super.setEnabled(enabled);
+		importExportLabel = (label == null) ? "" : label;
+		return this;
 		
 	}
+	
+	public WidgetComboboxString setEditable(boolean isEditable) {
+		
+		combobox.setEditable(isEditable);
+		combobox.getEditor().getEditorComponent().addFocusListener(new FocusListener() {
+			@Override public void focusGained(FocusEvent e) { combobox.getEditor().selectAll(); }
+			@Override public void focusLost(FocusEvent e) { }
+		});
+		return this;
+		
+	}
+	
+	public WidgetComboboxString onChange(Predicate<String> handler) {
+		
+		changeHandler = handler;
+		changeHandlerCalled = false;
+		
+		// call the handler, but later, so the calling code can finish constructing things before the handler is triggered
+		SwingUtilities.invokeLater(() -> {
+			if(changeHandler != null && changeHandlerCalled == false) {
+				changeHandlerCalled = true;
+				changeHandler.test((String) combobox.getSelectedItem());
+			}
+		});
+		
+		return this;
+		
+	}
+	
+	public WidgetComboboxString set(String value) {
+		boolean found = false;
+		for(int i = 0; i < combobox.getItemCount(); i++)
+			if(combobox.getItemAt(i).equals(value))
+				found = true;
+		if(!found)
+			combobox.addItem(value.toString());
+		combobox.setSelectedItem(value);
+		return this;
+	}
+	
+	public String get() {
+		return value;
+	}
+	
+	public void removeItem(String value) {
+		combobox.removeItem(value);
+	}
+	
+	/**
+	 * @param map    Keys are disabled items, values are corresponding tooltips.
+	 */
+	public void setDisabledItems(Map<String, String> map) {
+		disabledItems = map;
+		
+		// change to the first non-disabled item if the current item is disabled
+		if(disabledItems.containsKey(value))
+			for(int i = 0; i < combobox.getItemCount(); i++)
+				if(!disabledItems.containsKey(combobox.getItemAt(i))) {
+					combobox.setSelectedIndex(i);
+					return;
+				}
+	}
+	
+	public WidgetComboboxString setEnabled(boolean enabled) {
+		
+		if(enabled && disabledMessage != null) {
+			removeItem(disabledMessage);
+			set(value);
+			disabledMessage = null;
+		}
+		combobox.setEnabled(enabled);
+		return this;
+		
+	}
+	
+	private String disabledMessage = null;
 	
 	/**
 	 * Disables the combobox and displays a message without validating it.
@@ -94,56 +186,43 @@ public class WidgetComboboxString extends JComboBox<String> implements Widget {
 		
 		setEnabled(false);
 		
-		ActionListener[] listeners = getActionListeners();
-		for(ActionListener listener : listeners)
-			removeActionListener(listener);
+		disabledMessage = message;
 		
-		removeItem(disabledText); // in case this method is called multiple times while disabled
-		addItem(message);
-		setSelectedItem(message);
-		disabledText = message;
-
-		for(ActionListener listener : listeners)
-			addActionListener(listener);
+		boolean disabledMessageExists = false;
+		for(int i = 0; i < combobox.getItemCount(); i++)
+			if(combobox.getItemAt(i).equals(disabledMessage))
+				disabledMessageExists = true;
+		if(!disabledMessageExists)
+			combobox.addItem(disabledMessage);
 		
-	}
-	
-	/**
-	 * Don't let this combobox shrink.
-	 */
-	@Override public Dimension getMinimumSize() {
-		
-		return getPreferredSize();
+		combobox.setSelectedItem(disabledMessage);
 		
 	}
 
-	@Override public void appendToGui(JPanel gui) {
-		
-		gui.add(this);
+	@Override public void setVisible(boolean isVisible) {
+
+		combobox.setVisible(isVisible);
 		
 	}
 
-	@Override public void importFrom(Queue<String> lines) {
+	@Override public void appendTo(JPanel panel, String constraints) {
+		
+		panel.add(combobox, constraints);
+		
+	}
 
-		String text = ChartUtils.parseString(lines.remove(), importExportLabel + " = %s");
-		int n = -1;
-		for(int i = 0; i < getItemCount(); i++)
-			if(getItemAt(i).equals(text))
-				n = i;
-		if(n >= 0) {
-			setSelectedIndex(n);
-		} else {
-			addItem(text);
-			setSelectedItem(text);
-		}
+	@Override public void importFrom(ConnectionsController.QueueOfLines lines) throws AssertionError {
+
+		String text = lines.parseString(importExportLabel + " = %s");
+		set(text);
 		
 		value = text;
 		
 	}
 
-	@Override public void exportTo(List<String> lines) {
-
-		lines.add(importExportLabel + " = " + value);
+	@Override public void exportTo(PrintWriter file) {
+		
+		file.println("\t" + importExportLabel + " = " + value);
 		
 	}
 	

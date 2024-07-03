@@ -7,6 +7,12 @@ import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionListener;
 import java.awt.event.MouseWheelEvent;
 import java.awt.event.MouseWheelListener;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.InputStreamReader;
+import java.net.InetAddress;
+import java.nio.charset.StandardCharsets;
+import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -35,6 +41,8 @@ public class OpenGLChartsView extends JPanel {
 	
 	static boolean firstRun = true;
 	
+	boolean openGLproblem = false;
+	
 	List<PositionedChart> chartsToDispose = new ArrayList<PositionedChart>();
 	
 	Animator animator;
@@ -56,14 +64,16 @@ public class OpenGLChartsView extends JPanel {
 	int endY;
 	
 	// time and zoom settings
+	// these may be accessed by different threads, so they must be volatile
+	enum State {REWINDING, PAUSED, PLAYING, PLAYING_LIVE, TRIGGERED}
+	public static volatile State state = State.PLAYING_LIVE;
+	public static volatile int playSpeed = 0; // <0 when REWINDING, >0 when PLAYING, 0 and ignored in other states
+	private long previousFrameTimestamp;
+	
 	double zoomLevel;
-	private boolean liveView;
-	private boolean pausedView;
-	private boolean triggeredView;
-	long pausedTimestamp;
-	ConnectionTelemetry pausedPrimaryConnection; // if the mouse was over a chart while timeshifting, or if there was only one connection, we also track the corresponding connection and its sample number, to allow sub-millisecond time shifting.
-	int pausedPrimaryConnectionSampleNumber;
-	List<ConnectionsController.SampleDetails> endSamples = new ArrayList<>();
+	long nonLiveTimestamp;
+	ConnectionTelemetry nonLivePrimaryConnection; // if the mouse was over a chart while timeshifting, or if there was only one connection, we also track the corresponding connection and its sample number, to allow sub-millisecond time shifting.
+	int nonLivePrimaryConnectionSampleNumber;
 	
 	// mouse pointer's current location (pixels, origin at bottom-left)
 	int mouseX;
@@ -106,17 +116,15 @@ public class OpenGLChartsView extends JPanel {
 		
 		super();
 		
-		tileColumns = SettingsController.getTileColumns();
-		tileRows    = SettingsController.getTileRows();
+		tileColumns = 1;
+		tileRows    = 1;
+		updateTileOccupancy(null);
 		
 		startX  = -1;
 		startY  = -1;
 		endX    = -1;
 		endY    = -1;
 		
-		liveView = true;
-		pausedView = false;
-		triggeredView = false;
 		zoomLevel = 1;
 		
 		mouseX = -1;
@@ -132,18 +140,18 @@ public class OpenGLChartsView extends JPanel {
 			// try to get normal OpenGL
 			capabilities = new GLCapabilities(GLProfile.get(GLProfile.GL3));
 			openGLES = false;
-			if(SettingsController.getAntialiasingLevel() > 1) {
+			if(SettingsView.instance.antialiasingSlider.get() > 1) {
 				capabilities.setSampleBuffers(true);
-				capabilities.setNumSamples(SettingsController.getAntialiasingLevel());
+				capabilities.setNumSamples(SettingsView.instance.antialiasingSlider.get());
 			}
 		} catch(Error | Exception e) {
 			try {
 				// fall back to OpenGL ES
 				capabilities = new GLCapabilities(GLProfile.get(GLProfile.GLES3));
 				openGLES = true;
-				if(SettingsController.getAntialiasingLevel() > 1) {
+				if(SettingsView.instance.antialiasingSlider.get() > 1) {
 					capabilities.setSampleBuffers(true);
-					capabilities.setNumSamples(SettingsController.getAntialiasingLevel());
+					capabilities.setNumSamples(SettingsView.instance.antialiasingSlider.get());
 				}
 			} catch(Error | Exception e2) {
 				NotificationsController.showCriticalFault("Unable to create the OpenGL context.\nThis may be due to a graphics driver problem, or an outdated graphics card.\n\"" + e.getMessage() + "\n\n" + e2.getMessage() + "\"");
@@ -161,17 +169,18 @@ public class OpenGLChartsView extends JPanel {
 				gl.glBlendFunc(GL3.GL_SRC_ALPHA, GL3.GL_ONE_MINUS_SRC_ALPHA);
 				
 				// disable antialiasing when using OpenGL ES, because rendering to off-screen framebuffers doesn't seem to support MSAA in OpenGL ES 3.1
-				if(!gl.isGL3() && SettingsController.getAntialiasingLevel() > 1) {
-					SettingsController.setAntialiasingLevel(1);
+				if(!gl.isGL3() && SettingsView.instance.antialiasingSlider.get() > 1) {
+					SettingsView.instance.antialiasingSlider.set(1);
+					openGLproblem = true;
 					return;
 				}
 				
 				// ensure the requested AA level is supported 
-				if(SettingsController.getAntialiasingLevel() > 1) {
+				if(SettingsView.instance.antialiasingSlider.get() > 1) {
 					int[] number = new int[1];
 					gl.glGetIntegerv(GL3.GL_MAX_SAMPLES, number, 0);
-					if(number[0] < SettingsController.getAntialiasingLevel())
-						SettingsController.setAntialiasingLevel(number[0]);
+					if(number[0] < SettingsView.instance.antialiasingSlider.get())
+						SettingsView.instance.antialiasingSlider.set(number[0]);
 				}
 				
 				gl.setSwapInterval(1);
@@ -191,8 +200,71 @@ public class OpenGLChartsView extends JPanel {
 				if(firstRun) {
 					
 					firstRun = false;
+					
 					int[] number = new int[2];
 					StringBuilder text = new StringBuilder(65536);
+					DecimalFormat thousands = new DecimalFormat("#,###.0");
+					
+					try {
+					text.append("Hostname                     = " + InetAddress.getLocalHost().getHostName() + "\n");
+					} catch(Exception e) {}
+					text.append("Local IP Address             = " + ConnectionTelemetry.localIp + "\n");
+					text.append("java.vm.name                 = " + System.getProperty("java.vm.name") + "\n");
+					text.append("java.vm.version              = " + System.getProperty("java.vm.version") + "\n");
+					text.append("java.vendor.version          = " + System.getProperty("java.vendor.version") + "\n");
+					text.append("os.name                      = " + System.getProperty("os.name") + "\n");
+					text.append("os.version                   = " + System.getProperty("os.version") + "\n");
+					text.append("os.arch                      = " + System.getProperty("os.arch") + "\n");
+					text.append("java.home                    = " + System.getProperty("java.home") + "\n");
+					text.append("user.dir                     = " + System.getProperty("user.dir") + "\n");
+					text.append("Runtime.maxMemory()          = " + thousands.format(Runtime.getRuntime().maxMemory() / 1000000.0) + " MB\n");
+					for(File partition : File.listRoots())
+						text.append(String.format("%-28s = %s MB free\n", "Drive " + partition.getAbsolutePath(), thousands.format(partition.getFreeSpace() / 1000000.0)));
+					if(System.getProperty("os.name").toLowerCase().startsWith("windows")) {
+						try {
+							Process p = Runtime.getRuntime().exec("wmic cpu get name");
+							List<String> lines = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8)).lines().toList();
+							if(lines.size() > 2)
+								text.append("CPU Name                     = " + lines.get(2) + "\n");
+						} catch(Exception e) {}
+					} else if(System.getProperty("os.name").toLowerCase().startsWith("linux")) {
+						try {
+							Process p = Runtime.getRuntime().exec("cat /proc/cpuinfo");
+							List<String> lines = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8)).lines().toList();
+							String hardware  = lines.stream().filter(line -> line.startsWith("hardware"))
+							                                 .map(line -> line.split(": ")[1])
+							                                 .findFirst().orElse("");
+							String model     = lines.stream().filter(line -> line.startsWith("model") && !line.startsWith("model name"))
+							                                 .map(line -> line.split(": ")[1])
+							                                 .findFirst().orElse("");
+							String modelName = lines.stream().filter(line -> line.startsWith("model name"))
+							                                 .map(line -> line.split(": ")[1])
+							                                 .findFirst().orElse("");
+							text.append("CPU Name                     = " + (!modelName.isEmpty() ? (modelName + "\n") :              // "model name" is provided by PC's
+							                                                 !hardware.isEmpty()  ? (hardware + " " + model + "\n") : // but model name is not provided on the Pi 4
+							                                                 "unknown \n"));
+						} catch(Exception e) {}
+//						try {
+//							Process p = Runtime.getRuntime().exec("cat /proc/cpuinfo");
+//							List<String> lines = new BufferedReader(new InputStreamReader(p.getInputStream(), StandardCharsets.UTF_8)).lines().toList();
+//							String hardware = "";
+//							String model = "";
+//							String modelName = "";
+//							for(String line : lines)
+//								if(line.toLowerCase().startsWith("hardware"))
+//									hardware = line.split(": ")[1];
+//								else if(line.toLowerCase().startsWith("model") && !line.toLowerCase().startsWith("model name"))
+//									model = line.split(": ")[1];
+//								else if(line.toLowerCase().startsWith("model name"))
+//									modelName = line.split(": ")[1];
+//							if(!modelName.isEmpty())
+//								text.append("CPU Name                     = " + modelName + "\n"); // this style used on PC's
+//							else if(!hardware.isEmpty())
+//								text.append("CPU Name                     = " + hardware + " " + model + "\n"); // this style used on Pi 4
+//						} catch(Exception e) {}
+					}
+					text.append("CPU Logical Processors       = " + Runtime.getRuntime().availableProcessors() + "\n");
+					
 					                                                               text.append("GL_VENDOR                    = " + gl.glGetString(GL3.GL_VENDOR) + "\n");
 					                                                               text.append("GL_RENDERER                  = " + gl.glGetString(GL3.GL_RENDERER) + "\n");
 					                                                               text.append("GL_VERSION                   = " + gl.glGetString(GL3.GL_VERSION) + "\n");
@@ -205,9 +277,9 @@ public class OpenGLChartsView extends JPanel {
 					gl.glGetIntegerv(GL3.GL_MAX_VIEWPORT_DIMS, number, 0);         text.append("GL_MAX_VIEWPORT_DIMS         = " + number[0] + " x " + number[1] + "\n");
 					gl.glGetIntegerv(GL3.GL_MAX_DRAW_BUFFERS, number, 0);          text.append("GL_MAX_DRAW_BUFFERS          = " + number[0] + "\n");
 					gl.glGetIntegerv(GL3.GL_MAX_COLOR_TEXTURE_SAMPLES, number, 0); text.append("GL_MAX_COLOR_TEXTURE_SAMPLES = " + number[0] + "\n");
-					gl.glGetIntegerv(GL3.GL_NUM_EXTENSIONS, number, 0);            text.append(number[0] + " EXTENSIONS: " + gl.glGetStringi(GL3.GL_EXTENSIONS, 0));
+					gl.glGetIntegerv(GL3.GL_NUM_EXTENSIONS, number, 0);            text.append(number[0] + " GL EXTENSIONS: " + gl.glGetStringi(GL3.GL_EXTENSIONS, 0));
 					for(int i = 1; i < number[0]; i++)                             text.append(", " + gl.glGetStringi(GL3.GL_EXTENSIONS, i));
-					NotificationsController.showDebugMessage("OpenGL Information:\n" + text.toString());
+					NotificationsController.printDebugMessage("System Information:\n" + text.toString());
 					
 					// also reset the creation time of any existing notifications, so they properly animate into existence
 					long now = System.currentTimeMillis();
@@ -218,6 +290,9 @@ public class OpenGLChartsView extends JPanel {
 			}
 						
 			@Override public void reshape(GLAutoDrawable drawable, int x, int y, int width, int height) {
+				
+				if(openGLproblem)
+					return;
 				
 				GL2ES3 gl = drawable.getGL().getGL2ES3();
 				
@@ -233,11 +308,14 @@ public class OpenGLChartsView extends JPanel {
 				canvasWidth = width;
 				canvasHeight = height;
 				
-				ChartsController.setDisplayScalingFactorJava9(displayScalingFactorJava9);
+				ChartsController.setDisplayScalingFactorOS(displayScalingFactorJava9);
 				
 			}
 
 			@Override public void display(GLAutoDrawable drawable) {
+				
+				if(openGLproblem)
+					return;
 				
 				if(eventHandler != null && !eventHandler.dragInProgress)
 					eventHandler = null;
@@ -248,7 +326,7 @@ public class OpenGLChartsView extends JPanel {
 				
 				// if benchmarking, calculate CPU/GPU time for the *previous frame*
 				// GPU benchmarking is not possible with OpenGL ES
-				if(SettingsController.getBenchmarking()) {
+				if(SettingsView.instance.benchmarkingCheckbox.get()) {
 					previousCpuMilliseconds = (cpuStopNanoseconds - cpuStartNanoseconds) / 1000000.0;
 					if(!openGLES) {
 						gl.glGetQueryObjecti64v(gpuQueryHandles[0], GL3.GL_QUERY_RESULT, gpuTimes, 0);
@@ -276,6 +354,10 @@ public class OpenGLChartsView extends JPanel {
 					if(!openGLES)
 						gl.glQueryCounter(gpuQueryHandles[0], GL3.GL_TIMESTAMP);
 				}
+				
+				// update the tiles if needed
+				if(!SettingsView.instance.tileColumnsTextfield.is(tileColumns) || !SettingsView.instance.tileRowsTextfield.is(tileRows))
+					updateTileOccupancy(null);
 				
 				gl.glClearColor(Theme.neutralColor[0], Theme.neutralColor[1], Theme.neutralColor[2], Theme.neutralColor[3]);
 				gl.glClear(GL3.GL_COLOR_BUFFER_BIT);
@@ -377,11 +459,8 @@ public class OpenGLChartsView extends JPanel {
 				if(!charts.isEmpty() || ConnectionsController.telemetryPossible()) {
 				
 					// if there are no charts, switch back to live view
-					if(charts.isEmpty()) {
-						liveView = true;
-						pausedView = false;
-						triggeredView = false;
-					}
+					if(charts.isEmpty())
+						state = State.PLAYING_LIVE;
 					
 					// if the maximized chart was removed, forget about it
 					if(maximizedChart != null && !charts.contains(maximizedChart))
@@ -389,7 +468,6 @@ public class OpenGLChartsView extends JPanel {
 					
 					// draw empty tiles if necessary
 					if(removing || maximizing || demaximizing || maximizedChart == null) {
-						boolean[][] tileOccupied = ChartsController.getTileOccupancy();
 						for(int column = 0; column < tileColumns; column++) {
 							for(int row = 0; row < tileRows; row++) {
 								if(!tileOccupied[column][row]) {
@@ -409,39 +487,65 @@ public class OpenGLChartsView extends JPanel {
 					               (Math.abs(endX - startX) + 1) * tileWidth,
 					               (Math.abs(endY - startY) + 1) * tileHeight);
 					
-					// get the timestamp and sample numbers corresponding with the right-edge of a time domain plot
-					long endTimestamp = 0;
-					if(liveView) {
-						// get the most recent sample numbers and corresponding timestamp
-						endTimestamp = Long.MIN_VALUE;
-						endSamples.clear();
-						for(ConnectionTelemetry connection : ConnectionsController.telemetryConnections) {
-							int lastSampleNumber = connection.getSampleCount() - 1;
-							long lastTimestamp = connection.getLastTimestamp();
-							endSamples.add(new ConnectionsController.SampleDetails(connection, lastSampleNumber, lastTimestamp));
-							if(lastSampleNumber >= 0)
-								endTimestamp = Math.max(endTimestamp, lastTimestamp);
+					// get the timestamp and sample numbers corresponding to the right-edge of a time domain plot
+					long endTimestamp;
+					List<ConnectionsController.SampleDetails> endSamples;
+					
+					long now = System.currentTimeMillis();
+					if(state == State.REWINDING || state == State.PLAYING) {
+						long delta = (now - previousFrameTimestamp) * playSpeed;
+						long newTimestamp = nonLiveTimestamp + delta;
+						long firstTimestamp = ConnectionsController.getFirstTimestamp();
+						long lastTimestamp  = ConnectionsController.getLastTimestamp();
+						if(newTimestamp < firstTimestamp) {
+							newTimestamp = firstTimestamp;
+							state = State.PAUSED;
+							playSpeed = 0;
 						}
-						for(ConnectionCamera connection : ConnectionsController.cameraConnections) {
-							if(connection.getSampleCount() > 0)
-								endTimestamp = Math.max(endTimestamp, connection.getLastTimestamp());
+						nonLiveTimestamp = newTimestamp;
+						nonLivePrimaryConnection = null;
+						nonLivePrimaryConnectionSampleNumber = 0;
+						if(newTimestamp > lastTimestamp) {
+							setPlayLive();
 						}
-					} else {
-						// get the sample numbers corresponding with the paused timestamp
-						endTimestamp = pausedTimestamp;
-						endSamples.clear();
-						ConnectionsController.interfaces.entrySet().forEach(entry -> {
-							ConnectionTelemetry connection = entry.getKey();
-							DatasetsInterface datasets = entry.getValue();
-							if(connection == pausedPrimaryConnection) {
-								endSamples.add(new ConnectionsController.SampleDetails(connection, pausedPrimaryConnectionSampleNumber, pausedTimestamp));
-							} else {
-								int sampleNumber = datasets.getClosestSampleNumberAtOrBefore(pausedTimestamp, connection.getSampleCount() - 1);
-								long timestamp = datasets.getTimestamp(sampleNumber);
-								endSamples.add(new ConnectionsController.SampleDetails(connection, sampleNumber, timestamp));
-							}
-						});
 					}
+					previousFrameTimestamp = now;
+					
+					if(state == State.PLAYING_LIVE) {
+						endTimestamp = ConnectionsController.allConnections.stream()
+						                                                   .filter(connection -> connection.getSampleCount() > 0)
+						                                                   .mapToLong(connection -> connection.getLastTimestamp())
+						                                                   .max().orElse(Long.MIN_VALUE);
+						endSamples = ConnectionsController.telemetryConnections.stream()
+						                                                       .filter(connection -> connection.getSampleCount() > 0)
+						                                                       .map(connection -> new ConnectionsController.SampleDetails(
+						                                                                          connection,
+						                                                                          connection.getSampleCount() - 1,
+						                                                                          connection.getLastTimestamp()))
+						                                                       .toList();
+					} else {
+						endTimestamp = nonLiveTimestamp;
+						endSamples = ConnectionsController.interfaces.entrySet().stream()
+						                                                        .map(entry -> {
+						                                                             ConnectionTelemetry connection = entry.getKey();
+						                                                             if(connection == nonLivePrimaryConnection) {
+						                                                                 return new ConnectionsController.SampleDetails(
+						                                                                     connection,
+						                                                                     nonLivePrimaryConnectionSampleNumber,
+						                                                                     nonLiveTimestamp);
+						                                                             } else {
+						                                                                 DatasetsInterface datasets = entry.getValue();
+						                                                                 int sampleNumber = datasets.getClosestSampleNumberAtOrBefore(nonLiveTimestamp, connection.getSampleCount() - 1);
+						                                                                 long timestamp = datasets.getTimestamp(sampleNumber);
+						                                                                 return new ConnectionsController.SampleDetails(
+						                                                                     connection,
+						                                                                     sampleNumber,
+						                                                                     timestamp);
+						                                                             }
+						                                                         })
+						                                                        .toList();
+					}
+					
 					// if the sample numbers don't correspond within 10ms of the timestamp, fake them forward or backward
 					// this helps charts to line up if multiple connections exist, but one connection has samples before or after another connection
 					if(endTimestamp != Long.MIN_VALUE) {
@@ -450,7 +554,7 @@ public class OpenGLChartsView extends JPanel {
 							int connectionSampleNumber = details.sampleNumber;
 							long connectionTimestamp = details.timestamp;
 							
-							if(triggeredView && connection == pausedPrimaryConnection)
+							if(state == State.TRIGGERED && connection == nonLivePrimaryConnection)
 								continue;
 							long errorMilliseconds = endTimestamp - connectionTimestamp;
 							if(errorMilliseconds > 10 || errorMilliseconds < -10) {
@@ -614,7 +718,7 @@ public class OpenGLChartsView extends JPanel {
 				
 				// if benchmarking, draw the CPU/GPU benchmarks
 				// GPU benchmarking is not possible with OpenGL ES
-				if(SettingsController.getBenchmarking()) {
+				if(SettingsView.instance.benchmarkingCheckbox.get()) {
 					// stop timers for *this frame*
 					cpuStopNanoseconds = System.nanoTime();
 					if(!openGLES)
@@ -742,7 +846,8 @@ public class OpenGLChartsView extends JPanel {
 				startX = startY = -1;
 				endX   = endY   = -1;
 				
-				PositionedChart chart = ChartsController.createAndAddChart(ChartsController.getChartTypes()[0], x1, y1, x2, y2);
+				PositionedChart chart = ChartsController.createAndAddChart(ChartsController.getChartTypes()[0]);
+				chart.setPosition(x1, y1, x2, y2);
 				ConfigureView.instance.forNewChart(chart);
 				
 			}
@@ -837,8 +942,8 @@ public class OpenGLChartsView extends JPanel {
 					if(activeConnections == 0)
 						return;
 					
-					// can't fast-forward in liveView
-					if(liveView && scrollAmount > 0)
+					// can't fast-forward when live
+					if(state == State.PLAYING_LIVE && scrollAmount > 0)
 						return;
 					
 					// should we scroll by sample count?
@@ -869,9 +974,9 @@ public class OpenGLChartsView extends JPanel {
 							delta = 1;
 						
 						int trueLastSampleNumber = connection.getSampleCount() - 1;
-						int oldSampleNumber = liveView ? trueLastSampleNumber :
-						                      !liveView && pausedPrimaryConnection == connection ? pausedPrimaryConnectionSampleNumber :
-						                      ConnectionsController.interfaces.get(connection).getClosestSampleNumberAtOrBefore(pausedTimestamp, trueLastSampleNumber);
+						int oldSampleNumber = (state == State.PLAYING_LIVE)           ? trueLastSampleNumber :
+						                      (nonLivePrimaryConnection == connection) ? nonLivePrimaryConnectionSampleNumber :
+						                      ConnectionsController.interfaces.get(connection).getClosestSampleNumberAtOrBefore(nonLiveTimestamp, trueLastSampleNumber);
 						int newSampleNumber = Guava.saturatedAdd(oldSampleNumber, (int) delta);
 						boolean reachedStartOrEnd = newSampleNumber < 0 || newSampleNumber >= trueLastSampleNumber;
 						if(newSampleNumber < 0)
@@ -881,19 +986,19 @@ public class OpenGLChartsView extends JPanel {
 
 						long newTimestamp = ConnectionsController.interfaces.get(connection).getTimestamp(newSampleNumber);
 						
-						boolean beforeStartOfData = !liveView && pausedTimestamp < connection.getFirstTimestamp();
-						boolean afterEndOfData    = !liveView && pausedTimestamp > connection.getLastTimestamp();
+						boolean beforeStartOfData = (state != State.PLAYING_LIVE) && nonLiveTimestamp < connection.getFirstTimestamp();
+						boolean afterEndOfData    = (state != State.PLAYING_LIVE) && nonLiveTimestamp > connection.getLastTimestamp();
 						if(beforeStartOfData || afterEndOfData || (reachedStartOrEnd && activeConnections > 1)) {
-							newTimestamp = pausedTimestamp + (long) (delta / connection.getSampleRate() * 1000.0);
+							newTimestamp = nonLiveTimestamp + (long) (delta / connection.getSampleRate() * 1000.0);
 							long firstTimestamp = ConnectionsController.getFirstTimestamp();
 							if(newTimestamp < firstTimestamp)
 								newTimestamp = firstTimestamp;
-							setPausedView(newTimestamp, null, 0, true);
+							setPaused(newTimestamp, null, 0);
 						} else {
-							setPausedView(newTimestamp, connection, newSampleNumber, true);
+							setPaused(newTimestamp, connection, newSampleNumber);
 						}
 						if(newTimestamp == ConnectionsController.getLastTimestamp() && scrollAmount > 0)
-							setLiveView();
+							setPlayLive();
 						
 					} else if(chart != null && !chart.sampleCountMode) {
 						
@@ -909,16 +1014,16 @@ public class OpenGLChartsView extends JPanel {
 						
 						long firstTimestamp = ConnectionsController.getFirstTimestamp();
 						long lastTimestamp = ConnectionsController.getLastTimestamp();
-						long newTimestamp = liveView ? lastTimestamp   + deltaMilliseconds :
-						                               pausedTimestamp + deltaMilliseconds;
+						long newTimestamp = (state == State.PLAYING_LIVE) ? lastTimestamp   + deltaMilliseconds :
+						                                                    nonLiveTimestamp + deltaMilliseconds;
 						if(newTimestamp < firstTimestamp)
 							newTimestamp = firstTimestamp;
 						if(newTimestamp > lastTimestamp)
 							newTimestamp = lastTimestamp;
 						
-						setPausedView(newTimestamp, null, 0, true);
+						setPaused(newTimestamp, null, 0);
 						if(newTimestamp == lastTimestamp && scrollAmount > 0)
-							setLiveView();
+							setPlayLive();
 						
 					} else {
 					
@@ -934,8 +1039,8 @@ public class OpenGLChartsView extends JPanel {
 						
 						long firstTimestamp = ConnectionsController.getFirstTimestamp();
 						long lastTimestamp = ConnectionsController.getLastTimestamp();
-						long newTimestamp = liveView ? lastTimestamp   + deltaMilliseconds :
-						                               pausedTimestamp + deltaMilliseconds;
+						long newTimestamp = (state == State.PLAYING_LIVE) ? lastTimestamp   + deltaMilliseconds :
+						                                                    nonLiveTimestamp + deltaMilliseconds;
 						if(newTimestamp < firstTimestamp)
 							newTimestamp = firstTimestamp;
 						else if(newTimestamp > lastTimestamp)
@@ -950,9 +1055,9 @@ public class OpenGLChartsView extends JPanel {
 								newTimestamp = camera.getClosestTimestampAtOrAfter(newTimestamp);
 						}
 						
-						setPausedView(newTimestamp, null, 0, true);
+						setPaused(newTimestamp, null, 0);
 						if(newTimestamp == lastTimestamp && scrollAmount > 0)
-							setLiveView();
+							setPlayLive();
 						
 					}
 				
@@ -1023,17 +1128,6 @@ public class OpenGLChartsView extends JPanel {
 	}
 	
 	/**
-	 * Called by DatasetsController when all data is removed.
-	 */
-	public void switchToLiveView() {
-		
-		liveView = true;
-		pausedView = false;
-		triggeredView = false;
-		
-	}
-	
-	/**
 	 * Replaces the glCanvas. This method must be called when the antialiasing level changes.
 	 */
 	public static void regenerate() {
@@ -1048,12 +1142,9 @@ public class OpenGLChartsView extends JPanel {
 		
 		// save state
 		double zoomLevel = instance.zoomLevel;
-		boolean liveView = instance.liveView;
-		boolean pausedView = instance.pausedView;
-		boolean triggeredView = instance.triggeredView;
-		long pausedTimestamp = instance.pausedTimestamp;
-		ConnectionTelemetry pausedPrimaryConnection = instance.pausedPrimaryConnection;
-		int pausedPrimaryConnectionSampleNumber = instance.pausedPrimaryConnectionSampleNumber;
+		long pausedTimestamp = instance.nonLiveTimestamp;
+		ConnectionTelemetry pausedPrimaryConnection = instance.nonLivePrimaryConnection;
+		int pausedPrimaryConnectionSampleNumber = instance.nonLivePrimaryConnectionSampleNumber;
 		
 		PositionedChart maximizedChart = instance.maximizedChart;
 
@@ -1063,12 +1154,9 @@ public class OpenGLChartsView extends JPanel {
 		
 		// restore state
 		instance.zoomLevel = zoomLevel;
-		instance.liveView = liveView;
-		instance.pausedView = pausedView;
-		instance.triggeredView = triggeredView;
-		instance.pausedTimestamp = pausedTimestamp;
-		instance.pausedPrimaryConnection = pausedPrimaryConnection;
-		instance.pausedPrimaryConnectionSampleNumber = pausedPrimaryConnectionSampleNumber;
+		instance.nonLiveTimestamp = pausedTimestamp;
+		instance.nonLivePrimaryConnection = pausedPrimaryConnection;
+		instance.nonLivePrimaryConnectionSampleNumber = pausedPrimaryConnectionSampleNumber;
 		instance.maximizedChart = maximizedChart;
 		
 		if(updateWindow) {
@@ -1079,16 +1167,20 @@ public class OpenGLChartsView extends JPanel {
 		
 	}
 	
-	public boolean isLiveView()      { return liveView; }
-	public boolean isPausedView()    { return pausedView; }
-	public boolean isTriggeredView() { return triggeredView; }
+	public boolean isLiveView()      { return state == State.PLAYING_LIVE; }
+	public boolean isPausedView()    { return switch(state) {
+	case REWINDING, PAUSED, PLAYING -> true;
+	case PLAYING_LIVE, TRIGGERED -> false;
+	};}
+	public boolean isTriggeredView() { return state == State.TRIGGERED; }
 	
-	public void setLiveView()   {
+	public void setPlayLive()   {
 		
-		liveView = true;
-		pausedView = false;
-		triggeredView = false;
-		pausedTimestamp = Long.MIN_VALUE;
+		state = State.PLAYING_LIVE;
+		nonLiveTimestamp = Long.MIN_VALUE;
+		nonLivePrimaryConnection = null;
+		nonLivePrimaryConnectionSampleNumber = 0;
+		playSpeed = 0;
 		
 		// clear any triggers
 		for(PositionedChart chart : ChartsController.getCharts())
@@ -1097,36 +1189,64 @@ public class OpenGLChartsView extends JPanel {
 		
 	}
 	
-	public void setPausedView(long timestamp, ConnectionTelemetry connection, int sampleNumber, boolean notifyTimeline) {
+	public void setPaused(long timestamp, ConnectionTelemetry connection, int sampleNumber) {
 		
-		liveView = false;
-		pausedView = true;
-		triggeredView = false;
-		
-		pausedTimestamp = timestamp;
-		pausedPrimaryConnection = connection;
-		pausedPrimaryConnectionSampleNumber = (connection == null) ? 0 : sampleNumber;
+		state = State.PAUSED;
+		nonLiveTimestamp = timestamp;
+		nonLivePrimaryConnection = connection;
+		nonLivePrimaryConnectionSampleNumber = (connection == null) ? 0 : sampleNumber;
+		playSpeed = 0;
 		
 		long endOfTime = ConnectionsController.getLastTimestamp();
 		if(timestamp > endOfTime && endOfTime != Long.MIN_VALUE)
-			setLiveView();
-		
-		if(notifyTimeline)
-			for(PositionedChart chart : ChartsController.getCharts())
-				if(chart instanceof OpenGLTimelineChart timelineChart)
-					timelineChart.userIsTimeshifting();
+			setPlayLive();
 		
 	}
 	
-	public void setTriggeredView(long timestamp, ConnectionTelemetry connection, int sampleNumber) {
+	public int getPlaySpeed() {
+		return playSpeed;
+	}
+	
+	public void setPlayBackwards() {
+
+		if(state == State.PLAYING_LIVE)
+			nonLiveTimestamp = ConnectionsController.getLastTimestamp();
+		state = State.REWINDING;
+		nonLivePrimaryConnection = null;
+		nonLivePrimaryConnectionSampleNumber = 0;
+		previousFrameTimestamp = System.currentTimeMillis();
 		
-		liveView = false;
-		pausedView = false;
-		triggeredView = true;
+		if(playSpeed >= 0)
+			playSpeed = -1;
+		else if(playSpeed > -8)
+			playSpeed--;
 		
-		pausedTimestamp = timestamp;
-		pausedPrimaryConnection = connection;
-		pausedPrimaryConnectionSampleNumber = sampleNumber;
+	}
+	
+	public void setPlayForwards() {
+		
+		if(state == State.PLAYING_LIVE)
+			return;
+		
+		state = State.PLAYING;
+		nonLivePrimaryConnection = null;
+		nonLivePrimaryConnectionSampleNumber = 0;
+		previousFrameTimestamp = System.currentTimeMillis();
+		
+		if(playSpeed < 0)
+			playSpeed = 1;
+		else if(playSpeed < 8)
+			playSpeed++;
+		
+	}
+	
+	public void setTriggered(long timestamp, ConnectionTelemetry connection, int sampleNumber) {
+		
+		state = State.TRIGGERED;
+		nonLiveTimestamp = timestamp;
+		nonLivePrimaryConnection = connection;
+		nonLivePrimaryConnectionSampleNumber = sampleNumber;
+		playSpeed = 0;
 		
 	}
 	
@@ -1218,7 +1338,7 @@ public class OpenGLChartsView extends JPanel {
 				removing = true;
 				removingChart = chartUnderMouse;
 				removingAnimationEndTime = System.currentTimeMillis() + Theme.animationMilliseconds;
-				ChartsController.updateTileOccupancy(removingChart);
+				updateTileOccupancy(removingChart);
 			});
 		
 	}
@@ -1331,6 +1451,32 @@ public class OpenGLChartsView extends JPanel {
 		// event handler
 		if(mouseOverButton)
 			eventHandler = EventHandler.onPress(event -> ConfigureView.instance.forExistingChart(chartUnderMouse));
+		
+	}
+
+	private boolean[][] tileOccupied;
+	
+	/**
+	 * Updates the array that tracks which tiles are occupied by charts.
+	 * 
+	 * @param removingChart    If not null, pretend this chart does not exist (so the tiles behind it will be drawn while this chart fades away.)
+	 */
+	public void updateTileOccupancy(PositionedChart removingChart) {
+		
+		tileColumns = SettingsView.instance.tileColumnsTextfield.get();
+		tileRows    = SettingsView.instance.tileRowsTextfield.get();
+		
+		tileOccupied = new boolean[tileColumns][tileRows];
+		for(PositionedChart chart : ChartsController.getCharts()) {
+			for(int x = chart.topLeftX; x <= chart.bottomRightX; x++)
+				for(int y = chart.topLeftY; y <= chart.bottomRightY; y++)
+					tileOccupied[x][tileRows - y - 1] = true;
+		}
+		
+		if(removingChart != null)
+			for(int x = removingChart.topLeftX; x <= removingChart.bottomRightX; x++)
+				for(int y = removingChart.topLeftY; y <= removingChart.bottomRightY; y++)
+					tileOccupied[x][tileRows - y - 1] = false;
 		
 	}
 	

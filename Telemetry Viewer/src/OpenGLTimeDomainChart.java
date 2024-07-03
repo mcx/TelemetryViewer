@@ -2,63 +2,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import javax.swing.Box;
 import javax.swing.JPanel;
 import com.jogamp.opengl.GL2ES3;
 import com.jogamp.opengl.GL3;
 
 public class OpenGLTimeDomainChart extends PositionedChart {
 	
-	// plot region
-	float xPlotLeft;
-	float xPlotRight;
-	float plotWidth;
-	float yPlotTop;
-	float yPlotBottom;
-	float plotHeight;
-	float plotMaxY;
-	float plotMinY;
-	float plotRange;
-	
-	// x-axis title
-	float yXaxisTitleTextBasline;
-	float yXaxisTitleTextTop;
-	String xAxisTitle;
-	float xXaxisTitleTextLeft;
-	
-	// legend
-	float xLegendBorderLeft;
-	float yLegendBorderBottom;
-	float yLegendTextBaseline;
-	float yLegendTextTop;
-	float yLegendBorderTop;
-	float[][] legendMouseoverCoordinates;
-	float[][] legendBoxCoordinates;
-	float[] xLegendNameLeft;
-	float xLegendBorderRight;
-	
-	// x-axis scale
-	float yXaxisTickTextBaseline;
-	float yXaxisTickTextTop;
-	float yXaxisTickBottom;
-	float yXaxisTickTop;
 	boolean isTimestampsMode;
-	
-	// y-axis title
-	float xYaxisTitleTextTop;
-	float xYaxisTitleTextBaseline;
-	String yAxisTitle;
-	float yYaxisTitleTextLeft;
-	
-	// y-axis scale
-	Map<Float, String> yDivisions;
-	float xYaxisTickTextRight;
-	float xYaxisTickLeft;
-	float xYaxisTickRight;
 	AutoScale autoscale;
 	
 	Plot plot;
-	List<Dataset> allDatasets = new ArrayList<Dataset>(); // normal and bitfields
+	List<Field> allDatasets = new ArrayList<Field>(); // normal and bitfields
 	
 	// trigger
 	boolean triggerEnabled = false;
@@ -68,39 +22,17 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 	float earlierPlotMaxY = 1;
 	float earlierPlotMinY = -1;
 	
-	// user settings
-	private WidgetDatasetCheckboxes datasetsAndDurationWidget;
-	
-	private boolean legendVisible = true;
-	private WidgetCheckbox legendCheckbox;
-	
-	private boolean cached = false;
-	private WidgetCheckbox cachedCheckbox;
-
-	private boolean xAxisTicksVisible = true;
-	private WidgetCheckbox xAxisTicksCheckbox;
-	
-	private boolean xAxisTitleVisible = true;
-	private WidgetCheckbox xAxisTitleCheckbox;
-	
-	private float yAxisMinimum = -1;
-	private WidgetTextfieldFloat yAxisMinimumTextfield;
-	
-	private boolean yAxisMinimumAutomatic = true;
-	private WidgetCheckbox yAxisMinimumAutomaticCheckbox;
-	
-	private float yAxisMaximum = 1;
-	private WidgetTextfieldFloat yAxisMaximumTextfield;
-	
-	private boolean yAxisMaximumAutomatic = true;
-	private WidgetCheckbox yAxisMaximumAutomaticCheckbox;
-	
-	private boolean yAxisTicksVisible = true;
-	private WidgetCheckbox yAxisTicksCheckbox;
-	
-	private boolean yAxisTitleVisible = true;
-	private WidgetCheckbox yAxisTitleCheckbox;
-	
+	public WidgetDatasetCheckboxes datasetsAndDurationWidget;
+	private WidgetCheckbox legendVisibility;
+	public WidgetCheckbox cacheEnabled;
+	private WidgetCheckbox xAxisTicksVisibility;
+	private WidgetCheckbox xAxisTitleVisibility;
+	private WidgetTextfield<Float> yAxisMinimum;
+	private WidgetCheckbox yAxisMinimumAutomatic;
+	private WidgetTextfield<Float> yAxisMaximum;
+	private WidgetCheckbox yAxisMaximumAutomatic;
+	private WidgetCheckbox yAxisTicksVisibility;
+	private WidgetCheckbox yAxisTitleVisibility;
 	WidgetTrigger triggerWidget;
 	
 	@Override public String toString() {
@@ -114,7 +46,7 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 	 */
 	private void updateAllDatasetsList() {
 		
-		allDatasets = new ArrayList<Dataset>(datasets.normalDatasets);
+		allDatasets = new ArrayList<Field>(datasets.normalDatasets);
 		
 		datasets.edgeStates.forEach(state -> {
 			if(!allDatasets.contains(state.dataset))
@@ -127,101 +59,77 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		
 	}
 	
-	public OpenGLTimeDomainChart(int x1, int y1, int x2, int y2) {
-		
-		super(x1, y1, x2, y2);
+	public OpenGLTimeDomainChart() {
 		
 		autoscale = new AutoScale(AutoScale.MODE_EXPONENTIAL, 30, 0.10f);
 		
 		// create the control widgets and event handlers
-		legendCheckbox = new WidgetCheckbox("Show Legend",
-		                                    legendVisible,
-		                                    isVisible -> legendVisible = isVisible);
+		legendVisibility = new WidgetCheckbox("Show Legend", true);
 		
-		cachedCheckbox = new WidgetCheckbox("Cached Mode",
-		                                    cached,
-		                                    newCachedMode -> {
-		                                        cached = newCachedMode;
-		                                        autoscale = cached ? new AutoScale(AutoScale.MODE_STICKY,       1, 0.10f) :
-		                                                             new AutoScale(AutoScale.MODE_EXPONENTIAL, 30, 0.10f);
-		                                    });
+		cacheEnabled = new WidgetCheckbox("Cached Mode", false)
+		                   .onChange(isCached -> {
+		                                autoscale = isCached ? new AutoScale(AutoScale.MODE_STICKY,       1, 0.10f) :
+		                                                       new AutoScale(AutoScale.MODE_EXPONENTIAL, 30, 0.10f);
+		                            });
 		
-		xAxisTicksCheckbox = new WidgetCheckbox("Show Ticks",
-		                                        "x-axis show ticks",
-		                                        xAxisTicksVisible,
-		                                        isVisible -> xAxisTicksVisible = isVisible);
+		xAxisTicksVisibility = new WidgetCheckbox("Show Ticks", true)
+		                           .setExportLabel("x-axis show ticks");
 		
-		xAxisTitleCheckbox = new WidgetCheckbox("Show Title",
-		                                        "x-axis show title",
-		                                        xAxisTitleVisible,
-		                                        isVisible -> xAxisTitleVisible = isVisible);
+		xAxisTitleVisibility = new WidgetCheckbox("Show Title", true)
+		                           .setExportLabel("x-axis show title");
 		
-		yAxisMinimumTextfield = new WidgetTextfieldFloat("Minimum",
-		                                                 "y-axis minimum",
-		                                                 "",
-		                                                 -Float.MAX_VALUE,
-		                                                 Float.MAX_VALUE,
-		                                                 yAxisMinimum,
-		                                                 newMinimum -> {
-		                                                     yAxisMinimum = newMinimum;
-		                                                     if(yAxisMinimum > yAxisMaximum)
-		                                                         yAxisMaximumTextfield.setNumber(yAxisMinimum);
-		                                                 });
+		yAxisMinimum = WidgetTextfield.ofFloat(-Float.MAX_VALUE, Float.MAX_VALUE, -1)
+		                              .setPrefix("Minimum")
+		                              .setExportLabel("y-axis minimum")
+		                              .onChange((newMinimum, oldMinimum) -> {
+		                                            if(newMinimum > yAxisMaximum.get())
+		                                                yAxisMaximum.set(newMinimum);
+		                                            return true;
+		                                        });
 		
-		yAxisMinimumAutomaticCheckbox = new WidgetCheckbox("Automatic",
-		                                                   "y-axis minimum automatic",
-		                                                   yAxisMinimumAutomatic,
-		                                                   isAutomatic -> {
-		                                                       yAxisMinimumAutomatic = isAutomatic;
-		                                                       if(isAutomatic)
-		                                                           yAxisMinimumTextfield.disableWithMessage("Automatic");
-		                                                       else
-		                                                           yAxisMinimumTextfield.setEnabled(true);
-		                                                   });
+		yAxisMinimumAutomatic = new WidgetCheckbox("Automatic", true)
+		                            .setExportLabel("y-axis minimum automatic")
+		                            .onChange(isAutomatic -> {
+		                                         if(isAutomatic)
+		                                             yAxisMinimum.disableWithMessage("Automatic");
+		                                         else
+		                                             yAxisMinimum.setEnabled(true);
+		                                     });
 		
-		yAxisMaximumTextfield = new WidgetTextfieldFloat("Maximum",
-		                                                 "y-axis maximum",
-		                                                 "",
-		                                                 -Float.MAX_VALUE,
-		                                                 Float.MAX_VALUE,
-		                                                 yAxisMaximum,
-		                                                 newMaximum -> {
-		                                                     yAxisMaximum = newMaximum;
-		                                                     if(yAxisMaximum < yAxisMinimum)
-		                                                         yAxisMinimumTextfield.setNumber(yAxisMaximum);
-		                                                 });
+		yAxisMaximum = WidgetTextfield.ofFloat(-Float.MAX_VALUE, Float.MAX_VALUE, 1)
+		                              .setPrefix("Maximum")
+		                              .setExportLabel("y-axis maximum")
+		                              .onChange((newMaximum, oldMaximum) -> {
+		                                            if(newMaximum < yAxisMinimum.get())
+		                                                yAxisMinimum.set(newMaximum);
+		                                            return true;
+		                                        });
 		
-		yAxisMaximumAutomaticCheckbox = new WidgetCheckbox("Automatic",
-		                                                   "y-axis maximum automatic",
-		                                                   yAxisMaximumAutomatic,
-		                                                   isAutomatic -> {
-		                                                       yAxisMaximumAutomatic = isAutomatic;
-		                                                       if(isAutomatic)
-		                                                           yAxisMaximumTextfield.disableWithMessage("Automatic");
-		                                                       else
-		                                                           yAxisMaximumTextfield.setEnabled(true);
-		                                                   });
+		yAxisMaximumAutomatic = new WidgetCheckbox("Automatic", true)
+		                            .setExportLabel("y-axis maximum automatic")
+		                            .onChange(isAutomatic -> {
+		                                         if(isAutomatic)
+		                                             yAxisMaximum.disableWithMessage("Automatic");
+		                                         else
+		                                             yAxisMaximum.setEnabled(true);
+		                                     });
 		
-		yAxisTicksCheckbox = new WidgetCheckbox("Show Ticks",
-		                                        "y-axis show ticks",
-		                                        yAxisTicksVisible,
-		                                        isVisible -> yAxisTicksVisible = isVisible);
+		yAxisTicksVisibility = new WidgetCheckbox("Show Ticks", true)
+		                           .setExportLabel("y-axis show ticks");
 		
-		yAxisTitleCheckbox = new WidgetCheckbox("Show Title",
-		                                        "y-axis show title",
-		                                        yAxisTitleVisible,
-		                                        isVisible -> yAxisTitleVisible = isVisible);
+		yAxisTitleVisibility = new WidgetCheckbox("Show Title", true)
+		                           .setExportLabel("y-axis show title");
 		
 		datasetsAndDurationWidget = new WidgetDatasetCheckboxes(newDatasets -> {
 		                                                            datasets.setNormals(newDatasets);
 		                                                            updateAllDatasetsList();
 		                                                            if(datasets.normalsCount() == 1) {
-		                                                                yAxisMinimumTextfield.setUnit(datasets.getNormal(0).unit);
-		                                                                yAxisMaximumTextfield.setUnit(datasets.getNormal(0).unit);
+		                                                                yAxisMinimum.setSuffix(datasets.getNormal(0).unit.get());
+		                                                                yAxisMaximum.setSuffix(datasets.getNormal(0).unit.get());
 		                                                                triggerWidget.setDefaultChannel(datasets.getNormal(0));
 		                                                            } else if(datasets.normalsCount() == 0) {
-		                                                                yAxisMinimumTextfield.setUnit("");
-		                                                                yAxisMaximumTextfield.setUnit("");
+		                                                                yAxisMinimum.setSuffix("");
+		                                                                yAxisMaximum.setSuffix("");
 		                                                            }
 		                                                        },
 		                                                        newBitfieldEdges -> {
@@ -249,16 +157,16 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		                                  isEnabled -> triggerEnabled = isEnabled);
 		
 		widgets.add(datasetsAndDurationWidget);
-		widgets.add(legendCheckbox);
-		widgets.add(cachedCheckbox);
-		widgets.add(xAxisTicksCheckbox);
-		widgets.add(xAxisTitleCheckbox);
-		widgets.add(yAxisMinimumTextfield);
-		widgets.add(yAxisMinimumAutomaticCheckbox);
-		widgets.add(yAxisMaximumTextfield);
-		widgets.add(yAxisMaximumAutomaticCheckbox);
-		widgets.add(yAxisTicksCheckbox);
-		widgets.add(yAxisTitleCheckbox);
+		widgets.add(legendVisibility);
+		widgets.add(cacheEnabled);
+		widgets.add(xAxisTicksVisibility);
+		widgets.add(xAxisTitleVisibility);
+		widgets.add(yAxisMinimum);
+		widgets.add(yAxisMinimumAutomatic);
+		widgets.add(yAxisMaximum);
+		widgets.add(yAxisMaximumAutomatic);
+		widgets.add(yAxisTicksVisibility);
+		widgets.add(yAxisTitleVisibility);
 		
 		widgets.add(triggerWidget);
 		trigger = triggerWidget;
@@ -267,31 +175,30 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 	
 	@Override public void getConfigurationGui(JPanel gui) {
 		
-		JPanel dataPanel = Theme.newWidgetsPanel("Data");
-		datasetsAndDurationWidget.appendToGui(dataPanel);
-		dataPanel.add(legendCheckbox, "split 2");
-		dataPanel.add(cachedCheckbox);
+		gui.add(Theme.newWidgetsPanel("Data")
+		             .with(datasetsAndDurationWidget)
+		             .with(legendVisibility, "split 2")
+		             .with(cacheEnabled)
+		             .getPanel());
 		
-		JPanel xAxisPanel = Theme.newWidgetsPanel("X-Axis");
-		xAxisPanel.add(xAxisTicksCheckbox, "split 2");
-		xAxisPanel.add(xAxisTitleCheckbox);
+		gui.add(Theme.newWidgetsPanel("X-Axis")
+		             .with(xAxisTicksVisibility, "split 2")
+		             .with(xAxisTitleVisibility)
+		             .getPanel());
 		
-		JPanel yAxisPanel = Theme.newWidgetsPanel("Y-Axis");
-		yAxisPanel.add(yAxisMinimumTextfield, "split 2, grow");
-		yAxisPanel.add(yAxisMinimumAutomaticCheckbox, "sizegroup 1");
-		yAxisPanel.add(yAxisMaximumTextfield, "split 2, grow");
-		yAxisPanel.add(yAxisMaximumAutomaticCheckbox, "sizegroup 1");
-		yAxisPanel.add(Box.createVerticalStrut(Theme.padding));
-		yAxisPanel.add(yAxisTicksCheckbox, "split 2");
-		yAxisPanel.add(yAxisTitleCheckbox);
+		gui.add(Theme.newWidgetsPanel("Y-Axis")
+		             .with(yAxisMinimum, "split 2, grow")
+		             .with(yAxisMinimumAutomatic, "sizegroup 1")
+		             .with(yAxisMaximum, "split 2, grow")
+		             .with(yAxisMaximumAutomatic, "sizegroup 1")
+		             .withGap(Theme.padding)
+		             .with(yAxisTicksVisibility, "split 2")
+		             .with(yAxisTitleVisibility)
+		             .getPanel());
 		
-		JPanel triggerPanel = Theme.newWidgetsPanel("Trigger");
-		triggerWidget.appendToGui(triggerPanel);
-		
-		gui.add(dataPanel);
-		gui.add(xAxisPanel);
-		gui.add(yAxisPanel);
-		gui.add(triggerPanel);
+		gui.add(Theme.newWidgetsPanel("Trigger")
+		             .with(triggerWidget)
+		             .getPanel());
 		
 	}
 	
@@ -320,13 +227,13 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		
 		int datasetsCount = allDatasets.size();
 		
-		plot.initialize(sampleCountMode ? endSampleNumber : endTimestamp, datasets, Math.round(duration * zoomLevel), cached, isTimestampsMode);
+		plot.initialize(sampleCountMode ? endSampleNumber : endTimestamp, datasets, Math.round(duration * zoomLevel), cacheEnabled.get(), isTimestampsMode);
 		
 		// calculate the plot range
 		StorageFloats.MinMax requiredRange = plot.getRange();
 		autoscale.update(requiredRange.min, requiredRange.max);
-		plotMinY = yAxisMinimumAutomatic ? autoscale.getMin() : yAxisMinimum;
-		plotMaxY = yAxisMaximumAutomatic ? autoscale.getMax() : yAxisMaximum;
+		float plotMinY = yAxisMinimumAutomatic.get() ? autoscale.getMin() : yAxisMinimum.get();
+		float plotMaxY = yAxisMaximumAutomatic.get() ? autoscale.getMax() : yAxisMaximum.get();
 		if(triggerEnabled) {
 			if(triggeringPaused) {
 				plotMaxY = earlierPlotMaxY;
@@ -336,22 +243,21 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 				earlierPlotMinY = plotMinY;
 			}
 		}
-		plotRange = plotMaxY - plotMinY;
+		float plotRange = plotMaxY - plotMinY;
 		
 		// calculate x and y positions of everything
-		xPlotLeft = Theme.tilePadding;
-		xPlotRight = width - Theme.tilePadding;
-		plotWidth = xPlotRight - xPlotLeft;
-		yPlotTop = height - Theme.tilePadding;
-		yPlotBottom = Theme.tilePadding;
-		plotHeight = yPlotTop - yPlotBottom;
+		float xPlotLeft = Theme.tilePadding;
+		float xPlotRight = width - Theme.tilePadding;
+		float plotWidth = xPlotRight - xPlotLeft;
+		float yPlotTop = height - Theme.tilePadding;
+		float yPlotBottom = Theme.tilePadding;
+		float plotHeight = yPlotTop - yPlotBottom;
 		
-		if(xAxisTitleVisible) {
-			yXaxisTitleTextBasline = Theme.tilePadding;
-			yXaxisTitleTextTop = yXaxisTitleTextBasline + OpenGL.largeTextHeight;
-			xAxisTitle = plot.getTitle();
-			xXaxisTitleTextLeft = xPlotLeft + (plotWidth  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			
+		float yXaxisTitleTextBasline = Theme.tilePadding;
+		float yXaxisTitleTextTop = yXaxisTitleTextBasline + OpenGL.largeTextHeight;
+		String xAxisTitle = plot.getTitle();
+		float xXaxisTitleTextLeft = xPlotLeft + (plotWidth  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
+		if(xAxisTitleVisibility.get()) {
 			float temp = yXaxisTitleTextTop + Theme.tickTextPadding;
 			if(yPlotBottom < temp) {
 				yPlotBottom = temp;
@@ -359,16 +265,16 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 			}
 		}
 		
-		if(legendVisible && datasetsCount > 0) {
-			xLegendBorderLeft = Theme.tilePadding;
-			yLegendBorderBottom = Theme.tilePadding;
-			yLegendTextBaseline = yLegendBorderBottom + Theme.legendTextPadding;
-			yLegendTextTop = yLegendTextBaseline + OpenGL.mediumTextHeight;
-			yLegendBorderTop = yLegendTextTop + Theme.legendTextPadding;
-			
-			legendMouseoverCoordinates = new float[datasetsCount][4];
-			legendBoxCoordinates = new float[datasetsCount][4];
-			xLegendNameLeft = new float[datasetsCount];
+		float xLegendBorderLeft = Theme.tilePadding;
+		float yLegendBorderBottom = Theme.tilePadding;
+		float yLegendTextBaseline = yLegendBorderBottom + Theme.legendTextPadding;
+		float yLegendTextTop = yLegendTextBaseline + OpenGL.mediumTextHeight;
+		float yLegendBorderTop = yLegendTextTop + Theme.legendTextPadding;
+		float[][] legendMouseoverCoordinates = new float[datasetsCount][4];
+		float[][] legendBoxCoordinates = new float[datasetsCount][4];
+		float[] xLegendNameLeft = new float[datasetsCount];
+		float xLegendBorderRight = 0;
+		if(legendVisibility.get() && datasetsCount > 0) {
 			
 			float xOffset = xLegendBorderLeft + (Theme.lineWidth / 2) + Theme.legendTextPadding;
 			
@@ -383,14 +289,14 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 				
 				xOffset += OpenGL.mediumTextHeight + Theme.legendTextPadding;
 				xLegendNameLeft[i] = xOffset;
-				xOffset += OpenGL.mediumTextWidth(gl, allDatasets.get(i).name) + Theme.legendNamesPadding;
+				xOffset += OpenGL.mediumTextWidth(gl, allDatasets.get(i).name.get()) + Theme.legendNamesPadding;
 				
 				legendMouseoverCoordinates[i][2] = xOffset - Theme.legendNamesPadding + Theme.legendTextPadding;
 				legendMouseoverCoordinates[i][3] = yLegendBorderTop;
 			}
 			
 			xLegendBorderRight = xOffset - Theme.legendNamesPadding + Theme.legendTextPadding + (Theme.lineWidth / 2);
-			if(xAxisTitleVisible)
+			if(xAxisTitleVisibility.get())
 				xXaxisTitleTextLeft = xLegendBorderRight + ((xPlotRight - xLegendBorderRight) / 2) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
 			
 			float temp = yLegendBorderTop + Theme.legendTextPadding;
@@ -399,33 +305,34 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 				plotHeight = yPlotTop - yPlotBottom;
 			}
 		}
-		
-		if(xAxisTicksVisible) {
-			yXaxisTickTextBaseline = yPlotBottom;
-			yXaxisTickTextTop = yXaxisTickTextBaseline + OpenGL.smallTextHeight;
-			if(isTimestampsMode && SettingsController.isTimeFormatTwoLines())
-				yXaxisTickTextTop += 1.3 * OpenGL.smallTextHeight;
-			yXaxisTickBottom = yXaxisTickTextTop + Theme.tickTextPadding;
-			yXaxisTickTop = yXaxisTickBottom + Theme.tickLength;
-			
+	
+		float yXaxisTickTextBaseline = yPlotBottom;
+		float yXaxisTickTextTop = yXaxisTickTextBaseline + OpenGL.smallTextHeight;
+		if(isTimestampsMode && SettingsView.isTimeFormatTwoLines())
+			yXaxisTickTextTop += 1.3 * OpenGL.smallTextHeight;
+		float yXaxisTickBottom = yXaxisTickTextTop + Theme.tickTextPadding;
+		float yXaxisTickTop = yXaxisTickBottom + Theme.tickLength;
+		if(xAxisTicksVisibility.get()) {
 			yPlotBottom = yXaxisTickTop;
 			plotHeight = yPlotTop - yPlotBottom;
 		}
-		
-		if(yAxisTitleVisible) {
-			xYaxisTitleTextTop = xPlotLeft;
-			xYaxisTitleTextBaseline = xYaxisTitleTextTop + OpenGL.largeTextHeight;
-			yAxisTitle = (datasetsCount > 0) ? allDatasets.get(0).unit : "";
-			yYaxisTitleTextLeft = yPlotBottom + (plotHeight / 2.0f) - (OpenGL.largeTextWidth(gl, yAxisTitle) / 2.0f);
-			
+	
+		float xYaxisTitleTextTop = xPlotLeft;
+		float xYaxisTitleTextBaseline = xYaxisTitleTextTop + OpenGL.largeTextHeight;
+		String yAxisTitle = (datasetsCount > 0) ? allDatasets.get(0).unit.get() : "";
+		float yYaxisTitleTextLeft = yPlotBottom + (plotHeight / 2.0f) - (OpenGL.largeTextWidth(gl, yAxisTitle) / 2.0f);
+		if(yAxisTitleVisibility.get()) {
 			xPlotLeft = xYaxisTitleTextBaseline + Theme.tickTextPadding;
 			plotWidth = xPlotRight - xPlotLeft;
-			
-			if(xAxisTitleVisible && !legendVisible)
+			if(xAxisTitleVisibility.get() && !legendVisibility.get())
 				xXaxisTitleTextLeft = xPlotLeft + (plotWidth  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
 		}
 		
-		if(yAxisTicksVisible) {
+		Map<Float, String> yDivisions = null;
+		float xYaxisTickTextRight = 0;
+		float xYaxisTickLeft = 0;
+		float xYaxisTickRight = 0;
+		if(yAxisTicksVisibility.get()) {
 			yDivisions = ChartUtils.getYdivisions125(plotHeight, plotMinY, plotMaxY);
 			float maxTextWidth = 0;
 			for(String text : yDivisions.values()) {
@@ -442,7 +349,7 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 			xPlotLeft = xYaxisTickRight;
 			plotWidth = xPlotRight - xPlotLeft;
 			
-			if(xAxisTitleVisible && !legendVisible)
+			if(xAxisTitleVisibility.get() && !legendVisibility.get())
 				xXaxisTitleTextLeft = xPlotLeft + (plotWidth  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
 		}
 		
@@ -462,7 +369,7 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		OpenGL.drawQuad2D(gl, Theme.plotBackgroundColor, xPlotLeft, yPlotBottom, xPlotRight, yPlotTop);
 		
 		// draw the x-axis scale
-		if(xAxisTicksVisible) {
+		if(xAxisTicksVisibility.get()) {
 			Map<Float, String> divisions = plot.getXdivisions(gl, (int) plotWidth);
 			
 			OpenGL.buffer.rewind();
@@ -491,7 +398,7 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		}
 		
 		// draw the y-axis scale
-		if(yAxisTicksVisible) {
+		if(yAxisTicksVisibility.get()) {
 			OpenGL.buffer.rewind();
 			for(Float entry : yDivisions.keySet()) {
 				float y = (entry - plotMinY) / plotRange * plotHeight + yPlotBottom;
@@ -513,27 +420,27 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		}
 		
 		// draw the legend, if space is available
-		if(legendVisible && datasetsCount > 0 && xLegendBorderRight < width - Theme.tilePadding) {
+		if(legendVisibility.get() && datasetsCount > 0 && xLegendBorderRight < width - Theme.tilePadding) {
 			OpenGL.drawQuad2D(gl, Theme.legendBackgroundColor, xLegendBorderLeft, yLegendBorderBottom, xLegendBorderRight, yLegendBorderTop);
 			
 			for(int i = 0; i < datasetsCount; i++) {
 				if(mouseX >= legendMouseoverCoordinates[i][0] && mouseX <= legendMouseoverCoordinates[i][2] && mouseY >= legendMouseoverCoordinates[i][1] && mouseY <= legendMouseoverCoordinates[i][3]) {
 					OpenGL.drawQuadOutline2D(gl, Theme.tickLinesColor, legendMouseoverCoordinates[i][0], legendMouseoverCoordinates[i][1], legendMouseoverCoordinates[i][2], legendMouseoverCoordinates[i][3]);
-					Dataset d = allDatasets.get(i);
+					Field d = allDatasets.get(i);
 					handler = EventHandler.onPress(event -> ConfigureView.instance.forDataset(d));
 				}
-				OpenGL.drawQuad2D(gl, allDatasets.get(i).glColor, legendBoxCoordinates[i][0], legendBoxCoordinates[i][1], legendBoxCoordinates[i][2], legendBoxCoordinates[i][3]);
-				OpenGL.drawMediumText(gl, allDatasets.get(i).name, (int) xLegendNameLeft[i], (int) yLegendTextBaseline, 0);
+				OpenGL.drawQuad2D(gl, allDatasets.get(i).color.getGl(), legendBoxCoordinates[i][0], legendBoxCoordinates[i][1], legendBoxCoordinates[i][2], legendBoxCoordinates[i][3]);
+				OpenGL.drawMediumText(gl, allDatasets.get(i).name.get(), (int) xLegendNameLeft[i], (int) yLegendTextBaseline, 0);
 			}
 		}
 		
 		// draw the x-axis title, if space is available
-		if(xAxisTitleVisible)
-			if((!legendVisible && xXaxisTitleTextLeft > xPlotLeft) || (legendVisible && xXaxisTitleTextLeft > xLegendBorderRight + Theme.legendTextPadding))
+		if(xAxisTitleVisibility.get())
+			if((!legendVisibility.get() && xXaxisTitleTextLeft > xPlotLeft) || (legendVisibility.get() && xXaxisTitleTextLeft > xLegendBorderRight + Theme.legendTextPadding))
 				OpenGL.drawLargeText(gl, xAxisTitle, (int) xXaxisTitleTextLeft, (int) yXaxisTitleTextBasline, 0);
 		
 		// draw the y-axis title, if space is available
-		if(yAxisTitleVisible && yYaxisTitleTextLeft > yPlotBottom)
+		if(yAxisTitleVisibility.get() && yYaxisTitleTextLeft > yPlotBottom)
 			OpenGL.drawLargeText(gl, yAxisTitle, (int) xYaxisTitleTextBaseline, (int) yYaxisTitleTextLeft, 90);
 		
 		// acquire the samples
@@ -558,16 +465,22 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 			boolean mouseOver = false;
 			
 			// trigger level marker
+			float yPlotBottomCopy = yPlotBottom;
+			float plotHeightCopy = plotHeight;
+			float plotMinYcopy = plotMinY;
+			float plotMaxYcopy = plotMaxY;
+			float xPlotLeftCopy = xPlotLeft;
+			float plotWidthCopy = plotWidth;
 			if(yTriggerLevel >= yPlotBottom && yTriggerLevel <= yPlotTop) {
 				if(mouseX >= xPlotLeft && mouseX <= xPlotLeft + markerLength*1.5 && mouseY >= yTriggerLevel - markerThickness*1.5 && mouseY <= yTriggerLevel + markerThickness*1.5) {
 					mouseOver = true;
 					handler = EventHandler.onPressOrDrag(dragStarted -> triggeringPaused = true,
 					                                     newLocation -> {
-					                                         float newTriggerLevel = (newLocation.y - yPlotBottom) / plotHeight * plotRange + plotMinY;
-					                                         if(newTriggerLevel < plotMinY)
-					                                         	 newTriggerLevel = plotMinY;
-					                                         if(newTriggerLevel > plotMaxY)
-					                                        	 newTriggerLevel = plotMaxY;
+					                                         float newTriggerLevel = (newLocation.y - yPlotBottomCopy) / plotHeightCopy * plotRange + plotMinYcopy;
+					                                         if(newTriggerLevel < plotMinYcopy)
+					                                         	 newTriggerLevel = plotMinYcopy;
+					                                         if(newTriggerLevel > plotMaxYcopy)
+					                                        	 newTriggerLevel = plotMaxYcopy;
 					                                         triggerWidget.setLevel(newTriggerLevel, false);
 					                                     },
 					                                     dragEnded -> triggeringPaused = false,
@@ -590,7 +503,7 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 						mouseOver = true;
 						handler = EventHandler.onPressOrDrag(dragStarted -> triggeringPaused = true,
 						                                     newLocation -> {
-						                                         float newPrePostRatio = (newLocation.x - xPlotLeft) / plotWidth;
+						                                         float newPrePostRatio = (newLocation.x - xPlotLeftCopy) / plotWidthCopy;
 						                                         if(newPrePostRatio < 0)
 						                                        	 newPrePostRatio = 0;
 						                                         if(newPrePostRatio > 1)
@@ -629,32 +542,8 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		}
 		
 		// draw the tooltip if the mouse is in the plot region and not over something clickable
-		if(datasetsCount > 0 && SettingsController.getTooltipVisibility() && mouseX >= xPlotLeft && mouseX <= xPlotRight && mouseY >= yPlotBottom && mouseY <= yPlotTop && handler == null) {
-			Plot.TooltipInfo tooltip = plot.getTooltip(mouseX - (int) xPlotLeft, plotWidth);
-			if(tooltip.draw) {
-				String[] tooltipLines = tooltip.label.split("\n");
-				List<TooltipEntry> entries = new ArrayList<TooltipEntry>(datasetsCount + tooltipLines.length);
-				for(String line : tooltipLines)
-					entries.add(new TooltipEntry(null, line));
-				for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
-					Dataset dataset = allDatasets.get(datasetN);
-					entries.add(new TooltipEntry(dataset.glColor, datasets.getSampleAsString(dataset, tooltip.sampleNumber)));
-				}
-				float anchorX = tooltip.pixelX + xPlotLeft;
-				if(anchorX >= 0 && datasetsCount > 1) {
-					OpenGL.buffer.rewind();
-					OpenGL.buffer.put(anchorX); OpenGL.buffer.put(yPlotTop);
-					OpenGL.buffer.put(anchorX); OpenGL.buffer.put(yPlotBottom);
-					OpenGL.buffer.rewind();
-					OpenGL.drawLinesXy(gl, GL3.GL_LINES, Theme.tooltipVerticalBarColor, OpenGL.buffer, 2);
-					drawTooltip(gl, entries, anchorX, mouseY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
-				} else if(anchorX >= 0) {
-					float anchorY = (datasets.getSample(allDatasets.get(0), tooltip.sampleNumber) - plotMinY) / plotRange * plotHeight + yPlotBottom;
-					anchorY = Math.max(anchorY, yPlotBottom);
-					drawTooltip(gl, entries, anchorX, anchorY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
-				}
-			}
-		}
+		if(datasetsCount > 0 && SettingsView.instance.tooltipsVisibility.get() && mouseX >= xPlotLeft && mouseX <= xPlotRight && mouseY >= yPlotBottom && mouseY <= yPlotTop && handler == null)
+			plot.drawTooltip(gl, mouseX, mouseY, xPlotLeft, yPlotBottom, plotWidth, plotHeight, plotMinY, plotMaxY, plotRange, yPlotTop, xPlotRight);
 		
 		// draw the plot border
 		OpenGL.drawQuadOutline2D(gl, Theme.plotOutlineColor, xPlotLeft, yPlotBottom, xPlotRight, yPlotTop);

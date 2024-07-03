@@ -372,7 +372,7 @@ public class OpenGL {
 	public static void drawTriangleStripTextured2D(GL2ES3 gl, FloatBuffer buffer, int textureHandle, boolean isFboTexture, int vertexCount) {
 		
 		// send data to the GPU
-		if(isFboTexture && SettingsController.getAntialiasingLevel() > 1) {
+		if(isFboTexture && SettingsView.instance.antialiasingSlider.get() > 1) {
 			gl.glUseProgram(TrianglesXYSTmultisample.programHandle);
 			gl.glBindVertexArray(TrianglesXYSTmultisample.vaoHandle);
 			gl.glBindBuffer(GL3.GL_ARRAY_BUFFER, TrianglesXYSTmultisample.vboHandle);
@@ -1170,9 +1170,9 @@ public class OpenGL {
 		
 		// create and use a texture
 		gl.glGenTextures(1, textureHandle, 0);
-		if(SettingsController.getAntialiasingLevel() > 1) {
+		if(SettingsView.instance.antialiasingSlider.get() > 1) {
 			gl.glBindTexture(GL3.GL_TEXTURE_2D_MULTISAMPLE, textureHandle[0]);
-			gl.glTexImage2DMultisample(GL3.GL_TEXTURE_2D_MULTISAMPLE, SettingsController.getAntialiasingLevel(), GL3.GL_RGBA, 512, 512, true);
+			gl.glTexImage2DMultisample(GL3.GL_TEXTURE_2D_MULTISAMPLE, SettingsView.instance.antialiasingSlider.get(), GL3.GL_RGBA, 512, 512, true);
 			gl.glFramebufferTexture2D(GL3.GL_FRAMEBUFFER, GL3.GL_COLOR_ATTACHMENT0, GL3.GL_TEXTURE_2D_MULTISAMPLE, textureHandle[0], 0);
 		} else {
 			gl.glBindTexture(GL3.GL_TEXTURE_2D, textureHandle[0]);
@@ -1215,14 +1215,14 @@ public class OpenGL {
 
 		// switch to the off-screen framebuffer and corresponding texture
 		gl.glBindFramebuffer(GL3.GL_FRAMEBUFFER, fboHandle[0]);
-		if(SettingsController.getAntialiasingLevel() > 1)
+		if(SettingsView.instance.antialiasingSlider.get() > 1)
 			gl.glBindTexture(GL3.GL_TEXTURE_2D_MULTISAMPLE, textureHandle[0]);
 		else
 			gl.glBindTexture(GL3.GL_TEXTURE_2D, textureHandle[0]);
 
 		// replace the existing texture
-		if(SettingsController.getAntialiasingLevel() > 1)
-			gl.glTexImage2DMultisample(GL3.GL_TEXTURE_2D_MULTISAMPLE, SettingsController.getAntialiasingLevel(), GL3.GL_RGBA, width, height, true);
+		if(SettingsView.instance.antialiasingSlider.get() > 1)
+			gl.glTexImage2DMultisample(GL3.GL_TEXTURE_2D_MULTISAMPLE, SettingsView.instance.antialiasingSlider.get(), GL3.GL_RGBA, width, height, true);
 		else
 			gl.glTexImage2D(GL3.GL_TEXTURE_2D, 0, GL3.GL_RGBA, width, height, 0, GL3.GL_RGBA, GL3.GL_UNSIGNED_BYTE, null);
 
@@ -1261,7 +1261,7 @@ public class OpenGL {
 
 		// switch to the off-screen framebuffer and corresponding texture
 		gl.glBindFramebuffer(GL3.GL_FRAMEBUFFER, fboHandle[0]);
-		if(SettingsController.getAntialiasingLevel() > 1)
+		if(SettingsView.instance.antialiasingSlider.get() > 1)
 			gl.glBindTexture(GL3.GL_TEXTURE_2D_MULTISAMPLE, textureHandle[0]);
 		else
 			gl.glBindTexture(GL3.GL_TEXTURE_2D, textureHandle[0]);
@@ -2076,7 +2076,7 @@ public class OpenGL {
 				"	fragColor = vec4(color.r * a, color.g * a, color.b * a, a);\n",
 				"}\n"
 			};
-		int msaaLevel = SettingsController.getAntialiasingLevel();
+		int msaaLevel = SettingsView.instance.antialiasingSlider.get();
 		String[] fragmentShaderTex2DMS = new String[] {
 			versionLine,
 			"#ifdef GL_ES\n" +
@@ -2645,7 +2645,7 @@ public class OpenGL {
 		 * One VBO of floats specifies (x1,y1,s1,t1,...) data.
 		 * One uniform mat4 specifies the matrix.
 		 */
-		if(SettingsController.getAntialiasingLevel() > 1) {
+		if(SettingsView.instance.antialiasingSlider.get() > 1) {
 			
 			TrianglesXYSTmultisample.programHandle = makeProgram(gl, vertexShaderVboXyst, null, fragmentShaderTex2DMS);
 			

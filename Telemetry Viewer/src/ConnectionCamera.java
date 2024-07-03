@@ -1,7 +1,5 @@
 import java.awt.Dimension;
 import java.awt.Point;
-import java.awt.event.FocusEvent;
-import java.awt.event.FocusListener;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
 import java.awt.image.Raster;
@@ -29,17 +27,12 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
-import java.util.Queue;
 import java.util.Stack;
 import java.util.AbstractMap.SimpleEntry;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import javax.imageio.ImageIO;
-import javax.swing.JButton;
-import javax.swing.JComboBox;
-import javax.swing.JPanel;
-import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
 import org.libjpegturbo.turbojpeg.TJ;
 import org.libjpegturbo.turbojpeg.TJCompressor;
@@ -50,24 +43,17 @@ import com.github.sarxos.webcam.WebcamException;
 import com.github.sarxos.webcam.WebcamLockException;
 import com.jogamp.common.nio.Buffers;
 
-import net.miginfocom.swing.MigLayout;
-
 public class ConnectionCamera extends Connection {
 	
 	static List<Webcam> cameras = Webcam.getWebcams();
-	static List<String> names = new ArrayList<String>();
-	static final String mjpegOverHttp = "MJPEG over HTTP";
-	static {
-		for(Webcam camera : cameras)
-			names.add(camera.getName());
-		names.add(mjpegOverHttp);
+	static List<String> cameraNames = cameras.stream().map(cam -> "Cam: " + cam.getName()).toList();
+	public static List<String> getNames() {
+		return cameraNames;
 	}
-	static Dimension[] resolutions = new Dimension[] {
-		new Dimension(640, 480),
-		new Dimension(1280, 720),
-		new Dimension(1920, 1080),
-		new Dimension(3840, 2160)
-	};
+	static final String mjpegOverHttp = "Cam: MJPEG over HTTP";
+	
+	private WidgetComboboxString resolution;
+	private WidgetTextfield<String> url;
 	
 	// threading
 	private AtomicInteger liveJpegThreads = new AtomicInteger(0); // number of currently live sub-threads encoding or decoding jpeg's
@@ -75,7 +61,6 @@ public class ConnectionCamera extends Connection {
 	// camera state
 	private boolean isMjpeg;
 	private Webcam camera; // only used if not MJPEG
-	private Dimension requestedResolution = resolutions[0];
 	
 	// images in memory
 	private volatile GLframe liveImage = new GLframe(null, true, 1, 1, "[waiting]", 0);
@@ -89,229 +74,84 @@ public class ConnectionCamera extends Connection {
 		public FrameInfo(long timestamp, long offset, int length) { this.timestamp = timestamp; this.offset = offset; this.length = length; }
 	}
 	private volatile List<FrameInfo> framesIndex = Collections.synchronizedList(new ArrayList<FrameInfo>()); // index = frame number
-	private volatile Path pathOnDisk = Paths.get("cache/" + this.toString() + ".mjpg");
-	private volatile FileChannel file;
-	private volatile boolean fileIsImported;
+	private FileChannel file;
+	private final Path filePath = Paths.get("cache/" + this.toString() + ".mjpg");
 	
-	public ConnectionCamera() {
+	public ConnectionCamera(String cameraName) {
 		
-		name = names.get(0);
+		name = ConnectionsController.getNamesCombobox(this);
 		
-		// ensure this connection doesn't already exist, but allow multiple MJPEG over HTTP connections
-		for(int i = 1; i < names.size(); i++)
-			for(Connection connection : ConnectionsController.allConnections)
-				if(name.equals(connection.name) && !name.equals(mjpegOverHttp))
-					name = getNames().get(i);
-		
-		isMjpeg = name.startsWith(mjpegOverHttp);
-		if(isMjpeg) {
-			name = mjpegOverHttp + " http://example.com:8080/video";
-			// crude attempt to make the default URL be the IP address of the default gateway
-			String ip = ConnectionTelemetry.localIp;
-			if(ip.split("\\.").length == 4)
-				name = mjpegOverHttp + " http://" + ip.substring(0, ip.lastIndexOf(".")) + ".1:8080/video";
+		if(cameraName != null) {
+			name.set(cameraName);
 		} else {
-			for(Webcam cam : cameras)
-				if(cam.getName().equals(name))
-					camera = cam;
+			// default to the first available camera
+			List<String> usedNames = ConnectionsController.cameraConnections.stream().map(connection -> connection.name.get()).toList();
+			String firstAvailableName = cameraNames.stream().filter(camName -> !usedNames.contains(camName)).findFirst().orElse(mjpegOverHttp);
+			name.set(firstAvailableName);
 		}
+		
+		resolution = new WidgetComboboxString(List.of("640 x 480",
+		                                               "1280 x 720",
+		                                               "1920 x 1080",
+		                                               "3840 x 2160"), "640 x 480")
+		                          .setExportLabel("requested resolution");
+		
+		url = WidgetTextfield.ofText("http://example.com:8080/video")
+		                     .setExportLabel("url");
+		// crude attempt to make the default URL be the IP address of the default gateway
+		String ip = ConnectionTelemetry.localIp;
+		if(ip.split("\\.").length == 4)
+			url.set("http://" + ip.substring(0, ip.lastIndexOf(".")) + ".1:8080/video");
+		
+		isMjpeg = name.get().equals(mjpegOverHttp);
+		camera  = cameras.stream().filter(cam -> cam.getName().equals(name.get().substring(5))).findFirst().orElse(null);
 		
 		// create the cache file
 		try {
-			file = FileChannel.open(pathOnDisk, StandardOpenOption.CREATE,
-			                                    StandardOpenOption.TRUNCATE_EXISTING,
-			                                    StandardOpenOption.READ,
-			                                    StandardOpenOption.WRITE);
-			fileIsImported = false;
+			file = FileChannel.open(filePath, StandardOpenOption.CREATE,
+			                                  StandardOpenOption.TRUNCATE_EXISTING,
+			                                  StandardOpenOption.READ,
+			                                  StandardOpenOption.WRITE);
 		} catch(Exception e) {
-			NotificationsController.showCriticalFault("Unable the create the cache file for " + name + "\n" + e.getMessage());
+			NotificationsController.showCriticalFault("Unable the create the cache file for " + cameraName + "\n" + e.getMessage());
 			e.printStackTrace();
 		}
 		
 	}
 	
-	public ConnectionCamera(String name) {
+	@Override public List<Widget> getConfigurationWidgets() {
 		
-		isMjpeg = name.startsWith(mjpegOverHttp);
-		if(isMjpeg) {
-			if(name.length() > mjpegOverHttp.length()) {
-				this.name = name;
-			} else {
-				this.name = mjpegOverHttp + " http://example.com:8080/video";
-				// crude attempt to make the default URL be the IP address of the default gateway
-				String ip = ConnectionTelemetry.localIp;
-				if(ip.split("\\.").length == 4)
-					this.name = mjpegOverHttp + " http://" + ip.substring(0, ip.lastIndexOf(".")) + ".1:8080/video";
-			}
-		} else {
-			this.name = name;
-			for(Webcam cam : cameras)
-				if(cam.getName().equals(name))
-					camera = cam;
-		}
+		boolean isEnabled = !isConnected() && !ConnectionsController.importing && !ConnectionsController.exporting;
 		
-		// create the cache file
-		try {
-			file = FileChannel.open(pathOnDisk, StandardOpenOption.CREATE,
-			                                    StandardOpenOption.TRUNCATE_EXISTING,
-			                                    StandardOpenOption.READ,
-			                                    StandardOpenOption.WRITE);
-			fileIsImported = false;
-		} catch(Exception e) {
-			NotificationsController.showCriticalFault("Unable the create the cache file for " + name + "\n" + e.getMessage());
-			e.printStackTrace();
-		}
+		if(name.get().equals(mjpegOverHttp) || name.get().equals("Importing [" + mjpegOverHttp + "]"))
+			return List.of(url.setEnabled(isEnabled));
+		else
+			return List.of(resolution.setEnabled(isEnabled));
 		
 	}
+
+	@Override public void connectLive(boolean showGui) {
 	
-	/**
-	 * @return List of possible telemetry connections to show the user.
-	 */
-	public static List<String> getNames() {
-		
-		return names;
-		
-	}
-
-	@Override public JPanel getUpdatedConnectionGui() {
-		
-		JPanel panel = new JPanel();
-		panel.setLayout(new MigLayout("hidemode 3, gap " + Theme.padding  + ", insets 0 " + Theme.padding + " 0 0"));
-			
-		// resolution
-		JComboBox<String> resolutionsCombobox = new JComboBox<String>();
-		for(Dimension resolution : resolutions)
-			resolutionsCombobox.addItem(resolution.width + " x " + resolution.height);
-		resolutionsCombobox.setMinimumSize(resolutionsCombobox.getPreferredSize());
-		resolutionsCombobox.addActionListener(event -> {
-			String resolution = resolutionsCombobox.getSelectedItem().toString();
-			for(Dimension res : resolutions)
-				if(resolution.equals(res.width + " x " + res.height))
-					requestedResolution = res;
-		});
-		resolutionsCombobox.setSelectedItem(requestedResolution.width + " x " + requestedResolution.height);
-		
-		// MJPEG over HTTP address
-		JTextField urlTextfield = new JTextField("", 20);
-		if(isMjpeg)
-			urlTextfield.setText(name.substring(mjpegOverHttp.length() + 1));
-		urlTextfield.setMinimumSize(urlTextfield.getPreferredSize());
-		urlTextfield.addFocusListener(new FocusListener() {
-			@Override public void focusLost(FocusEvent fe) {
-				name = mjpegOverHttp + " " + urlTextfield.getText().trim();
-			}
-			@Override public void focusGained(FocusEvent fe) {
-				urlTextfield.selectAll();
-			}
-		});
-		
-		// connections list
-		JComboBox<String> connectionNamesCombobox = ConnectionsController.getNamesCombobox(this);
-		
-		// connect/disconnect button
-		@SuppressWarnings("serial")
-		JButton connectButton = new JButton("Connect") {
-			@Override public Dimension getPreferredSize() { // giving this button a fixed size so the GUI lines up nicely
-				return new JButton("Disconnect").getPreferredSize();
-			}
-		};
-		if(connected)
-			connectButton.setText("Disconnect");
-		
-		connectButton.addActionListener(event -> {
-			if(connectButton.getText().equals("Connect"))
-				connect(true);
-			else if(connectButton.getText().equals("Disconnect"))
-				disconnect(null);
-		});
-		
-		// remove connection button
-		JButton removeButton = new JButton(Theme.removeSymbol);
-		removeButton.setBorder(Theme.narrowButtonBorder);
-		removeButton.addActionListener(event -> ConnectionsController.removeConnection(ConnectionCamera.this));
-		if(ConnectionsController.allConnections.size() < 2 || ConnectionsController.importing)
-			removeButton.setVisible(false);
-		
-		// populate the panel
-		panel.add(resolutionsCombobox);
-		panel.add(urlTextfield);
-		panel.add(connectionNamesCombobox);
-		panel.add(connectButton);
-		panel.add(removeButton);
-		
-		if(connectionNamesCombobox.getSelectedItem().equals(mjpegOverHttp) || connectionNamesCombobox.getSelectedItem().toString().startsWith("Importing [" + mjpegOverHttp)) {
-			resolutionsCombobox.setVisible(false);
-		} else {
-			urlTextfield.setVisible(false);
-		}
-		
-		// disable widgets if appropriate
-		boolean importingOrExporting = ConnectionsController.importing || ConnectionsController.exporting;
-		resolutionsCombobox.setEnabled(!importingOrExporting && !connected);
-		urlTextfield.setEnabled(!importingOrExporting && !connected);
-		connectionNamesCombobox.setEnabled(!importingOrExporting && !connected);
-		connectButton.setEnabled(!importingOrExporting);
-		
-		return panel;
-		
-	}
-
-	@Override public void connect(boolean showGui) {
-
-		if(connected)
-			disconnect(null);
-		
-		NotificationsController.removeIfConnectionRelated();
-		
-		if(ConnectionsController.previouslyImported) {
-			for(Connection connection : ConnectionsController.allConnections)
-				connection.removeAllData();
-			ConnectionsController.previouslyImported = false;
-		}
-		
-		// don't actually connect if importing from a file
-		if(ConnectionsController.importing)
-			return;
-		
-		// if we previously imported a file, close it and create a new cache file
-		// it's also possible that the file is closed if we imported a CSV file without importing the corresponding camera files.
-		if(fileIsImported || !file.isOpen()) {
-			try {
-				file.close();
-				framesIndex.clear();
-				CommunicationView.instance.redraw();
-				file = FileChannel.open(pathOnDisk, StandardOpenOption.CREATE,
-				                                    StandardOpenOption.TRUNCATE_EXISTING,
-				                                    StandardOpenOption.READ,
-				                                    StandardOpenOption.WRITE);
-				fileIsImported = false;
-			} catch(Exception e) {
-				NotificationsController.showCriticalFault("Unable the create the cache file for " + name + "\n" + e.getMessage());
-				e.printStackTrace();
-				return;
-			}
-		}
-		
-		// connect to the camera
 		if(isMjpeg) {
 		
 			receiverThread = new Thread(() -> {
+				
+				InputStream is = null;
 				
 				try {
 					
 					// connect to the stream
 					liveImage = new GLframe(null, true, 1, 1, "[connecting...]", 0);
-					URLConnection stream = new URL(name.substring(mjpegOverHttp.length() + 1)).openConnection(); // trim off leading "MJPEG over HTTP "
+					URLConnection stream = new URL(url.get()).openConnection();
 					stream.setConnectTimeout(5000);
 					stream.setReadTimeout(5000);
 					stream.connect();
-					InputStream is = stream.getInputStream();
+					is = stream.getInputStream();
 					
 					StringWriter buffer = null;
 					int i = 0;
 					
-					connected = true;
-					CommunicationView.instance.redraw();
+					setConnected(true);
 					
 					if(ChartsController.getCharts().isEmpty())
 						NotificationsController.showHintUntil("Add a chart by clicking on a tile, or click-and-dragging across multiple tiles.", () -> !ChartsController.getCharts().isEmpty(), true);
@@ -359,7 +199,7 @@ public class ConnectionCamera extends Connection {
 						showJpeg(jpegBytes, timestamp);
 						
 						// stop if requested
-						if(!connected)
+						if(!isConnected())
 							throw new InterruptedException();
 						
 					}
@@ -367,6 +207,7 @@ public class ConnectionCamera extends Connection {
 				} catch (Exception e) {
 					
 					while(liveJpegThreads.get() > 0); // wait
+					try { is.close(); } catch(Exception e2) {}
 					
 					     if(e instanceof ConnectException)       liveImage = new GLframe(null, true, 1, 1, "[unable to connect]",    0);
 					else if(e instanceof SocketTimeoutException) liveImage = new GLframe(null, true, 1, 1, "[connection timed out]", 0);
@@ -374,68 +215,86 @@ public class ConnectionCamera extends Connection {
 					else                                         liveImage = new GLframe(null, true, 1, 1, "[stream ended]",         0);
 					     
 					if(e instanceof MalformedURLException)
-						SwingUtilities.invokeLater(() -> disconnect("Unable to connect to " + name.substring(mjpegOverHttp.length() + 1))); // invokeLater to prevent deadlock
+						SwingUtilities.invokeLater(() -> disconnect("Unable to connect to " + url.get())); // invokeLater to prevent deadlock
 					
-					connected = false;
-					CommunicationView.instance.redraw();
+					setConnected(false);
 					
 				}
 				
 			});
 			
-			receiverThread.setName("Camera Thread for " + name);
+			receiverThread.setName("Camera Thread for " + name.get());
 			receiverThread.start();
 			
 		} else {
+			
+			liveImage = new GLframe(null, true, 1, 1, "[connecting...]", 0);
+			
+			// check if the camera exists
+			if(camera == null) {
+				SwingUtilities.invokeLater(() -> disconnect(name.get() + " does not exist on this computer."));
+				return;
+			}
+			
+			// check if the camera is already being used
+			if(camera.isOpen()) {
+				SwingUtilities.invokeLater(() -> disconnect(name.get() + " already in use."));
+				return;
+			}
+			
+			// the webcam library requires the requested resolution to be one of the predefined "custom view sizes"
+			// so we must predefine all of the options shown by WidgetCamera
+			Dimension[] sizes = new Dimension[] {
+				new Dimension(640, 480),
+				new Dimension(1280, 720),
+				new Dimension(1920, 1080),
+				new Dimension(3840, 2160)
+			};
+			camera.setCustomViewSizes(sizes);
+			
+			// request a resolution, open the camera, then get the actual resolution
+			Dimension requestedResolution = switch(resolution.get()) { case "640 x 480"   -> sizes[0];
+			                                                           case "1280 x 720"  -> sizes[1];
+			                                                           case "1920 x 1080" -> sizes[2];
+			                                                           case "3840 x 2160" -> sizes[3];
+			                                                           default            -> sizes[3];};
+			camera.setViewSize(requestedResolution);
+			
+			Dimension actualResolution;
+			try {
+				camera.open();
+				actualResolution = camera.getViewSize();
+				
+				setConnected(true);
+				
+				if(ChartsController.getCharts().isEmpty())
+					NotificationsController.showHintUntil("Add a chart by clicking on a tile, or click-and-dragging across multiple tiles.", () -> !ChartsController.getCharts().isEmpty(), true);
+	
+			} catch(Exception e) {
+				SwingUtilities.invokeLater(() -> disconnect("Unable to connect to " + name.get() + "."));
+				return;
+			}
 		
 			receiverThread = new Thread(() -> {
 				
-				liveImage = new GLframe(null, true, 1, 1, "[connecting...]", 0);
-				
-				// check if the camera exists
-				if(camera == null) {
-					liveImage = new GLframe(null, true, 1, 1, "[camera does not exist]", 0);
-					return;
-				}
-				
-				// check if the camera is already being used
-				if(camera.isOpen()) {
-					liveImage = new GLframe(null, true, 1, 1, "[camera already in use]", 0);
-					return;
-				}
-				
 				try {
-					// the webcam library requires the requested resolution to be one of the predefined "custom view sizes"
-					// so we must predefine all of the options shown by WidgetCamera
-					camera.setCustomViewSizes(resolutions);
-					
-					// request a resolution, open the camera, then get the actual resolution
-					camera.setViewSize(requestedResolution);
-					camera.open();
-					Dimension resolution = camera.getViewSize();
-					
-					connected = true;
-					CommunicationView.instance.redraw();
-					
-					if(ChartsController.getCharts().isEmpty())
-						NotificationsController.showHintUntil("Add a chart by clicking on a tile, or click-and-dragging across multiple tiles.", () -> !ChartsController.getCharts().isEmpty(), true);
-		
+
 					// enter an infinite loop that acquires images
 					int frameCount = framesIndex.size();
 					while(true) {
 						
 						// acquire a new image
-						ByteBuffer buffer = Buffers.newDirectByteBuffer(resolution.width * resolution.height * 3);
+						ByteBuffer buffer = Buffers.newDirectByteBuffer(actualResolution.width * actualResolution.height * 3);
 						camera.getImageBytes(buffer);
 						
 						// save and show the image
 						long timestamp = System.currentTimeMillis();
-						saveImage(frameCount, buffer, resolution, timestamp);
-						showImage(buffer, resolution, timestamp);
+						saveImage(frameCount, buffer, actualResolution, timestamp);
+						showImage(buffer, actualResolution, timestamp);
 						frameCount++;
 						
 						// stop if requested
-						if(!connected)
+						if(!isConnected())
 							throw new InterruptedException();
 						
 					}
@@ -449,14 +308,13 @@ public class ConnectionCamera extends Connection {
 					else if(e instanceof WebcamLockException) liveImage = new GLframe(null, true, 1, 1, "[unable to connect]", 0);
 					else						              liveImage = new GLframe(null, true, 1, 1, "[stopped]", 0);
 					
-					connected = false;
-					CommunicationView.instance.redraw();
+					setConnected(false);
 					
 				}
 				
 			});
 			
-			receiverThread.setName("Camera Thread for " + name);
+			receiverThread.setName("Camera Thread for " + name.get());
 			receiverThread.start();
 			
 		}
@@ -467,11 +325,11 @@ public class ConnectionCamera extends Connection {
 		
 		Main.hideConfigurationGui();
 		
-		if(connected) {
+		if(isConnected()) {
 			
 			// tell the receiver thread to terminate by setting the boolean, NOT by interrupting the thread because
 			// interrupting the thread might generate an IOException, but we don't want to report that as an error or result in the file being incomplete
-			connected = false;
+			setConnected(false);
 			if(transmitterThread != null && transmitterThread.isAlive()) {
 				transmitterThread.interrupt();
 				while(transmitterThread.isAlive()); // wait
@@ -485,8 +343,6 @@ public class ConnectionCamera extends Connection {
 		NotificationsController.removeIfConnectionRelated();
 		if(errorMessage != null)
 			NotificationsController.showFailureUntil(errorMessage, () -> false, true);
-		
-		CommunicationView.instance.redraw();
 		
 		liveImage = new GLframe(null, true, 1, 1, "[stopped]", 0);
 		
@@ -504,18 +360,13 @@ public class ConnectionCamera extends Connection {
 
 	@Override public void dispose() {
 		
-		if(connected)
+		if(isConnected())
 			disconnect(null);
 		
-		// remove charts containing the dataset
-		List<PositionedChart> chartsToRemove = new ArrayList<PositionedChart>();
-		for(PositionedChart chart : ChartsController.getCharts()) {
-			if(chart instanceof OpenGLCameraChart)
-				if(((OpenGLCameraChart) chart).camera == this)
-					chartsToRemove.add(chart);
-		}
-		for(PositionedChart chart : chartsToRemove)
-			ChartsController.removeChart(chart);
+		// remove charts showing this camera
+		ChartsController.getCharts().stream().filter(chart -> chart instanceof OpenGLCameraChart c && c.connection == this)
+		                                     .toList() // to prevent a ConcurrentModificationException
+		                                     .forEach(chart -> ChartsController.removeChart(chart));
 		
 		// if this is the only connection, remove all charts, because there may be a timeline chart
 		if(ConnectionsController.allConnections.size() == 1)
@@ -523,11 +374,10 @@ public class ConnectionCamera extends Connection {
 		
 		try {
 			file.close();
-			Files.deleteIfExists(pathOnDisk);
+			Files.deleteIfExists(filePath);
 			framesIndex.clear();
-			CommunicationView.instance.redraw();
 		} catch(Exception e) {
-			NotificationsController.showCriticalFault("Unable the delete the cache file for " + name + "\n" + e.getMessage());
+			NotificationsController.showCriticalFault("Unable the delete the cache file for " + name.get() + "\n" + e.getMessage());
 			e.printStackTrace();
 		}
 		
@@ -535,19 +385,16 @@ public class ConnectionCamera extends Connection {
 
 	@Override public void removeAllData() {
 		
-		if(!fileIsImported) {
-			try {
-				file.truncate(0);
-				file.force(true);
-				framesIndex.clear();
-				CommunicationView.instance.redraw();
-			} catch(Exception e) {
-				NotificationsController.showCriticalFault("Unable the clear the cache file for " + name + "\n" + e.getMessage());
-				e.printStackTrace();
-			}
+		try {
+			file.truncate(0);
+			framesIndex.clear();
+		} catch(Exception e) {
+			NotificationsController.showCriticalFault("Unable the clear the cache file for " + name.get() + "\n" + e.getMessage());
+			e.printStackTrace();
 		}
 		
-		OpenGLChartsView.instance.switchToLiveView();
+		CommunicationView.instance.redraw();
+		OpenGLChartsView.instance.setPlayLive();
 		
 	}
 	
@@ -648,7 +495,7 @@ public class ConnectionCamera extends Connection {
 		int width = 0;
 		int height = 0;
 		byte[] bgrBytes = null;
-		String label = String.format("%s (%s)", isMjpeg ? name.substring(mjpegOverHttp.length() + 1) : name, timestampFormatter.format(new Date(info.timestamp)));
+		String label = String.format("%s (%s)", isMjpeg ? url.get() : name.get().substring(5), timestampFormatter.format(new Date(info.timestamp)));
 		
 		try {
 			// try to use the libjpeg-turbo library
@@ -677,30 +524,12 @@ public class ConnectionCamera extends Connection {
 		
 	}
 
-	@Override public void importSettings(Queue<String> lines) throws AssertionError {
+	@Override public void importSettings(ConnectionsController.QueueOfLines lines) throws AssertionError {
 		
-		String cameraName = ChartUtils.parseString (lines.remove(), "camera name = %s");
-		if(cameraName.length() < 1)
-			throw new AssertionError("Invalid camera name.");
-		name = cameraName;
-		isMjpeg = name.startsWith(mjpegOverHttp);
-		if(!isMjpeg)
-			for(Webcam cam : cameras)
-				if(cam.getName().equals(name))
-					camera = cam;
-		
-		String resolution = ChartUtils.parseString (lines.remove(), "requested resolution = %s");
-		String[] tokens = resolution.split(" x ");
-		if(tokens.length != 2)
-			throw new AssertionError("Invalid camera resolution.");
-		
-		Dimension d = null;
-		for(Dimension dim : resolutions)
-			if(dim.width == Integer.parseInt(tokens[0]) && dim.height == Integer.parseInt(tokens[1]))
-				d = dim;
-		if(d == null)
-			throw new AssertionError("Invalid camera resolution.");
-		requestedResolution = d;
+		if(isMjpeg)
+			url.importFrom(lines);
+		else
+			resolution.importFrom(lines);
 		
 		CommunicationView.instance.redraw();
 		
@@ -708,9 +537,12 @@ public class ConnectionCamera extends Connection {
 
 	@Override public void exportSettings(PrintWriter file) {
 
-		file.println("\tconnection type = Camera");
-		file.println("\tcamera name = " + name);
-		file.println("\trequested resolution = " + requestedResolution.width + " x " + requestedResolution.height);
+		name.exportTo(file);
+		if(isMjpeg)
+			url.exportTo(file);
+		else
+			resolution.exportTo(file);
+		file.println("");
 		
 	}
 
@@ -719,7 +551,7 @@ public class ConnectionCamera extends Connection {
 		long timestamp = Long.MAX_VALUE;
 		
 		try {
-			timestamp = new Mkv().importFile(path).indexBuffer.getLong();
+			timestamp = new Mkv().parseFile(path).indexBuffer.getLong();
 		} catch(AssertionError | Exception e) {
 			NotificationsController.showFailureForMilliseconds("Error while parsing the MKV file " + path + "\n" + e.getMessage(), 5000, true);
 		}
@@ -762,26 +594,19 @@ public class ConnectionCamera extends Connection {
 	 */
 	@Override public void importDataFile(String path, long firstTimestamp, long beginImportingTimestamp, AtomicLong completedByteCount) {
 
-		// remove any existing frames and the cache file
-		try {
-			removeAllData();
-			file.close();
-			Files.deleteIfExists(pathOnDisk);
-		} catch(Exception e) {
-			NotificationsController.showCriticalFault("Unable to delete the cache file for " + name + "\n" + e.getMessage());
-			e.printStackTrace();
-		}
+		// remove any existing frames
+		removeAllData();
 		
 		// open the MKV file and read the frames index from it
 		ByteBuffer framesIndexBuffer;
+		FileChannel mkv;
 		try {
-			MkvDetails details = new Mkv().importFile(path);
+			MkvDetails details = new Mkv().parseFile(path);
 			framesIndexBuffer = details.indexBuffer;
-			name = details.connectionName;
-			file = FileChannel.open(Paths.get(path), StandardOpenOption.READ);
-			fileIsImported = true;
+			name.set(details.connectionName);
+			mkv = FileChannel.open(Paths.get(path), StandardOpenOption.READ);
 		} catch(Exception e) {
-			NotificationsController.showFailureForMilliseconds("Unable to import the MKV file for " + name + "\n" + e.getMessage(), 5000, false);
+			NotificationsController.showFailureForMilliseconds("Unable to import the MKV file for " + name.get() + "\n" + e.getMessage(), 5000, false);
 			e.printStackTrace();
 			return;
 		}
@@ -791,48 +616,43 @@ public class ConnectionCamera extends Connection {
 		receiverThread = new Thread(() -> {
 			try {
 				
-				connected = true;
-				CommunicationView.instance.redraw();
+				setConnected(true);
 				
 				for(int i = 0; i < frameCount; i++) {
+					
+					if(!isConnected())
+						break;
 					
 					long timestamp = framesIndexBuffer.getLong();
 					long offset = framesIndexBuffer.getLong();
 					int length = framesIndexBuffer.getInt();
 					
 					if(ConnectionsController.realtimeImporting) {
-						if(Thread.interrupted()) {
-							ConnectionsController.realtimeImporting = false;
-							CommunicationView.instance.redraw();
-						} else {
-							long delay = (timestamp - firstTimestamp) - (System.currentTimeMillis() - beginImportingTimestamp);
-							if(delay > 0)
-								try {
-									Thread.sleep(delay);
-								} catch(Exception e) {
-									ConnectionsController.realtimeImporting = false;
-									CommunicationView.instance.redraw();
-								}
-						}
-					} else if(Thread.interrupted()) {
-						break; // not real-time, and interrupted again, so abort
+						long delay = (timestamp - firstTimestamp) - (System.currentTimeMillis() - beginImportingTimestamp);
+						if(delay > 0)
+							try { Thread.sleep(delay); } catch(Exception e) { }
 					}
 					
-					framesIndex.add(new FrameInfo(timestamp, offset, length));
+					byte[] buffer = new byte[length];
+					ByteBuffer bb = ByteBuffer.wrap(buffer);
+					mkv.read(bb, offset);
+					saveJpeg(buffer, timestamp);
+					
 					if(getSampleCount() == 1)
 						CommunicationView.instance.redraw();
 					completedByteCount.addAndGet(length);
 				}
 				
 				// done
+				mkv.close();
 				SwingUtilities.invokeLater(() -> disconnect(null));
 				
 			} catch(Exception e) {
 				
-				NotificationsController.showFailureForMilliseconds("Error while importing the MKV file for " + name + "\n" + e.getMessage(), 5000, false);
+				NotificationsController.showFailureForMilliseconds("Error while importing the MKV file for " + name.get() + "\n" + e.getMessage(), 5000, false);
 				e.printStackTrace();
+				try { mkv.close(); } catch(Exception e2) {}
 				SwingUtilities.invokeLater(() -> disconnect(null));
-				return;
 				
 			}
 		});
@@ -851,7 +671,7 @@ public class ConnectionCamera extends Connection {
 	 */
 	@Override public void exportDataFile(String path, AtomicLong completedByteCount) {
 		
-		new Mkv().exportFile(framesIndex.size(), path, completedByteCount);
+		new Mkv().exportFile(framesIndex, liveImage.width, liveImage.height, name.get(), file, path, completedByteCount);
 		
 	}
 	
@@ -864,13 +684,14 @@ public class ConnectionCamera extends Connection {
 	private void saveJpeg(byte[] jpegBytes, long timestamp) {
 		
 		try {
-			framesIndex.add(new FrameInfo(timestamp, file.size(), jpegBytes.length));
+			long offset = file.size();
 			if(getSampleCount() == 1)
 				CommunicationView.instance.redraw();
 			file.write(ByteBuffer.wrap(jpegBytes));
-			file.force(true);
+//			file.force(true); // not necessary, and massively slows down importing
+			framesIndex.add(new FrameInfo(timestamp, offset, jpegBytes.length));
 		} catch(Exception e) {
-			NotificationsController.showCriticalFault("Unable to save to the cache file for " + name + "\n" + e.getMessage());
+			NotificationsController.showCriticalFault("Unable to save to the cache file for " + name.get() + "\n" + e.getMessage());
 			e.printStackTrace();
 			return;
 		}
@@ -921,14 +742,14 @@ public class ConnectionCamera extends Connection {
 				double fps = 0;
 				if(frameCount > 30)
 					fps = 30000.0 / (double) (framesIndex.get(frameCount - 1).timestamp - framesIndex.get(frameCount - 30).timestamp);
-				String label = String.format("%s (%d x %d, %01.1f FPS)", isMjpeg ? name.substring(mjpegOverHttp.length() + 1) : name, width, height, fps);
+				String label = String.format("%s (%d x %d, %01.1f FPS)", isMjpeg ? url.get() : name.get().substring(5), width, height, fps);
 				liveImage = new GLframe(bgrBytes, true, width, height, label, timestamp);
 				
 				liveJpegThreads.decrementAndGet();
 				
 			} catch(Exception e) {
 				
-				NotificationsController.showFailureForMilliseconds("Unable to decode one of the frames from " + name + "\n" + e.getMessage(), 5000, true);
+				NotificationsController.showFailureForMilliseconds("Unable to decode one of the frames from " + name.get() + "\n" + e.getMessage(), 5000, true);
 				e.printStackTrace();
 				liveJpegThreads.decrementAndGet();
 				
@@ -982,7 +803,7 @@ public class ConnectionCamera extends Connection {
 					jpegBytesLength = jpegBytes.length;
 					baos.close();
 				} catch(Exception e2) {
-					NotificationsController.showFailureForMilliseconds("Unable to encode one of the frames from " + name + "\n" + e.getMessage(), 5000, true);
+					NotificationsController.showFailureForMilliseconds("Unable to encode one of the frames from " + name.get() + "\n" + e.getMessage(), 5000, true);
 					e.printStackTrace();
 					liveJpegThreads.decrementAndGet();
 					return;
@@ -994,13 +815,14 @@ public class ConnectionCamera extends Connection {
 			
 			// save to disk
 			try {
-				framesIndex.add(new FrameInfo(timestamp, file.size(), jpegBytesLength));
+				long offset = file.size();
 				if(getSampleCount() == 1)
 					CommunicationView.instance.redraw();
 				file.write(ByteBuffer.wrap(jpegBytes, 0, jpegBytesLength));
 				file.force(true);
+				framesIndex.add(new FrameInfo(timestamp, offset, jpegBytesLength));
 			} catch (Exception e) {
-				NotificationsController.showCriticalFault("Unable to save one of the frames from " + name + "\n" + e.getMessage());
+				NotificationsController.showCriticalFault("Unable to save one of the frames from " + name.get() + "\n" + e.getMessage());
 				e.printStackTrace();
 				liveJpegThreads.decrementAndGet();
 				return;
@@ -1025,7 +847,7 @@ public class ConnectionCamera extends Connection {
 		double fps = 0;
 		if(frameCount > 30)
 			fps = 30000.0 / (double) (framesIndex.get(frameCount - 1).timestamp - framesIndex.get(frameCount - 30).timestamp);
-		String label = String.format("%s (%d x %d, %01.1f FPS)", isMjpeg ? name.substring(mjpegOverHttp.length() + 1) : name, resolution.width, resolution.height, fps);
+		String label = String.format("%s (%d x %d, %01.1f FPS)", isMjpeg ? url.get() : name.get().substring(5), resolution.width, resolution.height, fps);
 		
 		image.rewind();
 		liveImage = new GLframe(image, resolution.width, resolution.height, label, timestamp);
@@ -1071,14 +893,14 @@ public class ConnectionCamera extends Connection {
 		}
 	}
 	
-	private static class MkvDetails {
+	public static class MkvDetails {
 		
 		String connectionName;
 		ByteBuffer indexBuffer;
 		
 	}
 	
-	private class Mkv {
+	public static class Mkv {
 		
 		private FileChannel inputFile;
 		private FileChannel outputFile;
@@ -1087,51 +909,51 @@ public class ConnectionCamera extends Connection {
 		private Stack<Long> importTagSizes = new Stack<Long>();
 		
 		// EBML tags
-		private final byte[] EBML                 = new byte[] {(byte) 0x1A, (byte) 0x45, (byte) 0xDF, (byte) 0xA3};
-		private final byte[] EBML_VERSION         = new byte[] {(byte) 0x42, (byte) 0x86};
-		private final byte[] EBML_READ_VERSION    = new byte[] {(byte) 0x42, (byte) 0xF7};
-		private final byte[] EBML_MAX_ID_LENGTH   = new byte[] {(byte) 0x42, (byte) 0xF2};
-		private final byte[] EBML_MAX_SIZE_LENGTH = new byte[] {(byte) 0x42, (byte) 0xF3};
-		private final byte[] DOCTYPE              = new byte[] {(byte) 0x42, (byte) 0x82};
-		private final byte[] DOCTYPE_VERSION      = new byte[] {(byte) 0x42, (byte) 0x87};
-		private final byte[] DOCTYPE_READ_VERSION = new byte[] {(byte) 0x42, (byte) 0x85};
-		private final byte[] SEGMENT              = new byte[] {(byte) 0x18, (byte) 0x53, (byte) 0x80, (byte) 0x67};
-		private final byte[] SEEK_HEAD            = new byte[] {(byte) 0x11, (byte) 0x4D, (byte) 0x9B, (byte) 0x74};
-		private final byte[] SEEK                 = new byte[] {(byte) 0x4D, (byte) 0xBB};
-		private final byte[] SEEK_ID              = new byte[] {(byte) 0x53, (byte) 0xAB};
-		private final byte[] SEEK_POSITION        = new byte[] {(byte) 0x53, (byte) 0xAC};
-		private final byte[] INFO                 = new byte[] {(byte) 0x15, (byte) 0x49, (byte) 0xA9, (byte) 0x66};
-		private final byte[] TIMPSTAMP_SCALE      = new byte[] {(byte) 0x2A, (byte) 0xD7, (byte) 0xB1};
-		private final byte[] MUXING_APP           = new byte[] {(byte) 0x4D, (byte) 0x80};
-		private final byte[] WRITING_APP          = new byte[] {(byte) 0x57, (byte) 0x41};
-		private final byte[] DURATION             = new byte[] {(byte) 0x44, (byte) 0x89};
-		private final byte[] TRACKS               = new byte[] {(byte) 0x16, (byte) 0x54, (byte) 0xAE, (byte) 0x6B};
-		private final byte[] TRACK_ENTRY          = new byte[] {(byte) 0xAE};
-		private final byte[] TRACK_NUMBER         = new byte[] {(byte) 0xD7};
-		private final byte[] TRACK_UID            = new byte[] {(byte) 0x73, (byte) 0xC5};
-		private final byte[] TRACK_TYPE           = new byte[] {(byte) 0x83};
-		private final byte[] FLAG_LACING          = new byte[] {(byte) 0x9C};
-		private final byte[] CODEC_ID             = new byte[] {(byte) 0x86};
-		private final byte[] VIDEO                = new byte[] {(byte) 0xE0};
-		private final byte[] FLAG_INTERLACED      = new byte[] {(byte) 0x9A};
-		private final byte[] FIELD_ORDER          = new byte[] {(byte) 0x9D};
-		private final byte[] PIXEL_WIDTH          = new byte[] {(byte) 0xB0};
-		private final byte[] PIXEL_HEIGHT         = new byte[] {(byte) 0xBA};
-		private final byte[] ATTACHMENTS          = new byte[] {(byte) 0x19, (byte) 0x41, (byte) 0xA4, (byte) 0x69};
-		private final byte[] ATTACHED_FILE        = new byte[] {(byte) 0x61, (byte) 0xA7};
-		private final byte[] FILE_DESCRIPTION     = new byte[] {(byte) 0x46, (byte) 0x7E};
-		private final byte[] FILE_NAME            = new byte[] {(byte) 0x46, (byte) 0x6E};
-		private final byte[] MIME_TYPE            = new byte[] {(byte) 0x46, (byte) 0x60};
-		private final byte[] FILE_UID             = new byte[] {(byte) 0x46, (byte) 0xAE};
-		private final byte[] FILE_DATA            = new byte[] {(byte) 0x46, (byte) 0x5C};
-		private final byte[] CLUSTER              = new byte[] {(byte) 0x1F, (byte) 0x43, (byte) 0xB6, (byte) 0x75};
-		private final byte[] TIMESTAMP            = new byte[] {(byte) 0xE7};
-		private final byte[] CUES                 = new byte[] {(byte) 0x1C, (byte) 0x53, (byte) 0xBB, (byte) 0x6B};
-		private final byte[] CUE_POINT            = new byte[] {(byte) 0xBB};
-		private final byte[] CUE_TIME             = new byte[] {(byte) 0xB3};
-		private final byte[] CUE_TRACK_POSITIONS  = new byte[] {(byte) 0xB7};
-		private final byte[] CUE_TRACK            = new byte[] {(byte) 0xF7};
-		private final byte[] CUE_CLUSTER_POSITION = new byte[] {(byte) 0xF1};
+		private static final byte[] EBML                 = new byte[] {(byte) 0x1A, (byte) 0x45, (byte) 0xDF, (byte) 0xA3};
+		private static final byte[] EBML_VERSION         = new byte[] {(byte) 0x42, (byte) 0x86};
+		private static final byte[] EBML_READ_VERSION    = new byte[] {(byte) 0x42, (byte) 0xF7};
+		private static final byte[] EBML_MAX_ID_LENGTH   = new byte[] {(byte) 0x42, (byte) 0xF2};
+		private static final byte[] EBML_MAX_SIZE_LENGTH = new byte[] {(byte) 0x42, (byte) 0xF3};
+		private static final byte[] DOCTYPE              = new byte[] {(byte) 0x42, (byte) 0x82};
+		private static final byte[] DOCTYPE_VERSION      = new byte[] {(byte) 0x42, (byte) 0x87};
+		private static final byte[] DOCTYPE_READ_VERSION = new byte[] {(byte) 0x42, (byte) 0x85};
+		private static final byte[] SEGMENT              = new byte[] {(byte) 0x18, (byte) 0x53, (byte) 0x80, (byte) 0x67};
+		private static final byte[] SEEK_HEAD            = new byte[] {(byte) 0x11, (byte) 0x4D, (byte) 0x9B, (byte) 0x74};
+		private static final byte[] SEEK                 = new byte[] {(byte) 0x4D, (byte) 0xBB};
+		private static final byte[] SEEK_ID              = new byte[] {(byte) 0x53, (byte) 0xAB};
+		private static final byte[] SEEK_POSITION        = new byte[] {(byte) 0x53, (byte) 0xAC};
+		private static final byte[] INFO                 = new byte[] {(byte) 0x15, (byte) 0x49, (byte) 0xA9, (byte) 0x66};
+		private static final byte[] TIMPSTAMP_SCALE      = new byte[] {(byte) 0x2A, (byte) 0xD7, (byte) 0xB1};
+		private static final byte[] MUXING_APP           = new byte[] {(byte) 0x4D, (byte) 0x80};
+		private static final byte[] WRITING_APP          = new byte[] {(byte) 0x57, (byte) 0x41};
+		private static final byte[] DURATION             = new byte[] {(byte) 0x44, (byte) 0x89};
+		private static final byte[] TRACKS               = new byte[] {(byte) 0x16, (byte) 0x54, (byte) 0xAE, (byte) 0x6B};
+		private static final byte[] TRACK_ENTRY          = new byte[] {(byte) 0xAE};
+		private static final byte[] TRACK_NUMBER         = new byte[] {(byte) 0xD7};
+		private static final byte[] TRACK_UID            = new byte[] {(byte) 0x73, (byte) 0xC5};
+		private static final byte[] TRACK_TYPE           = new byte[] {(byte) 0x83};
+		private static final byte[] FLAG_LACING          = new byte[] {(byte) 0x9C};
+		private static final byte[] CODEC_ID             = new byte[] {(byte) 0x86};
+		private static final byte[] VIDEO                = new byte[] {(byte) 0xE0};
+		private static final byte[] FLAG_INTERLACED      = new byte[] {(byte) 0x9A};
+		private static final byte[] FIELD_ORDER          = new byte[] {(byte) 0x9D};
+		private static final byte[] PIXEL_WIDTH          = new byte[] {(byte) 0xB0};
+		private static final byte[] PIXEL_HEIGHT         = new byte[] {(byte) 0xBA};
+		private static final byte[] ATTACHMENTS          = new byte[] {(byte) 0x19, (byte) 0x41, (byte) 0xA4, (byte) 0x69};
+		private static final byte[] ATTACHED_FILE        = new byte[] {(byte) 0x61, (byte) 0xA7};
+		private static final byte[] FILE_DESCRIPTION     = new byte[] {(byte) 0x46, (byte) 0x7E};
+		private static final byte[] FILE_NAME            = new byte[] {(byte) 0x46, (byte) 0x6E};
+		private static final byte[] MIME_TYPE            = new byte[] {(byte) 0x46, (byte) 0x60};
+		private static final byte[] FILE_UID             = new byte[] {(byte) 0x46, (byte) 0xAE};
+		private static final byte[] FILE_DATA            = new byte[] {(byte) 0x46, (byte) 0x5C};
+		private static final byte[] CLUSTER              = new byte[] {(byte) 0x1F, (byte) 0x43, (byte) 0xB6, (byte) 0x75};
+		private static final byte[] TIMESTAMP            = new byte[] {(byte) 0xE7};
+		private static final byte[] CUES                 = new byte[] {(byte) 0x1C, (byte) 0x53, (byte) 0xBB, (byte) 0x6B};
+		private static final byte[] CUE_POINT            = new byte[] {(byte) 0xBB};
+		private static final byte[] CUE_TIME             = new byte[] {(byte) 0xB3};
+		private static final byte[] CUE_TRACK_POSITIONS  = new byte[] {(byte) 0xB7};
+		private static final byte[] CUE_TRACK            = new byte[] {(byte) 0xF7};
+		private static final byte[] CUE_CLUSTER_POSITION = new byte[] {(byte) 0xF1};
 		
 		/**
 		 * Exports the acquired images to an MKV file (containing an MJPEG video stream with no audio.)
@@ -1140,7 +962,7 @@ public class ConnectionCamera extends Connection {
 		 * @param path                  Destination file path.
 		 * @param completedByteCount    Variable to increment as progress is made (this is periodically queried by a progress bar.)
 		 */
-		public void exportFile(int frameCount, String path, AtomicLong completedByteCount) {
+		public void exportFile(List<FrameInfo> framesIndex, int widthPixels, int heightPixels, String connectionName, FileChannel sourceFile, String path, AtomicLong completedByteCount) {
 			
 			// dev notes:
 			//
@@ -1156,7 +978,8 @@ public class ConnectionCamera extends Connection {
 			// https://www.matroska.org/technical/elements.html
 			
 			// sanity check
-			if(frameCount < 1 || framesIndex.size() < frameCount)
+			int frameCount = framesIndex.size();
+			if(frameCount < 1)
 				return;
 			
 			long duration = framesIndex.get(frameCount - 1).timestamp - framesIndex.get(0).timestamp;
@@ -1220,8 +1043,8 @@ public class ConnectionCamera extends Connection {
 				                                                 openTag(VIDEO);
 				                                                     putTag(FLAG_INTERLACED, 2);
 				                                                     putTag(FIELD_ORDER, 0);
-				                                                     putTag(PIXEL_WIDTH,  liveImage.width);
-				                                                     putTag(PIXEL_HEIGHT, liveImage.height);
+				                                                     putTag(PIXEL_WIDTH,  widthPixels);
+				                                                     putTag(PIXEL_HEIGHT, heightPixels);
 				                                                 closeTag();
 				                                             closeTag();
 				long attachmentsOffset =                 closeTag();
@@ -1231,7 +1054,7 @@ public class ConnectionCamera extends Connection {
 				                                                 putTag(FILE_NAME, "name.bin".getBytes());
 				                                                 putTag(MIME_TYPE, "application/x-telemetryviewer".getBytes());
 				                                                 putTag(FILE_UID, 1);
-				                                                 putTag(FILE_DATA, name.getBytes());
+				                                                 putTag(FILE_DATA, connectionName.getBytes());
 				                                             closeTag();
 				                                             openTag(ATTACHED_FILE);
 				                                                 putTag(FILE_DESCRIPTION, "frames index data".getBytes());
@@ -1257,7 +1080,7 @@ public class ConnectionCamera extends Connection {
 					
 					                                     openTag(CLUSTER);
 					                                         putTag(TIMESTAMP, frameTimestamp[frameN]);
-					long mkvFileOffset =                     putSimpleBlock(0, frame.offset, frame.length);
+					long mkvFileOffset =                     putSimpleBlock(0, frame.length, frame.offset, sourceFile);
 					cuesOffset =                         closeTag();
 					
 					buffer.putLong(frame.timestamp);
@@ -1305,10 +1128,10 @@ public class ConnectionCamera extends Connection {
 		}
 		
 		/**
-		 * Imports the connection name and frames index from an MKV file that was previously exported from TelemetryViewer.
-		 * This is NOT a general-purpose importer, it is only intended to be used with files generated by TelemetryViewer.
+		 * Parses the connection name and frames index from an MKV file that was previously exported from TelemetryViewer.
+		 * This is NOT a general-purpose parser, it is only intended to be used with files generated by TelemetryViewer.
 		 */
-		public MkvDetails importFile(String path) throws AssertionError, IOException {
+		public MkvDetails parseFile(String path) throws AssertionError, IOException {
 			
 			inputFile = FileChannel.open(Paths.get(path), StandardOpenOption.READ);
 			
@@ -1543,10 +1366,12 @@ public class ConnectionCamera extends Connection {
 		 * Appends one frame to the file.
 		 * 
 		 * @param relativeTimestamp    Milliseconds since the enclosing Cluster's timestamp. This is stored as an int16.
-		 * @param jpegBytes            The frame to write.
+		 * @param imageByteCount       Size of the JPEG.
+		 * @param fileOffset           Where the JPEG starts in the source file.
+		 * @param sourceFile           File that contains the JPEG.
 		 * @return                     File offset where the image of this tag starts.
 		 */
-		private long putSimpleBlock(long relativeTimestamp, long fileOffset, long imageByteCount) throws IOException {
+		private long putSimpleBlock(long relativeTimestamp, long imageByteCount, long fileOffset, FileChannel sourceFile) throws IOException {
 			
 			ByteBuffer buffer = Buffers.newDirectByteBuffer(13);
 			buffer.order(ByteOrder.BIG_ENDIAN);
@@ -1566,7 +1391,7 @@ public class ConnectionCamera extends Connection {
 			
 			// write to file
 			outputFile.write(buffer.flip());
-			file.transferTo(fileOffset, imageByteCount, outputFile);
+			sourceFile.transferTo(fileOffset, imageByteCount, outputFile);
 			
 			// if any parent tags exist, update their sizes
 			if(!exportTagSizes.isEmpty())

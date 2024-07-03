@@ -12,7 +12,7 @@ public class BitfieldEvents {
 	int maxSampleNumber;
 	
 	Map<Integer, EdgeMarker> edgeMarkers; // key is a sample number, value is an object describing all edge events at that sample number
-	Map<Dataset.Bitfield, LevelMarker> levelMarkers; // key is a bitfield, value is a list of level markers for the chosen states
+	Map<Field.Bitfield, LevelMarker> levelMarkers; // key is a bitfield, value is a list of level markers for the chosen states
 	
 	/**
 	 * Creates a list of all bitfield events that should be displayed on a chart.
@@ -32,7 +32,7 @@ public class BitfieldEvents {
 		this.maxSampleNumber = maxSampleNumber;
 		
 		edgeMarkers = new TreeMap<Integer, EdgeMarker>();
-		levelMarkers = new TreeMap<Dataset.Bitfield, LevelMarker>();
+		levelMarkers = new TreeMap<Field.Bitfield, LevelMarker>((a, b) -> {return a.dataset.location.get() - b.dataset.location.get();}); // use a comparator that only tests the parent Field, not the Bitfield value, so we get one LevelMarker per Field
 		
 		if(maxSampleNumber <= minSampleNumber)
 			return;
@@ -220,7 +220,7 @@ public class BitfieldEvents {
 		List<String> text;
 		List<float[]> glColors;
 		
-		public EdgeMarker(DatasetsInterface datasets, Dataset.Bitfield.State state, int sampleNumber) {
+		public EdgeMarker(DatasetsInterface datasets, Field.Bitfield.State state, int sampleNumber) {
 			
 			this.connection = state.dataset.connection;
 			this.sampleNumber = sampleNumber;
@@ -235,7 +235,7 @@ public class BitfieldEvents {
 			}
 			
 			if(showTimestamps) {
-				String[] lines = SettingsController.formatTimestampToMilliseconds(datasets.getTimestamp(sampleNumber)).split("\n");
+				String[] lines = SettingsView.formatTimestampToMilliseconds(datasets.getTimestamp(sampleNumber)).split("\n");
 				for(String line : lines) {
 					text.add(line);
 					glColors.add(null);
@@ -254,14 +254,14 @@ public class BitfieldEvents {
 	 */
 	public class LevelMarker {
 		
-		Dataset.Bitfield bitfield;         // this object contains a List of all the level markers for this bitfield
+		Field.Bitfield bitfield;           // this object contains a List of all the level markers for this bitfield
 		List<String> labels;               // name of the state
 		List<float[]> glColors;            // color for the state
 		List<int[]> sampleNumberRanges;    // sample number ranges for the state
 		List<long[]> timestampRanges;      // timestamp ranges for the state
 		List<float[]> pixelXranges;        // corresponding pixelX values for those sample number ranges
 		
-		public LevelMarker(Dataset.Bitfield bitfield) {
+		public LevelMarker(Field.Bitfield bitfield) {
 			
 			this.bitfield = bitfield;
 			labels = new ArrayList<String>();

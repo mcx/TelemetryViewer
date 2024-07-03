@@ -1,6 +1,5 @@
 import java.nio.FloatBuffer;
 import java.util.Arrays;
-import javax.swing.Box;
 import javax.swing.JPanel;
 import com.jogamp.opengl.GL2ES3;
 import com.jogamp.opengl.GL3;
@@ -17,26 +16,8 @@ public class OpenGLQuaternionChart extends PositionedChart {
 
 	FloatBuffer shape; // triangles: x1,y1,z1,u1,v1,w1,...
 	
-	// plot region
-	float xPlotLeft;
-	float xPlotRight;
-	float plotWidth;
-	float yPlotTop;
-	float yPlotBottom;
-	float plotHeight;
-	
-	// quaternion label
-	String quatLabel;
-	float yQuatLabelBaseline;
-	float yQuatLabelTop;
-	float xQuatLabelLeft;
-	float xQuatLabelRight;
-	
-	// user settings
 	private WidgetDatasetComboboxes datasetsWidget;
-	
-	private boolean quatLabelVisible = true;
-	private WidgetCheckbox quatLabelCheckbox;
+	private WidgetCheckbox quatLabelEnabled;
 	
 	@Override public String toString() {
 		
@@ -44,36 +25,30 @@ public class OpenGLQuaternionChart extends PositionedChart {
 		
 	}
 	
-	public OpenGLQuaternionChart(int x1, int y1, int x2, int y2) {
-		
-		super(x1, y1, x2, y2);
+	public OpenGLQuaternionChart() {
 		
 		duration = 1;
 		
 		shape = ChartUtils.getShapeFromAsciiStl(getClass().getResourceAsStream("monkey.stl"));
 		shape.rewind();
 		
-		// create the control widgets and event handlers
 		datasetsWidget = new WidgetDatasetComboboxes(new String[] {"Q0", "Q1", "Q2", "Q3"},
 		                                             newDatasets -> datasets.setNormals(newDatasets));
 		
-		quatLabelCheckbox = new WidgetCheckbox("Show Quaternion Label",
-		                                       quatLabelVisible,
-		                                       newVisibility -> quatLabelVisible = newVisibility);
+		quatLabelEnabled = new WidgetCheckbox("Show Quaternion Label", true);
 		
 		widgets.add(datasetsWidget);
-		widgets.add(quatLabelCheckbox);
+		widgets.add(quatLabelEnabled);
 		
 	}
 	
 	@Override public void getConfigurationGui(JPanel gui) {
 		
-		JPanel dataPanel = Theme.newWidgetsPanel("Data");
-		datasetsWidget.appendToGui(dataPanel);
-		dataPanel.add(Box.createVerticalStrut(Theme.padding));
-		dataPanel.add(quatLabelCheckbox);
-		
-		gui.add(dataPanel);
+		gui.add(Theme.newWidgetsPanel("Data")
+		             .with(datasetsWidget)
+		             .withGap(Theme.padding)
+		             .with(quatLabelEnabled)
+		             .getPanel());
 		
 	}
 	
@@ -89,25 +64,24 @@ public class OpenGLQuaternionChart extends PositionedChart {
 		// get the quaternion values
 		float[] q = new float[4];
 		for(int i = 0; i < 4; i++) {
-			Dataset dataset = datasets.getNormal(i);
+			Field dataset = datasets.getNormal(i);
 			q[i] = (sampleNumber < 0) ? 0 : datasets.getSample(dataset, sampleNumber);
 		}
 		
 		// calculate x and y positions of everything
-		xPlotLeft = Theme.tilePadding;
-		xPlotRight = width - Theme.tilePadding;
-		plotWidth = xPlotRight - xPlotLeft;
-		yPlotBottom = Theme.tilePadding;
-		yPlotTop = height - Theme.tilePadding;
-		plotHeight = yPlotTop - yPlotBottom;
+		float xPlotLeft = Theme.tilePadding;
+		float xPlotRight = width - Theme.tilePadding;
+		float plotWidth = xPlotRight - xPlotLeft;
+		float yPlotBottom = Theme.tilePadding;
+		float yPlotTop = height - Theme.tilePadding;
+		float plotHeight = yPlotTop - yPlotBottom;
 
-		if(quatLabelVisible) {
-			quatLabel = String.format("Quaternion (%+1.3f,%+1.3f,%+1.3f,%+1.3f)", q[0], q[1], q[2], q[3]);
-			yQuatLabelBaseline = Theme.tilePadding;
-			yQuatLabelTop = yQuatLabelBaseline + OpenGL.largeTextHeight;
-			xQuatLabelLeft = (width / 2f) - (OpenGL.largeTextWidth(gl, quatLabel) / 2f);
-			xQuatLabelRight = xQuatLabelLeft + OpenGL.largeTextWidth(gl, quatLabel);
-		
+		String quatLabel = String.format("Quaternion (%+1.3f,%+1.3f,%+1.3f,%+1.3f)", q[0], q[1], q[2], q[3]);
+		float yQuatLabelBaseline = Theme.tilePadding;
+		float yQuatLabelTop = yQuatLabelBaseline + OpenGL.largeTextHeight;
+		float xQuatLabelLeft = (width / 2f) - (OpenGL.largeTextWidth(gl, quatLabel) / 2f);
+		float xQuatLabelRight = xQuatLabelLeft + OpenGL.largeTextWidth(gl, quatLabel);
+		if(quatLabelEnabled.get()) {
 			yPlotBottom = yQuatLabelTop + Theme.tickTextPadding;
 			yPlotTop = height - Theme.tilePadding;
 			plotHeight = yPlotTop - yPlotBottom;
@@ -157,7 +131,7 @@ public class OpenGLQuaternionChart extends PositionedChart {
 		OpenGL.useMatrix(gl, chartMatrix);
 
 		// draw the text, on top of a background quad, if there is room
-		if(quatLabelVisible && OpenGL.largeTextWidth(gl, quatLabel) < width - Theme.tilePadding * 2) {
+		if(quatLabelEnabled.get() && OpenGL.largeTextWidth(gl, quatLabel) < width - Theme.tilePadding * 2) {
 			OpenGL.drawQuad2D(gl, Theme.tileShadowColor, xQuatLabelLeft - Theme.tickTextPadding, yQuatLabelBaseline - Theme.tickTextPadding, xQuatLabelRight + Theme.tickTextPadding, yQuatLabelTop + Theme.tickTextPadding);
 			OpenGL.drawLargeText(gl, quatLabel, (int) xQuatLabelLeft, (int) yQuatLabelBaseline, 0);
 		}

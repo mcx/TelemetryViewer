@@ -24,9 +24,9 @@ public class PlotMilliseconds extends Plot {
 	int[]     fbHandle;
 	int[]     texHandle;
 	boolean   cacheIsValid;
-	List<Dataset> previousNormalDatasets;
-	List<Dataset.Bitfield.State> previousEdgeStates;
-	List<Dataset.Bitfield.State> previousLevelStates;
+	List<Field> previousNormalDatasets;
+	List<Field.Bitfield.State> previousEdgeStates;
+	List<Field.Bitfield.State> previousLevelStates;
 	long          previousPlotMinX;
 	long          previousPlotMaxX;
 	float         previousPlotMinY;
@@ -268,7 +268,7 @@ public class PlotMilliseconds extends Plot {
 		
 		buffersY = new FloatBuffer[datasets.normalsCount()];
 		for(int datasetN = 0; datasetN < datasets.normalsCount(); datasetN++) {
-			Dataset dataset = datasets.getNormal(datasetN);
+			Field dataset = datasets.getNormal(datasetN);
 			if(!dataset.isBitfield)
 				buffersY[datasetN] = datasets.getSamplesBuffer(dataset, (int) minSampleNumber, (int) maxSampleNumber);
 		}
@@ -522,18 +522,18 @@ public class PlotMilliseconds extends Plot {
 		if(plotSampleCount >= 2) {
 			for(int i = 0; i < datasets.normalsCount(); i++) {
 				
-				Dataset dataset = datasets.getNormal(i);
+				Field dataset = datasets.getNormal(i);
 				if(dataset.isBitfield)
 					continue;
 				
-				OpenGL.drawLinesX_Y(gl, GL3.GL_LINE_STRIP, dataset.glColor, bufferX, buffersY[i], (int) plotSampleCount);
+				OpenGL.drawLinesX_Y(gl, GL3.GL_LINE_STRIP, dataset.color.getGl(), bufferX, buffersY[i], (int) plotSampleCount);
 				
 				// also draw points if there are relatively few samples on screen
 				float occupiedPlotWidthPercentage = (float) (datasets.getTimestamp((int) maxSampleNumber) - datasets.getTimestamp((int) minSampleNumber)) / (float) plotDomain;
 				float occupiedPlotWidth = plotWidth * occupiedPlotWidthPercentage;
 				boolean fewSamplesOnScreen = (occupiedPlotWidth / plotSampleCount) > (2 * Theme.pointWidth);
 				if(fewSamplesOnScreen)
-					OpenGL.drawPointsX_Y(gl, dataset.glColor, bufferX, buffersY[i], (int) plotSampleCount);
+					OpenGL.drawPointsX_Y(gl, dataset.color.getGl(), bufferX, buffersY[i], (int) plotSampleCount);
 				
 			}
 		}
@@ -635,7 +635,7 @@ public class PlotMilliseconds extends Plot {
 		if(plotSampleCount >= 2) {
 			for(int i = 0; i < datasets.normalsCount(); i++) {
 				
-				Dataset dataset = datasets.getNormal(i);
+				Field dataset = datasets.getNormal(i);
 				if(dataset.isBitfield)
 					continue;
 				
@@ -646,18 +646,18 @@ public class PlotMilliseconds extends Plot {
 				if(draw1.enabled) {
 					gl.glEnable(GL3.GL_SCISSOR_TEST);
 					gl.glScissor(draw1.scissorArgs[0], draw1.scissorArgs[1], draw1.scissorArgs[2], draw1.scissorArgs[3]);
-					OpenGL.drawLinesX_Y(gl, GL3.GL_LINE_STRIP, dataset.glColor, draw1.bufferX, draw1.buffersY[i], draw1.sampleCount);
+					OpenGL.drawLinesX_Y(gl, GL3.GL_LINE_STRIP, dataset.color.getGl(), draw1.bufferX, draw1.buffersY[i], draw1.sampleCount);
 					if(fewSamplesOnScreen)
-						OpenGL.drawPointsX_Y(gl, dataset.glColor, draw1.bufferX, draw1.buffersY[i], draw1.sampleCount);
+						OpenGL.drawPointsX_Y(gl, dataset.color.getGl(), draw1.bufferX, draw1.buffersY[i], draw1.sampleCount);
 					gl.glDisable(GL3.GL_SCISSOR_TEST);
 				}
 				
 				if(draw2.enabled) {
 					gl.glEnable(GL3.GL_SCISSOR_TEST);
 					gl.glScissor(draw2.scissorArgs[0], draw2.scissorArgs[1], draw2.scissorArgs[2], draw2.scissorArgs[3]);
-					OpenGL.drawLinesX_Y(gl, GL3.GL_LINE_STRIP, dataset.glColor, draw2.bufferX, draw2.buffersY[i], draw2.sampleCount);
+					OpenGL.drawLinesX_Y(gl, GL3.GL_LINE_STRIP, dataset.color.getGl(), draw2.bufferX, draw2.buffersY[i], draw2.sampleCount);
 					if(fewSamplesOnScreen)
-						OpenGL.drawPointsX_Y(gl, dataset.glColor, draw2.bufferX, draw2.buffersY[i], draw2.sampleCount);
+						OpenGL.drawPointsX_Y(gl, dataset.color.getGl(), draw2.bufferX, draw2.buffersY[i], draw2.sampleCount);
 					gl.glDisable(GL3.GL_SCISSOR_TEST);
 				}
 				
@@ -703,58 +703,74 @@ public class PlotMilliseconds extends Plot {
 		
 	}
 	
-	/**
-	 * Checks if a tooltip should be drawn for the mouse's current location.
-	 * 
-	 * @param mouseX       The mouse's location along the x-axis, in pixels (0 = left edge of the plot)
-	 * @param plotWidth    Width of the plot region, in pixels.
-	 * @return             An object indicating if the tooltip should be drawn, for what sample number, with what label, and at what location on screen.
-	 */
-	@Override public TooltipInfo getTooltip(int mouseX, float plotWidth) {
+	@Override public void drawTooltip(GL2ES3 gl, int mouseX, int mouseY, float xPlotLeft, float yPlotBottom, float plotWidth, float plotHeight, float plotMinY, float plotMaxY, float plotRange, float yPlotTop, float xPlotRight) {
 		
-		if(plotSampleCount == 0) {
-			
-			return new TooltipInfo(false, 0, "", 0);
-			
-		} else {
-			
-			long mouseTimestamp = (long) Math.round((mouseX / plotWidth) * plotDomain) + plotMinX;
-			
-			if(mouseTimestamp < connection.getFirstTimestamp())
-				return new TooltipInfo(false, 0, "", 0);
-			
-			long closestSampleNumberBefore = datasets.getClosestSampleNumberAtOrBefore(mouseTimestamp, (int) maxSampleNumber - 1);
-			long closestSampleNumberAfter = closestSampleNumberBefore + 1;
-			if(closestSampleNumberAfter > maxSampleNumber)
-				closestSampleNumberAfter = maxSampleNumber;
+		// determine the timestamp corresponding to mouseX
+		long mouseTimestamp = (long) Math.round((((float) mouseX - xPlotLeft) / plotWidth) * plotDomain) + plotMinX;
+		
+		// sanity checks
+		if(mouseTimestamp < connection.getFirstTimestamp())
+			return;
+		if(plotSampleCount < 2)
+			return;
+		
+		// determine the sample number closest to mouseX
+		long closestSampleNumberBefore = datasets.getClosestSampleNumberAtOrBefore(mouseTimestamp, (int) maxSampleNumber - 1);
+		long closestSampleNumberAfter = closestSampleNumberBefore + 1;
+		if(closestSampleNumberAfter > maxSampleNumber)
+			closestSampleNumberAfter = maxSampleNumber;
 
-			double beforeError = (double) ((mouseX / plotWidth) * plotDomain) - (double) (datasets.getTimestamp((int) closestSampleNumberBefore) - plotMinX);
-			double afterError = (double) (datasets.getTimestamp((int) closestSampleNumberAfter) - plotMinX) - (double) ((mouseX / plotWidth) * plotDomain);
+		double beforeError = (double) ((((float) mouseX - xPlotLeft) / plotWidth) * plotDomain) - (double) (datasets.getTimestamp((int) closestSampleNumberBefore) - plotMinX);
+		double afterError = (double) (datasets.getTimestamp((int) closestSampleNumberAfter) - plotMinX) - (double) ((((float) mouseX - xPlotLeft) / plotWidth) * plotDomain);
+		
+		long closestSampleNumber = (beforeError < afterError) ? closestSampleNumberBefore : closestSampleNumberAfter;
+		
+		// prepare the tooltip
+		String label = "";
+		if(xAxisMode == Mode.SHOWS_TIMESTAMPS) {
+			label = "Sample " + closestSampleNumber + "\n" + SettingsView.formatTimestampToMilliseconds(datasets.getTimestamp((int) closestSampleNumber));
+		} else {
+			long millisecondsElapsed = datasets.getTimestamp((int) closestSampleNumber) - connection.getFirstTimestamp();
+			long hours = millisecondsElapsed / 3600000; millisecondsElapsed %= 3600000;
+			long minutes = millisecondsElapsed / 60000; millisecondsElapsed %= 60000;
+			long seconds = millisecondsElapsed / 1000;  millisecondsElapsed %= 1000;
+			long milliseconds = millisecondsElapsed;
 			
-			long closestSampleNumber = (beforeError < afterError) ? closestSampleNumberBefore : closestSampleNumberAfter;
+			String time = (xAxisMode == Mode.SHOWS_HOURS)   ? String.format("%02d:%02d:%02d.%03d", hours, minutes, seconds, milliseconds) :
+			              (xAxisMode == Mode.SHOWS_MINUTES) ? String.format("%02d:%02d.%03d",             minutes, seconds, milliseconds) :
+			                                                  String.format("%01d.%03d",                           seconds, milliseconds);
 			
-			String label = "";
-			if(xAxisMode == Mode.SHOWS_TIMESTAMPS) {
-				label = "Sample " + closestSampleNumber + "\n" + SettingsController.formatTimestampToMilliseconds(datasets.getTimestamp((int) closestSampleNumber));
-			} else {
-				long millisecondsElapsed = datasets.getTimestamp((int) closestSampleNumber) - connection.getFirstTimestamp();
-				long hours = millisecondsElapsed / 3600000; millisecondsElapsed %= 3600000;
-				long minutes = millisecondsElapsed / 60000; millisecondsElapsed %= 60000;
-				long seconds = millisecondsElapsed / 1000;  millisecondsElapsed %= 1000;
-				long milliseconds = millisecondsElapsed;
-				
-				String time = (xAxisMode == Mode.SHOWS_HOURS)   ? String.format("%02d:%02d:%02d.%03d", hours, minutes, seconds, milliseconds) :
-				              (xAxisMode == Mode.SHOWS_MINUTES) ? String.format("%02d:%02d.%03d",             minutes, seconds, milliseconds) :
-				                                                  String.format("%01d.%03d",                           seconds, milliseconds);
-				
-				label = "Sample " + closestSampleNumber + "\nt = " + time;
-			}
-			
-			float pixelX = getPixelXforSampleNumber(closestSampleNumber, plotWidth);
-			
-			return new TooltipInfo(true, closestSampleNumber, label, pixelX);
-			
+			label = "Sample " + closestSampleNumber + "\nt = " + time;
 		}
+		
+		float pixelX = getPixelXforSampleNumber(closestSampleNumber, plotWidth);
+		final int sampleN = (int) closestSampleNumber; // final needed for the lambdas below
+		
+		PositionedChart.Tooltip tooltip = new PositionedChart.Tooltip();
+		for(String line : label.split("\n"))
+			tooltip.addRow(line);
+		
+		datasets.normalDatasets.forEach(field -> tooltip.addRow(field.color.getGl(),
+		                                                        datasets.getSampleAsString(field, sampleN),
+		                                                        (datasets.getSample(field, sampleN) - plotMinY) / plotRange * plotHeight + yPlotBottom));
+		
+		List<Field> levelFields = datasets.levelStates.stream().map(state -> state.dataset).distinct().sorted().toList();
+		int levelFieldsCount = levelFields.size();
+		for(int i = 0; i < levelFieldsCount; i++) {
+			// following 3 lines from ChartUtils.drawMarkers()
+			float padding = 6f * ChartsController.getDisplayScalingFactor();
+			float yBottom = yPlotBottom + padding + ((levelFieldsCount - 1 - i) * (padding + OpenGL.smallTextHeight + padding));
+			float yTop    = yBottom + OpenGL.smallTextHeight + padding;
+			
+			Field field = levelFields.get(i);
+			tooltip.addRow(field.color.getGl(),
+			               datasets.getSampleAsString(field, (int) sampleN),
+			               yTop);
+		}
+		
+		// draw the tooltip
+		float anchorX = pixelX + xPlotLeft;
+		tooltip.draw(gl, anchorX, mouseX, mouseY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
 		
 	}
 	
@@ -830,7 +846,7 @@ public class PlotMilliseconds extends Plot {
 			bufferX = datasets.getTimestampsBuffer((int) firstSampleNumber, (int) lastSampleNumber, xOffset);
 			buffersY = new FloatBuffer[datasets.normalsCount()];
 			for(int datasetN = 0; datasetN < datasets.normalsCount(); datasetN++) {
-				Dataset dataset = datasets.getNormal(datasetN);
+				Field dataset = datasets.getNormal(datasetN);
 				if(!dataset.isBitfield)
 					buffersY[datasetN] = datasets.getSamplesBuffer(dataset, (int) firstSampleNumber, (int) lastSampleNumber);
 			}

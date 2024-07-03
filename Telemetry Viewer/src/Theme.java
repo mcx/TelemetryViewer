@@ -1,8 +1,9 @@
 import java.awt.Color;
+import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Font;
 import java.awt.Insets;
-
+import javax.swing.Box;
 import javax.swing.JPanel;
 import javax.swing.JToggleButton;
 import javax.swing.border.Border;
@@ -22,6 +23,7 @@ import net.miginfocom.swing.MigLayout;
 public class Theme {
 
 	// general swing and other settings
+	public static int    columnWidth;
 	public static Color  jpanelColor                      = new JPanel().getBackground();
 	public static int    padding                          = Integer.parseInt(System.getProperty("java.version").split("\\.")[0]) >= 9 ? 5 : (int) (5 * ChartsController.getDisplayScalingFactor());
 	public static String removeSymbol                     = "\uD83D\uDDD9";
@@ -114,17 +116,55 @@ public class Theme {
 	/**
 	 * Creates a panel intended for containing Widgets.
 	 * It has a TitledBorder, and uses a MigLayout.
-	 * The MigLayout is configured for 1 column and stretches the widgets to fill that column.
+	 * The MigLayout is configured for 1 column and defaults to stretching each widget to fill that column.
 	 * 
 	 * @param label    Text to show in the TitledBorder.
 	 * @return         The panel.
 	 */
-	public static JPanel newWidgetsPanel(String label) {
+	public static PanelBuilder newWidgetsPanel(String label) {
 		
-		JPanel panel = new JPanel();
-		panel.setLayout(new MigLayout("hidemode 3, wrap 1, insets 0 " + Theme.padding / 2 + " " + Theme.padding + " " + Theme.padding + ", gap " + Theme.padding, "[grow,fill]"));
-		panel.setBorder(new TitledBorder(label));
-		return panel;
+		return new PanelBuilder(label);
+		
+	}
+	
+	public static class PanelBuilder {
+		
+		private final JPanel panel;
+		
+		public PanelBuilder(String label) {
+			panel = new JPanel();
+			panel.setLayout(new MigLayout("hidemode 3, wrap 1, insets 0 " + Theme.padding / 2 + " " + Theme.padding + " " + Theme.padding + ", gap " + Theme.padding, "[grow,fill]"));
+			panel.setBorder(new TitledBorder(label));
+		}
+		
+		public PanelBuilder with(Widget widget) {
+			widget.appendTo(panel, "");
+			return this;
+		}
+		
+		public PanelBuilder with(Widget widget, String constraints) {
+			widget.appendTo(panel, constraints);
+			return this;
+		}
+		
+		public PanelBuilder with(Component component) {
+			panel.add(component);
+			return this;
+		}
+		
+		public PanelBuilder with(Component component, String constraints) {
+			panel.add(component, constraints);
+			return this;
+		}
+		
+		public PanelBuilder withGap(int pixelCount) {
+			panel.add(Box.createVerticalStrut(pixelCount));
+			return this;
+		}
+		
+		public JPanel getPanel() {
+			return panel;
+		}
 		
 	}
 

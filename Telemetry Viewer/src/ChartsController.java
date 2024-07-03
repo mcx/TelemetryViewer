@@ -1,4 +1,3 @@
-import java.awt.Toolkit;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -7,8 +6,7 @@ public class ChartsController {
 	
 	private static List<PositionedChart> charts = Collections.synchronizedList(new ArrayList<PositionedChart>());
 	
-	private static float dpiScalingFactorJava8 = (int) Math.round((double) Toolkit.getDefaultToolkit().getScreenResolution() / 100.0); // will be reset to 1.0 if using java 9+
-	private static float dpiScalingFactorJava9 = 1; // will be updated dynamically if using java 9+
+	private static float dpiScalingFactorOS   = 1; // will be updated dynamically
 	private static float dpiScalingFactorUser = 1; // may be updated by the user
 	
 	/**
@@ -16,7 +14,7 @@ public class ChartsController {
 	 */
 	public static float getDisplayScalingFactor() {
 		
-		return dpiScalingFactorUser * dpiScalingFactorJava8 * dpiScalingFactorJava9;
+		return dpiScalingFactorUser * dpiScalingFactorOS;
 		
 	}
 	
@@ -25,7 +23,7 @@ public class ChartsController {
 	 */
 	public static float getDisplayScalingFactorForGUI() {
 		
-		return dpiScalingFactorJava8 * dpiScalingFactorJava9;
+		return dpiScalingFactorOS;
 		
 	}
 	
@@ -45,7 +43,6 @@ public class ChartsController {
 		
 		if(newFactor < 1) newFactor = 1;
 		if(newFactor > 10) newFactor = 10;
-		
 		dpiScalingFactorUser = newFactor;
 		
 	}
@@ -53,16 +50,11 @@ public class ChartsController {
 	/**
 	 * @param newFactor    The new display scaling factor specified by the OS if using Java 9+.
 	 */
-	public static void setDisplayScalingFactorJava9(float newFactor) {
-		
-		if(newFactor == dpiScalingFactorJava9)
-			return;
+	public static void setDisplayScalingFactorOS(float newFactor) {
 		
 		if(newFactor < 1) newFactor = 1;
 		if(newFactor > 10) newFactor = 10;
-		
-		dpiScalingFactorJava9 = newFactor;
-		dpiScalingFactorJava8 = 1; // only use the Java9 scaling factor
+		dpiScalingFactorOS = newFactor;
 		
 	}
 	
@@ -87,40 +79,25 @@ public class ChartsController {
 	/**
 	 * Creates a PositionedChart and adds it to the charts list.
 	 * 
-	 * @param chartType      One of the Strings from Controller.getChartTypes()
-	 * @param x1             The x-coordinate of a bounding-box corner in the OpenGLChartsRegion grid.
-	 * @param y1             The y-coordinate of a bounding-box corner in the OpenGLChartsRegion grid.
-	 * @param x2             The x-coordinate of the opposite bounding-box corner in the OpenGLChartsRegion grid.
-	 * @param y2             The x-coordinate of the opposite bounding-box corner in the OpenGLChartsRegion grid.
-	 * @return               That chart, or null if chartType is invalid.
+	 * @param chartType    One of the Strings from ChartsController.getChartTypes()
+	 * @return             That chart, or null if chartType is invalid.
 	 */
-	public static PositionedChart createAndAddChart(String chartType, int x1, int y1, int x2, int y2) {
+	public static PositionedChart createAndAddChart(String chartType) {
 		
-		PositionedChart chart = null;
-		
-		     if(chartType.equals("Time Domain"))      chart = new OpenGLTimeDomainChart(x1, y1, x2, y2);
-		else if(chartType.equals("Frequency Domain")) chart = new OpenGLFrequencyDomainChart(x1, y1, x2, y2);
-		else if(chartType.equals("Histogram"))        chart = new OpenGLHistogramChart(x1, y1, x2, y2);
-		else if(chartType.equals("Statistics"))       chart = new OpenGLStatisticsChart(x1, y1, x2, y2);
-		else if(chartType.equals("Dial"))             chart = new OpenGLDialChart(x1, y1, x2, y2);
-		else if(chartType.equals("Quaternion"))       chart = new OpenGLQuaternionChart(x1, y1, x2, y2);
-		else if(chartType.equals("Camera"))           chart = new OpenGLCameraChart(x1, y1, x2, y2);
-		else if(chartType.equals("Timeline"))         chart = new OpenGLTimelineChart(x1, y1, x2, y2);
+		PositionedChart chart = switch(chartType) { case "Time Domain"      -> new OpenGLTimeDomainChart();
+		                                            case "Frequency Domain" -> new OpenGLFrequencyDomainChart();
+		                                            case "Histogram"        -> new OpenGLHistogramChart();
+		                                            case "Statistics"       -> new OpenGLStatisticsChart();
+		                                            case "Dial"             -> new OpenGLDialChart();
+		                                            case "Quaternion"       -> new OpenGLQuaternionChart();
+		                                            case "Camera"           -> new OpenGLCameraChart();
+		                                            case "Timeline"         -> new OpenGLTimelineChart();
+		                                            default                 -> null; };
 		
 		if(chart != null)
-			ChartsController.addChart(chart);
+			charts.add(chart);
 		
 		return chart;
-		
-	}
-	
-	/**
-	 * @param chart    New chart to insert and display.
-	 */
-	public static void addChart(PositionedChart chart) {
-		
-		charts.add(chart);
-		updateTileOccupancy(null);
 		
 	}
 	
@@ -149,7 +126,7 @@ public class ChartsController {
 		
 		chart.dispose();
 		charts.remove(chart);
-		updateTileOccupancy(null);
+		OpenGLChartsView.instance.updateTileOccupancy(null);
 		
 	}
 	
@@ -196,41 +173,6 @@ public class ChartsController {
 				return false;
 		
 		return true;
-		
-	}
-	
-	private static boolean[][] tileOccupied = new boolean[SettingsController.getTileColumns()][SettingsController.getTileRows()];
-	
-	/**
-	 * Updates the array that tracks which tiles in the OpenGLChartsRegion are occupied by charts.
-	 * 
-	 * @param removingChart    If not null, pretend this chart does not exist, so the tiles behind it will be drawn while this chart fades away.
-	 */
-	public static void updateTileOccupancy(PositionedChart removingChart) {
-		
-		int columns = SettingsController.getTileColumns();
-		int rows = SettingsController.getTileRows();
-		
-		tileOccupied = new boolean[columns][rows];
-		for(PositionedChart chart : getCharts()) {
-			for(int x = chart.topLeftX; x <= chart.bottomRightX; x++)
-				for(int y = chart.topLeftY; y <= chart.bottomRightY; y++)
-					tileOccupied[x][rows - y - 1] = true;
-		}
-		
-		if(removingChart != null)
-			for(int x = removingChart.topLeftX; x <= removingChart.bottomRightX; x++)
-				for(int y = removingChart.topLeftY; y <= removingChart.bottomRightY; y++)
-					tileOccupied[x][rows - y - 1] = false;
-		
-	}
-	
-	/**
-	 * @return    An array indicating which tiles in the OpenGLChartsRegion are occupied.
-	 */
-	public static boolean[][] getTileOccupancy() {
-		
-		return tileOccupied;
 		
 	}
 	
