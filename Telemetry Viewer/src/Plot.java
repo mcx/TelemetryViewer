@@ -1,5 +1,4 @@
 import java.util.Map;
-
 import com.jogamp.opengl.GL2ES3;
 
 public abstract class Plot {
@@ -14,7 +13,6 @@ public abstract class Plot {
 	float samplesMinY; // of the samples, not necessarily of the plot
 	float samplesMaxY; // of the samples, not necessarily of the plot
 	String xAxisTitle = "";
-	BitfieldEvents events;
 	boolean cachedMode;
 	
 	/**
@@ -78,36 +76,46 @@ public abstract class Plot {
 	 * Step 6: Render the plot on screen.
 	 * 
 	 * @param gl             The OpenGL context.
-	 * @param chartMatrix    The current 4x4 matrix.
-	 * @param xPlotLeft      Bottom-left corner location, in pixels.
-	 * @param yPlotBottom    Bottom-left corner location, in pixels.
+	 * @param mouseX         X location of the mouse, in pixels, relative to the plot region.
+	 * @param mouseY         Y location of the mouse, in pixels, relative to the plot region.
+	 * @param plotMatrix     The current 4x4 matrix.
 	 * @param plotWidth      Width of the plot region, in pixels.
 	 * @param plotHeight     Height of the plot region, in pixels.
 	 * @param plotMinY       Y-axis value at the bottom of the plot.
 	 * @param plotMaxY       Y-axis value at the top of the plot.
 	 */
-	final void draw(GL2ES3 gl, float[] chartMatrix, int xPlotLeft, int yPlotBottom, int plotWidth, int plotHeight, float plotMinY, float plotMaxY) {
+	final void draw(GL2ES3 gl, int mouseX, int mouseY, float[] plotMatrix, int plotWidth, int plotHeight, float plotMinY, float plotMaxY) {
 		
 		if(plotSampleCount < 2)
 			return;
 		
+		// ignore the mouse location if it's outside the plot region
+		if(mouseX < 0 || mouseX > plotWidth || mouseY < 0 || mouseY > plotHeight) {
+			mouseX = -1;
+			mouseY = -1;
+		}
+		
 		if(cachedMode)
-			drawCachedMode(gl, chartMatrix, xPlotLeft, yPlotBottom, plotWidth, plotHeight, plotMinY, plotMaxY);
+			drawCachedMode(gl, mouseX, mouseY, plotMatrix, plotWidth, plotHeight, plotMinY, plotMaxY);
 		else
-			drawNonCachedMode(gl, chartMatrix, xPlotLeft, yPlotBottom, plotWidth, plotHeight, plotMinY, plotMaxY);
+			drawNonCachedMode(gl, mouseX, mouseY, plotMatrix, plotWidth, plotHeight, plotMinY, plotMaxY);
 		
 	}
-	abstract void drawCachedMode   (GL2ES3 gl, float[] chartMatrix, int xPlotLeft, int yPlotBottom, int plotWidth, int plotHeight, float plotMinY, float plotMaxY);
-	abstract void drawNonCachedMode(GL2ES3 gl, float[] chartMatrix, int xPlotLeft, int yPlotBottom, int plotWidth, int plotHeight, float plotMinY, float plotMaxY);
+	abstract void drawCachedMode   (GL2ES3 gl, int mouseX, int mouseY, float[] plotMatrix, int plotWidth, int plotHeight, float plotMinY, float plotMaxY);
+	abstract void drawNonCachedMode(GL2ES3 gl, int mouseX, int mouseY, float[] plotMatrix, int plotWidth, int plotHeight, float plotMinY, float plotMaxY);
 	
 	/**
-	 * Step 7: Check if a tooltip should be drawn for the mouse's current location.
+	 * Step 7: Create and draw a tooltip based on the mouse's current location.
 	 * 
-	 * @param mouseX       The mouse's location along the x-axis, in pixels (0 = left edge of the plot)
-	 * @param plotWidth    Width of the plot region, in pixels.
-	 * @return             An object indicating if the tooltip should be drawn, for what sample number, with what label, and at what location on screen.
+	 * @param gl             The OpenGL context.
+	 * @param mouseX         X location of the mouse, in pixels, relative to the plot region.
+	 * @param mouseY         Y location of the mouse, in pixels, relative to the plot region.
+	 * @param plotWidth      Width of the plot region, in pixels.
+	 * @param plotHeight     Height of the plot region, in pixels.
+	 * @param plotMinY       Y-axis value at the bottom of the plot.
+	 * @param plotMaxY       Y-axis value at the top of the plot.
 	 */
-	abstract public void drawTooltip(GL2ES3 gl, int mouseX, int mouseY, float xPlotLeft, float yPlotBottom, float plotWidth, float plotHeight, float plotMinY, float plotMaxY, float plotRange, float yPlotTop, float xPlotRight);
+	abstract public void drawTooltip(GL2ES3 gl, int mouseX, int mouseY, float plotWidth, float plotHeight, float plotMinY, float plotMaxY);
 	
 	/**
 	 * Gets the horizontal location, relative to the plot, for a sample number.

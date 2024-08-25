@@ -272,6 +272,21 @@ public class StorageTimestamps {
 	}
 	
 	/**
+	 * Reads a sequence of timestamps.
+	 * 
+	 * @param firstSampleNumber    The first sample number, inclusive. This MUST be a valid sample number.
+	 * @param lastSampleNumber     The last sample number, inclusive. This MUST be a valid sample number.
+	 * @param cache                Place to cache timestamps.
+	 */
+	public LongBuffer getTampstamps(int firstSampleNumber, int lastSampleNumber, Cache cache) {
+		
+		cache.update(firstSampleNumber, lastSampleNumber);
+		cache.cacheLongs.position(firstSampleNumber - cache.startOfCache);
+		return cache.cacheLongs.slice(); // must slice, to prevent the position() from changing if getTimestamp() or getTimestampsBuffer() is called again before "using" this buffer
+		
+	}
+	
+	/**
 	 * Empties the file on disk and empties the slots in memory.
 	 * 
 	 * TO PREVENT RACE CONDITIONS, THIS METHOD MUST ONLY BE CALLED WHEN NO OTHER METHODS OF THIS CLASS ARE IN PROGRESS.

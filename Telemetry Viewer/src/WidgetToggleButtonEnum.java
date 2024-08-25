@@ -1,7 +1,7 @@
 import java.awt.Container;
 import java.io.PrintWriter;
 import java.util.List;
-import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 import javax.swing.ButtonGroup;
 import javax.swing.JLabel;
@@ -17,7 +17,7 @@ public class WidgetToggleButtonEnum<T> implements Widget {
 	private volatile T value;
 	private T[] options;
 	
-	public WidgetToggleButtonEnum(String label, String importExportText, T[] values, T selectedValue, Consumer<T> handler) {
+	public WidgetToggleButtonEnum(String label, String importExportText, T[] values, T selectedValue, Predicate<T> changeHandler) {
 		
 		if(label != null && !label.equals(""))
 			prefixLabel = new JLabel(label + ": ");
@@ -31,9 +31,14 @@ public class WidgetToggleButtonEnum<T> implements Widget {
 			buttons[i] = new JToggleButton(values[i].toString(), values[i] == selectedValue);
 			buttons[i].setBorder(Theme.narrowButtonBorder);
 			buttons[i].addActionListener(event -> {
-				value = values[index];
-				if(handler != null) {
-					handler.accept(value);
+				if(changeHandler == null) {
+					value = values[index];
+				} else {
+					boolean accepted = changeHandler.test(values[index]);
+					if(accepted)
+						value = values[index];
+					else
+						set(value);
 					// AFTER calling the event handler, force the parent Container to redraw
 					// because the event handler may have added/removed/hid stuff
 					Container parent = buttons[0].getParent();
@@ -48,8 +53,8 @@ public class WidgetToggleButtonEnum<T> implements Widget {
 		
 		value = selectedValue;
 
-		if(handler != null)
-			handler.accept(value);
+		if(changeHandler != null)
+			changeHandler.test(value);
 		
 	}
 	
@@ -95,6 +100,15 @@ public class WidgetToggleButtonEnum<T> implements Widget {
 			prefixLabel.setVisible(isVisible);
 		for(int i = 0; i < buttons.length; i++)
 			buttons[i].setVisible(isVisible);
+		
+	}
+	
+	public void setEnabled(boolean isEnabled) {
+		
+		if(prefixLabel != null)
+			prefixLabel.setEnabled(isEnabled);
+		for(int i = 0; i < buttons.length; i++)
+			buttons[i].setEnabled(isEnabled);
 		
 	}
 

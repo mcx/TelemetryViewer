@@ -262,8 +262,6 @@ public class PlotMilliseconds extends Plot {
 	 */
 	@Override public void acquireSamplesNonCachedMode(float plotMinY, float plotMaxY, int plotWidth, int plotHeight) {
 		
-		events = new BitfieldEvents(true, true, datasets, (int) minSampleNumber, (int) maxSampleNumber);
-		
 		bufferX = datasets.getTimestampsBuffer((int) minSampleNumber, (int) maxSampleNumber, plotMinX);
 		
 		buffersY = new FloatBuffer[datasets.normalsCount()];
@@ -284,8 +282,6 @@ public class PlotMilliseconds extends Plot {
 	 * @param plotHeight    Height of the plot region, in pixels.
 	 */
 	@Override void acquireSamplesCachedMode(float plotMinY, float plotMaxY, int plotWidth, int plotHeight) {
-		
-		events = new BitfieldEvents(true, true, datasets, (int) minSampleNumber, (int) maxSampleNumber);
 		
 		// check if the cache must be flushed
 		cacheIsValid = datasets.normalDatasets.equals(previousNormalDatasets) &&
@@ -492,31 +488,25 @@ public class PlotMilliseconds extends Plot {
 	 * Step 6: Render the plot on screen.
 	 * 
 	 * @param gl             The OpenGL context.
-	 * @param chartMatrix    The current 4x4 matrix.
-	 * @param xPlotLeft      Bottom-left corner location, in pixels.
-	 * @param yPlotBottom    Bottom-left corner location, in pixels.
+	 * @param mouseX         X location of the mouse, in pixels, relative to the plot region.
+	 * @param mouseY         Y location of the mouse, in pixels, relative to the plot region.
+	 * @param plotMatrix     The current 4x4 matrix.
 	 * @param plotWidth      Width of the plot region, in pixels.
 	 * @param plotHeight     Height of the plot region, in pixels.
 	 * @param plotMinY       Y-axis value at the bottom of the plot.
 	 * @param plotMaxY       Y-axis value at the top of the plot.
 	 */
-	@Override public void drawNonCachedMode(GL2ES3 gl, float[] chartMatrix, int xPlotLeft, int yPlotBottom, int plotWidth, int plotHeight, float plotMinY, float plotMaxY) {
+	@Override public void drawNonCachedMode(GL2ES3 gl, int mouseX, int mouseY, float[] plotMatrix, int plotWidth, int plotHeight, float plotMinY, float plotMaxY) {
 		
 		float plotRange = plotMaxY - plotMinY;
 		
-		// clip to the plot region
-		int[] originalScissorArgs = new int[4];
-		gl.glGetIntegerv(GL3.GL_SCISSOR_BOX, originalScissorArgs, 0);
-		gl.glScissor(originalScissorArgs[0] + (int) xPlotLeft, originalScissorArgs[1] + (int) yPlotBottom, plotWidth, plotHeight);
-		
-		float[] plotMatrix = Arrays.copyOf(chartMatrix, 16);
-		// adjust so: x = (x - plotMinX) / domain * plotWidth + xPlotLeft;
-		// adjust so: y = (y - plotMinY) / plotRange * plotHeight + yPlotBottom;
+		float[] plotMatrix2 = Arrays.copyOf(plotMatrix, 16);
+		// adjust so: x = (x - plotMinX) / domain * plotWidth;
+		// adjust so: y = (y - plotMinY) / plotRange * plotHeight;
 		// edit: now doing the "x - plotMinX" part before putting data into the buffers, to improve float32 precision when x is very large
-		OpenGL.translateMatrix(plotMatrix,                    xPlotLeft,                  yPlotBottom, 0);
-		OpenGL.scaleMatrix    (plotMatrix, (float) plotWidth/plotDomain, (float) plotHeight/plotRange, 1);
-		OpenGL.translateMatrix(plotMatrix,                            0,                    -plotMinY, 0);
-		OpenGL.useMatrix(gl, plotMatrix);
+		OpenGL.scaleMatrix    (plotMatrix2, (float) plotWidth/plotDomain, (float) plotHeight/plotRange, 1);
+		OpenGL.translateMatrix(plotMatrix2,                            0,                    -plotMinY, 0);
+		OpenGL.useMatrix(gl, plotMatrix2);
 		
 		// draw each dataset
 		if(plotSampleCount >= 2) {
@@ -538,17 +528,11 @@ public class PlotMilliseconds extends Plot {
 			}
 		}
 		
-		OpenGL.useMatrix(gl, chartMatrix);
+		// switch back to the normal plot matrix
+		OpenGL.useMatrix(gl, plotMatrix);
 		
-		// draw any bitfield changes
-		if(plotSampleCount >= 2) {
-			List<BitfieldEvents.EdgeMarker>  edgeMarkers  = events.getEdgeMarkersMillisecondsMode(plotMinX, plotDomain, plotWidth);
-			List<BitfieldEvents.LevelMarker> levelMarkers = events.getLevelMarkersMillisecondsMode(plotMinX, plotDomain, plotWidth);
-			ChartUtils.drawMarkers(gl, datasets, edgeMarkers, levelMarkers, xPlotLeft, yPlotBottom + plotHeight, xPlotLeft + plotWidth, yPlotBottom, -1, -1);
-		}
-
-		// stop clipping to the plot region
-		gl.glScissor(originalScissorArgs[0], originalScissorArgs[1], originalScissorArgs[2], originalScissorArgs[3]);
+		// draw any bitfield events
+		datasets.drawBitfields(gl, mouseX, mouseY, plotWidth, plotHeight, false, plotMinX, plotDomain, minSampleNumber, maxSampleNumber, false);
 		
 	}
 	
@@ -556,15 +540,15 @@ public class PlotMilliseconds extends Plot {
 	 * Step 6: Render the plot on screen.
 	 * 
 	 * @param gl             The OpenGL context.
-	 * @param chartMatrix    The current 4x4 matrix.
-	 * @param xPlotLeft      Bottom-left corner location, in pixels.
-	 * @param yPlotBottom    Bottom-left corner location, in pixels.
+	 * @param mouseX         X location of the mouse, in pixels, relative to the plot region.
+	 * @param mouseY         Y location of the mouse, in pixels, relative to the plot region.
+	 * @param plotMatrix     The current 4x4 matrix.
 	 * @param plotWidth      Width of the plot region, in pixels.
 	 * @param plotHeight     Height of the plot region, in pixels.
 	 * @param plotMinY       Y-axis value at the bottom of the plot.
 	 * @param plotMaxY       Y-axis value at the top of the plot.
 	 */
-	@Override public void drawCachedMode(GL2ES3 gl, float[] chartMatrix, int xPlotLeft, int yPlotBottom, int plotWidth, int plotHeight, float plotMinY, float plotMaxY) {
+	@Override public void drawCachedMode(GL2ES3 gl, int mouseX, int mouseY, float[] plotMatrix, int plotWidth, int plotHeight, float plotMinY, float plotMaxY) {
 		
 		// create the off-screen framebuffer if this is the first draw call
 		if(fbHandle == null) {
@@ -675,26 +659,14 @@ public class PlotMilliseconds extends Plot {
 //			OpenGL.drawBox(gl, randomColor2,  draw2.scissorArgs[0] + 0.5f, 0, draw2.scissorArgs[2], 10);
 		
 		// switch back to the screen framebuffer
-		OpenGL.stopDrawingOffscreen(gl, chartMatrix);
+		OpenGL.stopDrawingOffscreen(gl, plotMatrix);
 		
 		// draw the framebuffer on screen
 		float startX = (float) ((plotMaxX - connection.getFirstTimestamp()) % plotDomain) / plotDomain;
-		OpenGL.drawRingbufferTexturedBox(gl, texHandle, xPlotLeft, yPlotBottom, plotWidth, plotHeight, startX);
-
-		// clip to the plot region
-		int[] originalScissorArgs = new int[4];
-		gl.glGetIntegerv(GL3.GL_SCISSOR_BOX, originalScissorArgs, 0);
-		gl.glScissor(originalScissorArgs[0] + (int) xPlotLeft, originalScissorArgs[1] + (int) yPlotBottom, plotWidth, plotHeight);
+		OpenGL.drawRingbufferTexturedBox(gl, texHandle, 0, 0, plotWidth, plotHeight, startX);
 		
-		// draw any bitfield changes
-		if(plotSampleCount >= 2) {
-			List<BitfieldEvents.EdgeMarker>  edgeMarkers  = events.getEdgeMarkersMillisecondsMode(plotMinX, plotDomain, plotWidth);
-			List<BitfieldEvents.LevelMarker> levelMarkers = events.getLevelMarkersMillisecondsMode(plotMinX, plotDomain, plotWidth);
-			ChartUtils.drawMarkers(gl, datasets, edgeMarkers, levelMarkers, xPlotLeft, yPlotBottom + plotHeight, xPlotLeft + plotWidth, yPlotBottom, -1, -1);
-		}
-		
-		// stop clipping to the plot region
-		gl.glScissor(originalScissorArgs[0], originalScissorArgs[1], originalScissorArgs[2], originalScissorArgs[3]);
+		// draw any bitfield events
+		datasets.drawBitfields(gl, mouseX, mouseY, plotWidth, plotHeight, false, plotMinX, plotDomain, minSampleNumber, maxSampleNumber, false);
 		
 //		// draw the framebuffer without ringbuffer wrapping, 10 pixels above the plot
 //		gl.glDisable(GL2.GL_SCISSOR_TEST);
@@ -703,15 +675,17 @@ public class PlotMilliseconds extends Plot {
 		
 	}
 	
-	@Override public void drawTooltip(GL2ES3 gl, int mouseX, int mouseY, float xPlotLeft, float yPlotBottom, float plotWidth, float plotHeight, float plotMinY, float plotMaxY, float plotRange, float yPlotTop, float xPlotRight) {
+	@Override public void drawTooltip(GL2ES3 gl, int mouseX, int mouseY, float plotWidth, float plotHeight, float plotMinY, float plotMaxY) {
 		
 		// determine the timestamp corresponding to mouseX
-		long mouseTimestamp = (long) Math.round((((float) mouseX - xPlotLeft) / plotWidth) * plotDomain) + plotMinX;
+		long mouseTimestamp = (long) Math.round(((float) mouseX / plotWidth) * plotDomain) + plotMinX;
 		
 		// sanity checks
 		if(mouseTimestamp < connection.getFirstTimestamp())
 			return;
 		if(plotSampleCount < 2)
+			return;
+		if(!datasets.hasNormals() && !datasets.hasLevels())
 			return;
 		
 		// determine the sample number closest to mouseX
@@ -720,8 +694,8 @@ public class PlotMilliseconds extends Plot {
 		if(closestSampleNumberAfter > maxSampleNumber)
 			closestSampleNumberAfter = maxSampleNumber;
 
-		double beforeError = (double) ((((float) mouseX - xPlotLeft) / plotWidth) * plotDomain) - (double) (datasets.getTimestamp((int) closestSampleNumberBefore) - plotMinX);
-		double afterError = (double) (datasets.getTimestamp((int) closestSampleNumberAfter) - plotMinX) - (double) ((((float) mouseX - xPlotLeft) / plotWidth) * plotDomain);
+		double beforeError = (double) (((float) mouseX / plotWidth) * plotDomain) - (double) (datasets.getTimestamp((int) closestSampleNumberBefore) - plotMinX);
+		double afterError = (double) (datasets.getTimestamp((int) closestSampleNumberAfter) - plotMinX) - (double) (((float) mouseX / plotWidth) * plotDomain);
 		
 		long closestSampleNumber = (beforeError < afterError) ? closestSampleNumberBefore : closestSampleNumberAfter;
 		
@@ -743,23 +717,23 @@ public class PlotMilliseconds extends Plot {
 			label = "Sample " + closestSampleNumber + "\nt = " + time;
 		}
 		
-		float pixelX = getPixelXforSampleNumber(closestSampleNumber, plotWidth);
+		float anchorX = getPixelXforSampleNumber(closestSampleNumber, plotWidth);
+		float plotRange = plotMaxY - plotMinY;
 		final int sampleN = (int) closestSampleNumber; // final needed for the lambdas below
 		
 		PositionedChart.Tooltip tooltip = new PositionedChart.Tooltip();
-		for(String line : label.split("\n"))
-			tooltip.addRow(line);
+		tooltip.addRow(label);
 		
 		datasets.normalDatasets.forEach(field -> tooltip.addRow(field.color.getGl(),
 		                                                        datasets.getSampleAsString(field, sampleN),
-		                                                        (datasets.getSample(field, sampleN) - plotMinY) / plotRange * plotHeight + yPlotBottom));
+		                                                        (datasets.getSample(field, sampleN) - plotMinY) / plotRange * plotHeight));
 		
 		List<Field> levelFields = datasets.levelStates.stream().map(state -> state.dataset).distinct().sorted().toList();
 		int levelFieldsCount = levelFields.size();
 		for(int i = 0; i < levelFieldsCount; i++) {
 			// following 3 lines from ChartUtils.drawMarkers()
 			float padding = 6f * ChartsController.getDisplayScalingFactor();
-			float yBottom = yPlotBottom + padding + ((levelFieldsCount - 1 - i) * (padding + OpenGL.smallTextHeight + padding));
+			float yBottom = padding + ((levelFieldsCount - 1 - i) * (padding + OpenGL.smallTextHeight + padding));
 			float yTop    = yBottom + OpenGL.smallTextHeight + padding;
 			
 			Field field = levelFields.get(i);
@@ -768,9 +742,7 @@ public class PlotMilliseconds extends Plot {
 			               yTop);
 		}
 		
-		// draw the tooltip
-		float anchorX = pixelX + xPlotLeft;
-		tooltip.draw(gl, anchorX, mouseX, mouseY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
+		tooltip.draw(gl, mouseX, mouseY, plotWidth, plotHeight, anchorX);
 		
 	}
 	

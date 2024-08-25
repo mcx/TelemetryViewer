@@ -157,6 +157,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		                                                               yAxisBinsTextfield.setVisible(newStyle == ChartStyle.HISTOGRAM);
 		                                                               yAxisBinsAutomatic.setVisible(newStyle == ChartStyle.HISTOGRAM);
 		                                                               gamma.setVisible(newStyle == ChartStyle.HISTOGRAM);
+		                                                               return true;
 		                                                           });
 		
 		maximumPower = WidgetTextfield.ofFloat(Float.MIN_VALUE, Float.MAX_VALUE, 1e9f)
@@ -632,6 +633,19 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		if(yAxisTitleVisibility.get() && yYaxisTitleTextLeft > yPlotBottom)
 			OpenGL.drawLargeText(gl, yAxisTitle, (int) xYaxisTitleTextBaseline, (int) yYaxisTitleTextLeft, 90);
 		
+		// clip to the plot region
+		int[] chartScissorArgs = new int[4];
+		gl.glGetIntegerv(GL3.GL_SCISSOR_BOX, chartScissorArgs, 0);
+		gl.glScissor(chartScissorArgs[0] + (int) xPlotLeft, chartScissorArgs[1] + (int) yPlotBottom, (int) plotWidth, (int) plotHeight);
+		
+		// update the matrix and mouse so the plot region starts at (0,0)
+		// x = x + xPlotLeft;
+		// y = y + yPlotBottom;
+		float[] plotMatrix = Arrays.copyOf(chartMatrix, 16);
+		OpenGL.translateMatrix(plotMatrix, xPlotLeft, yPlotBottom, 0);
+		OpenGL.useMatrix(gl, plotMatrix);
+		mouseX -= xPlotLeft;
+		mouseY -= yPlotBottom;
 		
 		// draw the FFTs
 		int[][][] histogram = null; // only populated in Histogram mode
@@ -639,19 +653,13 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		if(fft.exists) {
 			if(chartStyle.is(ChartStyle.SINGLE)) {
 				
-				// clip to the plot region
-				int[] originalScissorArgs = new int[4];
-				gl.glGetIntegerv(GL3.GL_SCISSOR_BOX, originalScissorArgs, 0);
-				gl.glScissor(originalScissorArgs[0] + (int) xPlotLeft, originalScissorArgs[1] + (int) yPlotBottom, width, height);
-				
-				// adjust so: x = (x - plotMinX) / domain * plotWidth + xPlotLeft;
-				// adjust so: y = (y - plotMinY) / plotRange * plotHeight + yPlotBottom;
+				// adjust so: x = (x - plotMinX) / domain * plotWidth;
+				// adjust so: y = (y - plotMinY) / plotRange * plotHeight;
 				int fftBinCount = fft.binCount;
-				float[] plotMatrix = Arrays.copyOf(chartMatrix, 16);
-				OpenGL.translateMatrix(plotMatrix, xPlotLeft,                         yPlotBottom,                              0);
-				OpenGL.scaleMatrix    (plotMatrix, plotWidth/(float) (fftBinCount-1), plotHeight/(plotMaxPower - plotMinPower), 1);
-				OpenGL.translateMatrix(plotMatrix, 0,                                 -plotMinPower,                            0);
-				OpenGL.useMatrix(gl, plotMatrix);
+				float[] plotMatrix2 = Arrays.copyOf(plotMatrix, 16);
+				OpenGL.scaleMatrix    (plotMatrix2, plotWidth/(float) (fftBinCount-1), plotHeight/(plotMaxPower - plotMinPower), 1);
+				OpenGL.translateMatrix(plotMatrix2, 0,                                 -plotMinPower,                            0);
+				OpenGL.useMatrix(gl, plotMatrix2);
 				
 				// draw the FFT line charts, and also draw points if there are relatively few bins on screen
 				for(int datasetN = 0; datasetN < datasets.normalDatasets.size(); datasetN++) {
@@ -661,9 +669,8 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 						OpenGL.drawPointsY(gl, datasets.normalDatasets.get(datasetN).color.getGl(), buffer, fftBinCount, 0);
 				}
 				
-				// restore the old matrix and stop clipping to the plot region
-				OpenGL.useMatrix(gl, chartMatrix);
-				gl.glScissor(originalScissorArgs[0], originalScissorArgs[1], originalScissorArgs[2], originalScissorArgs[3]);
+				// restore the old matrix
+				OpenGL.useMatrix(gl, plotMatrix);
 				
 			} else if(chartStyle.is(ChartStyle.HISTOGRAM)) {
 				
@@ -709,7 +716,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 							OpenGL.createHistogramTexture(gl, histogramTexHandle, xBinCount, yBinCount);
 						}
 						OpenGL.writeHistogramTexture(gl, histogramTexHandle, xBinCount, yBinCount, bytes.rewind());
-						OpenGL.drawHistogram(gl, histogramTexHandle, datasets.normalDatasets.get(datasetN).color.getGl(), fullScale, gamma.getFloat(), (int) xPlotLeft, (int) yPlotBottom, (int) plotWidth, (int) plotHeight, 1f/xBinCount/2f);
+						OpenGL.drawHistogram(gl, histogramTexHandle, datasets.normalDatasets.get(datasetN).color.getGl(), fullScale, gamma.getFloat(), 0, 0, (int) plotWidth, (int) plotHeight, 1f/xBinCount/2f);
 					}
 				}
 				
@@ -776,22 +783,22 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 						OpenGL.createTexture(gl, waterfallTexHandle, binCount, fftCount.get(), GL3.GL_RGBA, GL3.GL_FLOAT, false);
 					}
 					OpenGL.writeTexture(gl, waterfallTexHandle, binCount, fftCount.get(), GL3.GL_RGBA, GL3.GL_FLOAT, bytes);
-					OpenGL.drawTexturedBox(gl, waterfallTexHandle, false, (int) xPlotLeft, (int) yPlotBottom, (int) plotWidth, (int) plotHeight, 1f/binCount/2f, false);
+					OpenGL.drawTexturedBox(gl, waterfallTexHandle, false, 0, 0, (int) plotWidth, (int) plotHeight, 1f/binCount/2f, false);
 				}
 			}
 		}
 		
 		// draw the tooltip if the mouse is in the plot region
-		if(fft.exists && SettingsView.instance.tooltipsVisibility.get() && mouseX >= xPlotLeft && mouseX <= xPlotRight && mouseY >= yPlotBottom && mouseY <= yPlotTop) {
+		if(fft.exists && SettingsView.instance.tooltipsVisibility.get() && mouseX >= 0 && mouseX <= plotWidth && mouseY >= 0 && mouseY <= plotHeight) {
 			
 			if(chartStyle.is(ChartStyle.SINGLE)) {
 				
 				// map mouseX to a frequency bin, and anchor the tooltip over that frequency bin
-				int binN = (int) (((float) mouseX - xPlotLeft) / plotWidth * (fft.binCount - 1) + 0.5f);
+				int binN = (int) ((float) mouseX / plotWidth * (fft.binCount - 1) + 0.5f);
 				if(binN > fft.binCount - 1)
 					binN = fft.binCount - 1;
 				float frequency = (float) (binN * fft.binSizeHz);
-				int anchorX = (int) ((frequency - plotMinX) / domain * plotWidth + xPlotLeft);
+				int anchorX = (int) ((frequency - plotMinX) / domain * plotWidth);
 				
 				// get the power levels for each dataset
 				Tooltip tooltip = new Tooltip();
@@ -800,25 +807,24 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 				for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
 					tooltip.addRow(datasets.getNormal(datasetN).color.getGl(),
 					               convertPowerToString(fftOfDataset.get(datasetN)[binN]),
-					               (float) Math.max((int) ((fftOfDataset.get(datasetN)[binN] - plotMinY) / plotRange * plotHeight + yPlotBottom), (int) yPlotBottom));
-				
-				// draw the tooltip
-				tooltip.draw(gl, anchorX, mouseX, mouseY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
+					               (float) Math.max((int) ((fftOfDataset.get(datasetN)[binN] - plotMinY) / plotRange * plotHeight), 0));
+
+				tooltip.draw(gl, mouseX, mouseY, plotWidth, plotHeight, anchorX);
 				
 			} else if(chartStyle.is(ChartStyle.HISTOGRAM)) {
 				
 				// map mouseX to a frequency bin, and anchor the tooltip over that frequency bin
 				// note: one histogram bin corresponds to 1 or >1 FFT bins
 				int histogramBinCount = histogram[0][0].length;
-				int histogramBinN = (int) (((float) mouseX - xPlotLeft) / plotWidth * (histogramBinCount - 1) + 0.5f);
+				int histogramBinN = (int) ((float) mouseX / plotWidth * (histogramBinCount - 1) + 0.5f);
 				if(histogramBinN > histogramBinCount - 1)
 					histogramBinN = histogramBinCount - 1;
-				int anchorX = (int) (((float) histogramBinN / (float) (histogramBinCount - 1)) * plotWidth + xPlotLeft);
+				int anchorX = (int) (((float) histogramBinN / (float) (histogramBinCount - 1)) * plotWidth);
 				int firstFftBin = histogramBinN * fftBinsPerPlotBin;
 				int lastFftBin  = Math.min(firstFftBin + fftBinsPerPlotBin - 1, fft.binCount - 1);
 				
 				// map mouseY to a power bin
-				int powerBinN = Math.round(((float) mouseY - yPlotBottom) / plotHeight * actualYaxisBins - 0.5f);
+				int powerBinN = Math.round((float) mouseY / plotHeight * actualYaxisBins - 0.5f);
 				if(powerBinN > actualYaxisBins - 1)
 					powerBinN = actualYaxisBins - 1;
 				float minPower = (float) powerBinN / (float) actualYaxisBins * (plotMaxPower - plotMinPower) + plotMinPower;
@@ -830,7 +836,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 					windowCountForDataset[datasetN] = (int) Math.ceil((double) histogram[datasetN][powerBinN][histogramBinN] / (double) fftBinsPerPlotBin);
 				int windowCount = fft.windows.size();
 				
-				int anchorY = (int) (((float) powerBinN + 0.5f) / (float) actualYaxisBins * plotHeight + yPlotBottom);
+				int anchorY = (int) (((float) powerBinN + 0.5f) / (float) actualYaxisBins * plotHeight);
 				Tooltip tooltip = new Tooltip();
 				tooltip.addRow(convertFrequencyRangeToString(firstFftBin, lastFftBin, fft));
 				tooltip.addRow(convertPowerRangeToString(minPower, maxPower));
@@ -843,24 +849,23 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 						tooltip.addRow(datasets.getNormal(datasetN).color.getGl(),
 						               ChartUtils.formattedNumber((double) windowCountForDataset[datasetN] / (double) windowCount * 100.0, 3) + "% (" + windowCountForDataset[datasetN] + " of " + windowCount + " FFTs)");
 				
-				// draw the tooltip
-				tooltip.draw(gl, anchorX, mouseX, mouseY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
+				tooltip.draw(gl, mouseX, mouseY, plotWidth, plotHeight, anchorX);
 				
 			} else if(chartStyle.is(ChartStyle.WATERFALL)) {
 				
 				// map mouseX to a frequency bin, and anchor the tooltip over that frequency bin
 				// note: one histogram bin corresponds to 1 or >1 FFT bins
 				int histogramBinCount = (int) Math.ceil((double) fft.binCount / (double) fftBinsPerPlotBin);
-				int histogramBinN = (int) (((float) mouseX - xPlotLeft) / plotWidth * (histogramBinCount - 1) + 0.5f);
+				int histogramBinN = (int) ((float) mouseX / plotWidth * (histogramBinCount - 1) + 0.5f);
 				if(histogramBinN > histogramBinCount - 1)
 					histogramBinN = histogramBinCount - 1;
-				int anchorX = (int) (((float) histogramBinN / (float) (histogramBinCount - 1)) * plotWidth + xPlotLeft);
+				int anchorX = (int) (((float) histogramBinN / (float) (histogramBinCount - 1)) * plotWidth);
 				int firstFftBin = histogramBinN * fftBinsPerPlotBin;
 				int lastFftBin  = Math.min(firstFftBin + fftBinsPerPlotBin - 1, fft.binCount - 1);
 				
 				// map mouseY to a time
 				int waterfallRowCount = fftCount.get();
-				int waterfallRowN = Math.round(((float) mouseY - yPlotBottom) / plotHeight * waterfallRowCount - 0.5f);
+				int waterfallRowN = Math.round((float) mouseY / plotHeight * waterfallRowCount - 0.5f);
 				if(waterfallRowN > waterfallRowCount - 1)
 					waterfallRowN = waterfallRowCount - 1;
 				int trueLastSampleNumber = endSampleNumber - (endSampleNumber % fft.windowLength);
@@ -869,7 +874,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 				if(rowFirstSampleNumber >= 0) {
 					// mouse is over an FFT, so proceed with the tooltip
 					float secondsElapsed = ((float) waterfallRowN + 0.5f) / (float) waterfallRowCount * plotMaxTime;
-					int anchorY = (int) (((float) waterfallRowN + 0.5f) / (float) waterfallRowCount * plotHeight + yPlotBottom);
+					int anchorY = (int) (((float) waterfallRowN + 0.5f) / (float) waterfallRowCount * plotHeight);
 					Tooltip tooltip = new Tooltip();
 					tooltip.addRow(convertFrequencyRangeToString(firstFftBin, lastFftBin, fft));
 					tooltip.addRow(ChartUtils.formattedNumber(secondsElapsed, 4) + " seconds ago");
@@ -889,12 +894,17 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 							               convertPowerToString(power));
 					}
 					
-					// draw the tooltip
-					tooltip.draw(gl, anchorX, mouseX, mouseY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
+					tooltip.draw(gl, mouseX, mouseY, plotWidth, plotHeight, anchorX);
 				}
 			}
 			
 		}
+
+		// stop clipping to the plot region
+		gl.glScissor(chartScissorArgs[0], chartScissorArgs[1], chartScissorArgs[2], chartScissorArgs[3]);
+		
+		// switch back to the chart matrix
+		OpenGL.useMatrix(gl, chartMatrix);
 
 		// draw the plot border
 		OpenGL.drawQuadOutline2D(gl, Theme.plotOutlineColor, xPlotLeft, yPlotBottom, xPlotRight, yPlotTop);

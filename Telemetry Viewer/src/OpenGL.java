@@ -493,6 +493,20 @@ public class OpenGL {
 	 * @param degrees    Amount to rotate counter-clockwise, pivoting around (x,y).
 	 */
 	public static void drawSmallText(GL2ES3 gl, String text, int x, int y, float degrees) {
+		drawSmallTextTransparent(gl, text, x, y, degrees, 1);
+	}
+	
+	/**
+	 * Draws text with the small font.
+	 * 
+	 * @param gl         The OpenGL context.
+	 * @param text       Text to draw.
+	 * @param x          Lower-left corner, in pixels.
+	 * @param y          Lower-left corner, in pixels.
+	 * @param degrees    Amount to rotate counter-clockwise, pivoting around (x,y).
+	 * @param opacity    1 = fully opaque ... 0 = fully transparent.
+	 */
+	public static void drawSmallTextTransparent(GL2ES3 gl, String text, int x, int y, float degrees, float opacity) {
 		
 		if(text.length() > buffer.capacity() / 5)
 			return;
@@ -554,6 +568,7 @@ public class OpenGL {
 		gl.glBufferData(GL3.GL_ARRAY_BUFFER, text.length() * 5 * 4, buffer, GL3.GL_DYNAMIC_DRAW);
 		gl.glUniformMatrix4fv(FontRenderer.matrixHandle, 1, false, degrees == 0 ? currentMatrix : rotatedMatrix, 0);
 		gl.glUniform1f(FontRenderer.lineHeightHandle, smallFontMaxCharHeight);
+		gl.glUniform1f(FontRenderer.opacityHandle, opacity);
 		gl.glBindTexture(GL3.GL_TEXTURE_2D, FontRenderer.smallFontTextureHandle[0]);
 
 		// draw "points" (which become textured quads)
@@ -632,6 +647,7 @@ public class OpenGL {
 		gl.glBufferData(GL3.GL_ARRAY_BUFFER, text.length() * 5 * 4, buffer, GL3.GL_DYNAMIC_DRAW);
 		gl.glUniformMatrix4fv(FontRenderer.matrixHandle, 1, false, degrees == 0 ? currentMatrix : rotatedMatrix, 0);
 		gl.glUniform1f(FontRenderer.lineHeightHandle, mediumFontMaxCharHeight);
+		gl.glUniform1f(FontRenderer.opacityHandle, 1);
 		gl.glBindTexture(GL3.GL_TEXTURE_2D, FontRenderer.mediumFontTextureHandle[0]);
 
 		// draw "points" (which become textured quads)
@@ -710,6 +726,7 @@ public class OpenGL {
 		gl.glBufferData(GL3.GL_ARRAY_BUFFER, text.length() * 5 * 4, buffer, GL3.GL_DYNAMIC_DRAW);
 		gl.glUniformMatrix4fv(FontRenderer.matrixHandle, 1, false, degrees == 0 ? currentMatrix : rotatedMatrix, 0);
 		gl.glUniform1f(FontRenderer.lineHeightHandle, largeFontMaxCharHeight);
+		gl.glUniform1f(FontRenderer.opacityHandle, 1);
 		gl.glBindTexture(GL3.GL_TEXTURE_2D, FontRenderer.largeFontTextureHandle[0]);
 
 		// draw "points" (which become textured quads)
@@ -1749,6 +1766,7 @@ public class OpenGL {
 		static int programHandle;
 		static int matrixHandle;
 		static int lineHeightHandle;
+		static int opacityHandle;
 		static int[] smallFontTextureHandle = new int[1];
 		static int[] mediumFontTextureHandle = new int[1];
 		static int[] largeFontTextureHandle = new int[1];
@@ -2128,9 +2146,11 @@ public class OpenGL {
 			"#endif\n" +
 			"in vec2 texCoord;\n",
 			"uniform sampler2D tex;\n",
+			"uniform float opacity;\n",
 			"out vec4 fragColor;\n",
 			"void main(void) {\n",
 			"	fragColor = texelFetch(tex, ivec2(texCoord), 0).abgr;\n", // swizzling ABGR texture into RGBA
+			"	fragColor.a *= opacity;\n",
 			"}\n"
 		};
 		
@@ -2676,8 +2696,9 @@ public class OpenGL {
 		 * "FontRenderer" is for drawing 2D text.
 		 * 
 		 * One VBO of floats specifies (x,y,s1,t1,sWidth,...) character location and texture atlas data.
-		 * One uniform mat4  specifies the matrix.
-		 * One uniform float specifies the line height.
+		 * One uniform mat4    specifies the matrix.
+		 * One uniform float   specifies the line height.
+		 * One uniform boolean specifies the opacity.
 		 */
 		FontRenderer.programHandle = makeProgram(gl, vertexShaderFontRenderer, geometryShaderFontRenderer, fragmentShaderFontRenderer);
 		
@@ -2702,6 +2723,7 @@ public class OpenGL {
 		// get handles for the uniforms
 		FontRenderer.matrixHandle     = gl.glGetUniformLocation(FontRenderer.programHandle, "matrix");
 		FontRenderer.lineHeightHandle = gl.glGetUniformLocation(FontRenderer.programHandle, "lineHeight");
+		FontRenderer.opacityHandle    = gl.glGetUniformLocation(FontRenderer.programHandle, "opacity");
 		
 		// create the textures
 		createTexture(gl, handle, 512, 512, GL3.GL_RGBA, GL3.GL_UNSIGNED_BYTE, false);

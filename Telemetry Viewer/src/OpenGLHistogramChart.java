@@ -1,4 +1,5 @@
 import java.nio.FloatBuffer;
+import java.util.Arrays;
 import java.util.Map;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -176,6 +177,7 @@ public class OpenGLHistogramChart extends PositionedChart {
 		                                                        xAxisCenterPlaceholder.setVisible(newScale == XAxisScale.CENTER_SPAN);
 		                                                        xAxisSpan.setVisible(newScale == XAxisScale.CENTER_SPAN);
 		                                                        xAxisSpanAutomatic.setVisible(newScale == XAxisScale.CENTER_SPAN);
+		                                                        return true;
 		                                                    });
 		
 		xAxisTicksVisibility = new WidgetCheckbox("Show Ticks", true)
@@ -269,6 +271,7 @@ public class OpenGLHistogramChart extends PositionedChart {
 		                                                        yAxisMinimumRelativeFrequencyIsZero.setVisible(newScale != YAxisScale.FREQUENCY);
 		                                                        yAxisMaximumRelativeFrequency.setVisible(newScale != YAxisScale.FREQUENCY);
 		                                                        yAxisMaximumRelativeFrequencyAutomatic.setVisible(newScale != YAxisScale.FREQUENCY);
+		                                                        return true;
 		                                                    });
 		
 		yAxisTicksVisibility = new WidgetCheckbox("Show Ticks", true)
@@ -731,9 +734,18 @@ public class OpenGLHistogramChart extends PositionedChart {
 			OpenGL.drawLargeText(gl, yAxisRightTitle, (int) xYaxisRightTitleTextBaseline, (int) yYaxisRightTitleTextLeft, -90);
 
 		// clip to the plot region
-		int[] originalScissorArgs = new int[4];
-		gl.glGetIntegerv(GL3.GL_SCISSOR_BOX, originalScissorArgs, 0);
-		gl.glScissor(originalScissorArgs[0] + (int) xPlotLeft, originalScissorArgs[1] + (int) yPlotBottom, (int) plotWidth, (int) plotHeight);
+		int[] chartScissorArgs = new int[4];
+		gl.glGetIntegerv(GL3.GL_SCISSOR_BOX, chartScissorArgs, 0);
+		gl.glScissor(chartScissorArgs[0] + (int) xPlotLeft, chartScissorArgs[1] + (int) yPlotBottom, (int) plotWidth, (int) plotHeight);
+		
+		// update the matrix and mouse so the plot region starts at (0,0)
+		// x = x + xPlotLeft;
+		// y = y + yPlotBottom;
+		float[] plotMatrix = Arrays.copyOf(chartMatrix, 16);
+		OpenGL.translateMatrix(plotMatrix, xPlotLeft, yPlotBottom, 0);
+		OpenGL.useMatrix(gl, plotMatrix);
+		mouseX -= xPlotLeft;
+		mouseY -= yPlotBottom;
 		
 		// draw the bins
 		if(sampleCount > 0) {
@@ -745,16 +757,16 @@ public class OpenGLHistogramChart extends PositionedChart {
 					float max = minX + (binSize * (binN + 1)); // exclusive
 					float center = (max + min) / 2f;
 					
-					float xBarCenter = ((center - minX) / range * plotWidth) + xPlotLeft;
-					float yBarTop = ((float) bins[datasetN][binN] - minYfreq) / yFreqRange * plotHeight + yPlotBottom;
+					float xBarCenter = ((center - minX) / range * plotWidth);
+					float yBarTop = ((float) bins[datasetN][binN] - minYfreq) / yFreqRange * plotHeight;
 					float halfBarWidth = plotWidth / binsCount / 2f;
 					
 					float x1 = xBarCenter - halfBarWidth; // top-left
 					float y1 = yBarTop;
 					float x2 = xBarCenter - halfBarWidth; // bottom-left
-					float y2 = yPlotBottom;
+					float y2 = 0;
 					float x3 = xBarCenter + halfBarWidth; // bottom-right
-					float y3 = yPlotBottom;
+					float y3 = 0;
 					float x4 = xBarCenter + halfBarWidth; // top-right
 					float y4 = yBarTop;
 					binsAsTriangles[datasetN].put(x1).put(y1).put(x2).put(y2).put(x3).put(y3);
@@ -765,27 +777,30 @@ public class OpenGLHistogramChart extends PositionedChart {
 				OpenGL.drawTrianglesXY(gl, GL3.GL_TRIANGLES, datasets.getNormal(datasetN).color.getGl(), binsAsTriangles[datasetN], 6 * binsCount);
 			}
 		}
-
-		// stop clipping to the plot region
-		gl.glScissor(originalScissorArgs[0], originalScissorArgs[1], originalScissorArgs[2], originalScissorArgs[3]);
 		
 		// draw the tooltip if the mouse is in the plot region
-		if(sampleCount > 0 && SettingsView.instance.tooltipsVisibility.get() && mouseX >= xPlotLeft && mouseX <= xPlotRight && mouseY >= yPlotBottom && mouseY <= yPlotTop) {
-			int binN = (int) Math.floor(((float) mouseX - xPlotLeft) / plotWidth * binsCount);
+		if(sampleCount > 0 && SettingsView.instance.tooltipsVisibility.get() && mouseX >= 0 && mouseX <= plotWidth && mouseY >= 0 && mouseY <= plotHeight) {
+			int binN = (int) Math.floor((float) mouseX / plotWidth * binsCount);
 			if(binN > binsCount - 1)
 				binN = binsCount - 1;
 			float min = minX + (binSize *  binN);      // inclusive
 			float max = minX + (binSize * (binN + 1)); // exclusive
+			float xBarCenter = ((binSize *  binN) + (binSize * (binN + 1))) / 2f / range * plotWidth;
 			Tooltip tooltip = new Tooltip();
 			tooltip.addRow(ChartUtils.formattedNumber(min, 5) + " to " + ChartUtils.formattedNumber(max, 5) + " " + datasets.getNormal(0).unit.get());
 			for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
 				tooltip.addRow(datasets.getNormal(datasetN).color.getGl(),
 				               bins[datasetN][binN] + " samples (" + ChartUtils.formattedNumber((double) bins[datasetN][binN] / (double) sampleCount * 100f, 4) + "%)",
-				               (float) Math.max((int) (((float) bins[datasetN][binN] - minYfreq) / yFreqRange * plotHeight + yPlotBottom), (int) yPlotBottom));
+				               (float) Math.max((int) (((float) bins[datasetN][binN] - minYfreq) / yFreqRange * plotHeight), 0));
 			}
-			float xBarCenter = ((binSize *  binN) + (binSize * (binN + 1))) / 2f / range * plotWidth + xPlotLeft;
-			tooltip.draw(gl, xBarCenter, mouseX, mouseY, xPlotLeft, yPlotTop, xPlotRight, yPlotBottom);
+			tooltip.draw(gl, mouseX, mouseY, plotWidth, plotHeight, xBarCenter);
 		}
+
+		// stop clipping to the plot region
+		gl.glScissor(chartScissorArgs[0], chartScissorArgs[1], chartScissorArgs[2], chartScissorArgs[3]);
+		
+		// switch back to the chart matrix
+		OpenGL.useMatrix(gl, chartMatrix);
 		
 		// draw the plot border
 		OpenGL.drawQuadOutline2D(gl, Theme.plotOutlineColor, xPlotLeft, yPlotBottom, xPlotRight, yPlotTop);

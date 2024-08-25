@@ -8,9 +8,11 @@ import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionListener;
 import java.io.PrintWriter;
 import java.nio.FloatBuffer;
+import java.nio.LongBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -35,7 +37,7 @@ import net.miginfocom.swing.MigLayout;
  *     2. The Field can be configured programmatically by using the methods defined below (setLocation(), setType(), setName(), ...)
  *     3. After the Field has been configured, it can be inserted into the data structure by calling the insert() method below.
  */
-public class Field {
+public class Field implements Comparable<Field> {
 	
 	final ConnectionTelemetry connection;
 	StorageFloats floats;
@@ -240,6 +242,10 @@ public class Field {
 			}
 		});
 		
+	}
+	
+	@Override public int compareTo(Field other) {
+		return this.location.get() - other.location.get();
 	}
 	
 	public Field onInsert(Consumer<String> handler) {
@@ -573,16 +579,95 @@ public class Field {
 			int state = (value >> LSBit) & bitmask;
 			return state;
 		}
+		
+		public record LevelRange(int startingSampleNumber, long startingTimestamp, int endingSampleNumber, long endingTimestamp) {}
+
+		/**
+		 * Checks the Bitfields in this Field to see which edges and levels were active.
+		 * It is assumed the Maps may contain cached data. In that case, it is assumed the States have not changed. Regenerate the Maps if the enabled States have changed!
+		 * 
+		 * @param minSampleNumber    First sample number to check, inclusive.
+		 * @param maxSampleNumber    Last sample number to check, inclusive.
+		 * @param sampleCountMode    If true, the Tooltips will show their sample number. If false, the Tooltips will show their sample number and time.
+		 * @param edgeTooltips       A Map where the keys are sample numbers, and the values are the corresponding Tooltips to draw on screen.
+		 * @param levels             A Map where the keys are Bitfield States, and the values are the corresponding details for any level events to draw on screen.
+		 * @param di                 Interface to obtain the samples from.
+		 */
+		void getEdgesAndLevelsBetween(int minSampleNumber, int maxSampleNumber, boolean sampleCountMode, Map<Integer, PositionedChart.Tooltip> edgeTooltips, Map<State, List<LevelRange>> levels, DatasetsInterface di) {
+			
+			// sanity checks
+			if(minSampleNumber < 0)
+				return;
+			if(minSampleNumber >= maxSampleNumber)
+				return;
+			
+			// get the samples
+			FloatBuffer buffer = di.getSamplesBuffer(dataset, minSampleNumber, maxSampleNumber);
+			LongBuffer tbuffer = di.getTimestampsBuffer(minSampleNumber, maxSampleNumber);
+			int stateN = ((int) buffer.get() >> LSBit) & bitmask;
+			int startingSampleNumber = minSampleNumber;
+			long startingTimestamp = tbuffer.get();
+			
+			// if the levels Map contains the starting state and it ended at minSampleNumber, we should update that level
+			boolean updateExistingLevel = levels.containsKey(states[stateN]) &&
+			                              !levels.get(states[stateN]).isEmpty() &&
+			                              levels.get(states[stateN]).getLast().endingSampleNumber == minSampleNumber;
+			
+			// test the samples and update the Maps
+			int sampleNumber = 0;
+			long timestamp = 0;
+			for(sampleNumber = minSampleNumber + 1; sampleNumber <= maxSampleNumber; sampleNumber++) {
+				int state = ((int) buffer.get() >> LSBit) & bitmask;
+				timestamp = tbuffer.get();
+				if(state != stateN) {
+					if(levels.containsKey(states[stateN]))
+						if(updateExistingLevel) {
+							int i = levels.get(states[stateN]).size() - 1;
+							LevelRange oldLevel = levels.get(states[stateN]).get(i);
+							LevelRange updatedLevel = new LevelRange(oldLevel.startingSampleNumber, oldLevel.startingTimestamp, sampleNumber, timestamp);
+							levels.get(states[stateN]).set(i, updatedLevel);
+							updateExistingLevel = false;
+						} else {
+							levels.get(states[stateN]).add(new LevelRange(startingSampleNumber, startingTimestamp, sampleNumber, timestamp));
+						}
+					
+					stateN = state;
+					startingSampleNumber = sampleNumber;
+					startingTimestamp = timestamp;
+					if(di.edgeStates.contains(states[stateN])) {
+						if(edgeTooltips.containsKey(sampleNumber)) {
+							edgeTooltips.get(sampleNumber).addRow(states[stateN].glColor, states[stateN].name);
+						} else {
+							edgeTooltips.put(sampleNumber, new PositionedChart.Tooltip(sampleNumber, timestamp)
+							                                   .addRow(sampleCountMode ? "Sample " + sampleNumber : "Sample " + sampleNumber + "\n" + SettingsView.formatTimestampToMilliseconds(timestamp))
+							                                   .addRow(states[stateN].glColor, states[stateN].name));
+						}
+					}
+				}
+			}
+			
+			if(levels.containsKey(states[stateN]))
+				sampleNumber--; // undo the last sampleNumber++ in the above for() loop
+				if(updateExistingLevel) {
+					int i = levels.get(states[stateN]).size() - 1;
+					LevelRange oldLevel = levels.get(states[stateN]).get(i);
+					LevelRange updatedLevel = new LevelRange(oldLevel.startingSampleNumber, oldLevel.startingTimestamp, sampleNumber, timestamp);
+					levels.get(states[stateN]).set(i, updatedLevel);
+					updateExistingLevel = false;
+				} else {
+					levels.get(states[stateN]).add(new LevelRange(startingSampleNumber, startingTimestamp, sampleNumber, timestamp));
+				}
+			
+		}
 
 		/**
 		 * For sorting a Collection of Bitfields so the fields occupying less-significant bits come first.
 		 */
 		@Override public int compareTo(Bitfield other) {
-
-			if(this.dataset == other.dataset)
-				return this.MSBit - other.LSBit;
-			else
-				return this.dataset.location.get() - other.dataset.location.get();
+			
+			int thisBitOffset  = ( this.dataset.location.get() * 8) +  this.LSBit;
+			int otherBitOffset = (other.dataset.location.get() * 8) + other.LSBit;
+			return thisBitOffset - otherBitOffset;
 			
 		}
 		
@@ -616,106 +701,6 @@ public class Field {
 			
 			@Override public String toString() {
 				return "connection " + ConnectionsController.allConnections.indexOf(dataset.connection) + " location " + Field.this.location.get() + " [" + Bitfield.this.MSBit + ":" + Bitfield.this.LSBit + "] = " + value;
-			}
-			
-			/**
-			 * Updates the edges cache if necessary.
-			 * 
-			 * @param maxSampleNumber    Ensure the cache has all edge events that occurred until at least this sample number.
-			 * @param samplesCache       Place to cache raw dataset samples.
-			 */
-			private void updateEdgesCache(int maxSampleNumber, StorageFloats.Cache samplesCache) {
-				
-				if(maxSampleNumber <= lastSampleNumberInCache || maxSampleNumber == 0)
-					return;
-				
-				int sampleNumber = lastSampleNumberInCache;
-				if(sampleNumber < 0)
-					sampleNumber = 0;
-				
-				int previousValue = (int) dataset.getSample(sampleNumber, samplesCache);
-				int previousState = (previousValue >> bitfield.LSBit) & bitfield.bitmask;
-				sampleNumber++;
-				
-				while(sampleNumber <= maxSampleNumber) {
-					int currentValue = (int) dataset.getSample(sampleNumber, samplesCache);
-					if(currentValue != previousValue) {
-						int currentState = (currentValue >> bitfield.LSBit) & bitfield.bitmask;
-						if(currentState != previousState && currentState == value)
-							edgesCache.add(sampleNumber);
-						previousState = currentState;
-					}
-					previousValue = currentValue;
-					sampleNumber++;
-				}
-				
-				lastSampleNumberInCache = maxSampleNumber;
-				
-			}
-			
-			/**
-			 * Gets a List of sample numbers for when this Bitfield transitioned to this State.
-			 * 
-			 * @param minimumSampleNumber    First sample number to test, inclusive.
-			 * @param maximumSampleNumber    Last sample number to test, inclusive.
-			 * @param samplesCache           Place to cache raw dataset samples.
-			 * @return                       List of sample numbers for when this Bitfield State occurred.
-			 */
-			public List<Integer> getEdgeEventsBetween(int minimumSampleNumber, int maximumSampleNumber, StorageFloats.Cache samplesCache) {
-				
-				updateEdgesCache(maximumSampleNumber, samplesCache);
-				
-				List<Integer> edges = new ArrayList<Integer>();
-				for(int sampleNumber : edgesCache) {
-					if(sampleNumber >= minimumSampleNumber && sampleNumber <= maximumSampleNumber)
-						edges.add(sampleNumber);
-					else if(sampleNumber > maximumSampleNumber)
-						break;
-				}
-				
-				return edges;
-				
-			}
-			
-			/**
-			 * Gets a List of ranges for when this Bitfield State existed.
-			 * 
-			 * @param minimumSampleNumber    First sample number to test, inclusive.
-			 * @param maximumSampleNumber    Last sample number to test, inclusive.
-			 * @param samplesCache           Place to cache raw dataset samples.
-			 * @return                       List of ranges ([0] minSampleNumber, [1] maxSampleNumber) for when this Bitfield State existed.
-			 */
-			public List<int[]> getLevelsBetween(int minimumSampleNumber, int maximumSampleNumber, StorageFloats.Cache samplesCache) {
-				
-				updateEdgesCache(maximumSampleNumber, samplesCache);
-				
-				List<int[]> levels = new ArrayList<int[]>();
-				List<Integer> edges = getEdgeEventsBetween(minimumSampleNumber, maximumSampleNumber - 1, samplesCache);
-				
-				if(edges.isEmpty() || edges.get(0) != minimumSampleNumber) {
-					int firstValue = (int) dataset.getSample(minimumSampleNumber, samplesCache);
-					int firstState = (firstValue >> bitfield.LSBit) & bitfield.bitmask;
-					if(firstState == value)
-						edges.add(0, minimumSampleNumber);
-				}
-				
-				for(int i = 0; i < edges.size(); i++) {
-					int levelBegin = edges.get(i);
-					int levelEnd = i+1 < edges.size() ? edges.get(i+1) : maximumSampleNumber; // "worse case scenario"
-					// check if level ended earlier
-					if(levelEnd - levelBegin > 1)
-						for(State s : bitfield.states) {
-							if(s == this)
-								continue;
-							List<Integer> edgesOfOtherState = s.getEdgeEventsBetween(levelBegin + 1, levelEnd - 1, samplesCache);
-							if(!edgesOfOtherState.isEmpty())
-								levelEnd = edgesOfOtherState.get(0);
-						}
-					levels.add(new int[] {levelBegin, levelEnd});
-				}
-				
-				return levels;
-				
 			}
 			
 			/**
