@@ -1101,6 +1101,7 @@ public class WidgetTextfield<T> implements Widget {
 						throw new Exception();
 					else if((newNumber > (float) maximum && checkForSentinel && newNumber != (float) sentinelNumber) || (newNumber > (float) maximum && !checkForSentinel))
 						throw new Exception();
+					text = Float.toString(newNumber); // needed so "-.5" becomes "-0.5" etc. this also ensures export/import works consistently.
 				}
 			} catch(Exception e) {
 				textfield.setText(oldText);

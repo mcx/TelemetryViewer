@@ -1,4 +1,6 @@
 import java.awt.Dimension;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.PrintWriter;
 import java.util.Hashtable;
 import java.util.function.Consumer;
@@ -15,7 +17,10 @@ public class WidgetSlider implements Widget {
 	private volatile int value;
 	private boolean isLog2Mode = false;
 	private boolean isDividedByTen = false;
-	private Consumer<Integer> handler;
+	
+	private Consumer<Boolean> mousePressedHandler;
+	private Consumer<Integer> newValueHandler;
+	private Consumer<Boolean> mouseReleasedHandler;
 	
 	@SuppressWarnings("serial")
 	public WidgetSlider(String label, int min, int max, int selectedValue) {
@@ -34,23 +39,38 @@ public class WidgetSlider implements Widget {
 			}
 		};
 		
-		Hashtable<Integer, JLabel> labels = new Hashtable<Integer, JLabel>();
-		int tickCount = (max - min + 1);
-		int incrementAmount = (int) Math.ceil(tickCount / 8.0);
-		for(int i = min; i <= max; i += incrementAmount)
-			labels.put(i,  new JLabel("<html><font size=-2>" + i + "</font></html>"));
+		// draw labels if the range is <20
+		if(max - min < 20) {
+			Hashtable<Integer, JLabel> labels = new Hashtable<Integer, JLabel>();
+			int tickCount = (max - min + 1);
+			int incrementAmount = (int) Math.ceil(tickCount / 8.0);
+			for(int i = min; i <= max; i += incrementAmount)
+				labels.put(i,  new JLabel("<html><font size=-2>" + i + "</font></html>"));
+			
+			slider.setMajorTickSpacing(1);
+			slider.setPaintTicks(true);
+			slider.setPaintLabels(true);
+			slider.setLabelTable(labels);
+		}
 		
-		slider.setMajorTickSpacing(1);
-		slider.setPaintTicks(true);
-		slider.setPaintLabels(true);
-		slider.setLabelTable(labels);
+		slider.addMouseListener(new MouseAdapter() {
+			@Override public void mousePressed(MouseEvent e) {
+				if(mousePressedHandler != null)
+					mousePressedHandler.accept(true);
+			}
+			@Override public void mouseReleased(MouseEvent e) {
+				if(mouseReleasedHandler != null)
+					mouseReleasedHandler.accept(true);
+			}
+		});
+		
 		slider.addChangeListener(event -> {
 			int newValue = isLog2Mode ? (int) Math.pow(2, slider.getValue()) : slider.getValue();
 			if(newValue == value)
 				return; // no change
 			value = newValue;
-			if(handler != null)
-				handler.accept(newValue);
+			if(newValueHandler != null)
+				newValueHandler.accept(newValue);
 		});
 		
 	}
@@ -105,16 +125,20 @@ public class WidgetSlider implements Widget {
 	}
 	
 	/**
-	 * @param eventHandler    Will be notified when the slider changes. Can be null.
+	 * @param dragStartedHandler    Will be called when the mouse is pressed. Can be null.
+	 * @param valueHandler          Will be called when the slider represents a new value. Can be null.
+	 * @param dragEndedHandler      Will be called when the mouse is released. Can be null.
 	 */
-	public WidgetSlider onChange(Consumer<Integer> eventHandler) {
+	public WidgetSlider onChange(Consumer<Boolean> dragStartedHandler, Consumer<Integer> valueHandler, Consumer<Boolean> dragEndedHandler) {
 		
-		handler = eventHandler;
+		mousePressedHandler = dragStartedHandler;
+		newValueHandler = valueHandler;
+		mouseReleasedHandler = dragEndedHandler;
 		
-		// call the handler, but later, so the calling code can finish constructing things before the handler is triggered
+		// call the value handler, but later, so the calling code can finish constructing things before the handler is triggered
 		SwingUtilities.invokeLater(() -> {
-			if(handler != null)
-				handler.accept(isLog2Mode ? (int) Math.pow(2, slider.getValue()) : slider.getValue());
+			if(newValueHandler != null)
+				newValueHandler.accept(isLog2Mode ? (int) Math.pow(2, slider.getValue()) : slider.getValue());
 		});
 		
 		return this;
@@ -155,6 +179,14 @@ public class WidgetSlider implements Widget {
 		if(prefixLabel != null)
 			prefixLabel.setVisible(isVisible);
 		slider.setVisible(isVisible);
+		
+	}
+
+	public void setEnabled(boolean isEnabled) {
+		
+		if(prefixLabel != null)
+			prefixLabel.setEnabled(isEnabled);
+		slider.setEnabled(isEnabled);
 		
 	}
 

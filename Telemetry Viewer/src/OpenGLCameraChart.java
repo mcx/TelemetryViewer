@@ -81,18 +81,15 @@ public class OpenGLCameraChart extends PositionedChart {
 		
 	}
 
-	@Override public EventHandler drawChart(GL2ES3 gl, float[] chartMatrix, int width, int height, long nowTimestamp, int lastSampleNumber, double zoomLevel, int mouseX, int mouseY) {
+	@Override public EventHandler drawChart(GL2ES3 gl, float[] chartMatrix, int width, int height, long endTimestamp, int endSampleNumber, double zoomLevel, int mouseX, int mouseY) {
 
+		// if there's a global trigger, use the timestamp of the trigger point instead of the endTimestamp
+		if(OpenGLChartsView.instance.triggerDetails.isTriggered())
+			endTimestamp = OpenGLChartsView.instance.triggerDetails.triggeredTimestamp();
+		
 		// get the image
-		ConnectionCamera.GLframe f = null;
-		if(connection == null)
-			f = new ConnectionCamera.GLframe(null, true, 1, 1, "[select a camera]", 0);
-		else if(OpenGLChartsView.instance.isLiveView() && !ConnectionsController.importing)
-			f = connection.getLiveImage();
-		else {
-			long lastTimestamp = OpenGLChartsView.instance.isLiveView() ? ConnectionsController.getLastTimestamp() : OpenGLChartsView.instance.nonLiveTimestamp;
-			f = connection.getImageAtOrBeforeTimestamp(lastTimestamp);
-		}
+		ConnectionCamera.Frame f = (connection == null) ? new ConnectionCamera.Frame(null, true, 1, 1, "[select a camera]", 0) :
+		                                                  connection.getImageAtOrBeforeTimestamp(endTimestamp);
 		
 		// calculate x and y positions of everything
 		float xDisplayLeft = Theme.tilePadding;

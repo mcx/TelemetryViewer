@@ -12,7 +12,7 @@ import java.io.StringWriter;
 import java.net.ConnectException;
 import java.net.MalformedURLException;
 import java.net.SocketTimeoutException;
-import java.net.URL;
+import java.net.URI;
 import java.net.URLConnection;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -63,8 +63,8 @@ public class ConnectionCamera extends Connection {
 	private Webcam camera; // only used if not MJPEG
 	
 	// images in memory
-	private volatile GLframe liveImage = new GLframe(null, true, 1, 1, "[waiting]", 0);
-	private volatile GLframe oldImage  = new GLframe(null, true, 1, 1, "[waiting]", 0);
+	private volatile Frame liveImage = new Frame(null, true, 1, 1, "[waiting]", 0);
+	private volatile Frame oldImage  = new Frame(null, true, 1, 1, "[waiting]", 0);
 	
 	// images archived to disk
 	private class FrameInfo {
@@ -141,8 +141,8 @@ public class ConnectionCamera extends Connection {
 				try {
 					
 					// connect to the stream
-					liveImage = new GLframe(null, true, 1, 1, "[connecting...]", 0);
-					URLConnection stream = new URL(url.get()).openConnection();
+					liveImage = new Frame(null, true, 1, 1, "[connecting...]", 0);
+					URLConnection stream = new URI(url.get()).toURL().openConnection();
 					stream.setConnectTimeout(5000);
 					stream.setReadTimeout(5000);
 					stream.connect();
@@ -209,10 +209,10 @@ public class ConnectionCamera extends Connection {
 					while(liveJpegThreads.get() > 0); // wait
 					try { is.close(); } catch(Exception e2) {}
 					
-					     if(e instanceof ConnectException)       liveImage = new GLframe(null, true, 1, 1, "[unable to connect]",    0);
-					else if(e instanceof SocketTimeoutException) liveImage = new GLframe(null, true, 1, 1, "[connection timed out]", 0);
-					else if(e instanceof InterruptedException)   liveImage = new GLframe(null, true, 1, 1, "[stopped]",              0);
-					else                                         liveImage = new GLframe(null, true, 1, 1, "[stream ended]",         0);
+					     if(e instanceof ConnectException)       liveImage = new Frame(null, true, 1, 1, "[unable to connect]",    0);
+					else if(e instanceof SocketTimeoutException) liveImage = new Frame(null, true, 1, 1, "[connection timed out]", 0);
+					else if(e instanceof InterruptedException)   liveImage = new Frame(null, true, 1, 1, "[stopped]",              0);
+					else                                         liveImage = new Frame(null, true, 1, 1, "[stream ended]",         0);
 					     
 					if(e instanceof MalformedURLException)
 						SwingUtilities.invokeLater(() -> disconnect("Unable to connect to " + url.get())); // invokeLater to prevent deadlock
@@ -228,7 +228,7 @@ public class ConnectionCamera extends Connection {
 			
 		} else {
 			
-			liveImage = new GLframe(null, true, 1, 1, "[connecting...]", 0);
+			liveImage = new Frame(null, true, 1, 1, "[connecting...]", 0);
 			
 			// check if the camera exists
 			if(camera == null) {
@@ -304,9 +304,9 @@ public class ConnectionCamera extends Connection {
 					while(liveJpegThreads.get() > 0); // wait
 					camera.close();
 					
-					     if(e instanceof WebcamException)     liveImage = new GLframe(null, true, 1, 1, "[unable to connect]", 0);
-					else if(e instanceof WebcamLockException) liveImage = new GLframe(null, true, 1, 1, "[unable to connect]", 0);
-					else						              liveImage = new GLframe(null, true, 1, 1, "[stopped]", 0);
+					     if(e instanceof WebcamException)     liveImage = new Frame(null, true, 1, 1, "[unable to connect]", 0);
+					else if(e instanceof WebcamLockException) liveImage = new Frame(null, true, 1, 1, "[unable to connect]", 0);
+					else						              liveImage = new Frame(null, true, 1, 1, "[stopped]", 0);
 					
 					setConnected(false);
 					
@@ -344,7 +344,7 @@ public class ConnectionCamera extends Connection {
 		if(errorMessage != null)
 			NotificationsController.showFailureUntil(errorMessage, () -> false, true);
 		
-		liveImage = new GLframe(null, true, 1, 1, "[stopped]", 0);
+		liveImage = new Frame(null, true, 1, 1, "[stopped]", 0);
 		
 	}
 	
@@ -398,17 +398,6 @@ public class ConnectionCamera extends Connection {
 		
 	}
 	
-	/**
-	 * Gets the most recent image.
-	 * 
-	 * @return    A GLframe object containing the most recent image and related information.
-	 */
-	public GLframe getLiveImage() {
-		
-		return liveImage;
-		
-	}
-	
 	private static final SimpleDateFormat timestampFormatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
 	
 	/**
@@ -453,19 +442,19 @@ public class ConnectionCamera extends Connection {
 	 * Gets the closest image at or just before a certain moment in time.
 	 * 
 	 * @param timestamp    The moment in time (milliseconds since 1970-01-01.)
-	 * @return             The image and related information, as a GLframe object.
+	 * @return             The image and related information, as a Frame object.
 	 */
-	public GLframe getImageAtOrBeforeTimestamp(long timestamp) {
+	public Frame getImageAtOrBeforeTimestamp(long timestamp) {
 		
 		// give up if there's no images
 		if(framesIndex.isEmpty())
-			return new GLframe(null, true, 1, 1, "[no image]", 0);
+			return new Frame(null, true, 1, 1, "[no image]", 0);
 		
 		// determine the frame index
 		int frameIndex = framesIndex.size() - 1;
 		long frameTimestamp = framesIndex.get(frameIndex).timestamp;
 		
-		for(int i = frameIndex - 1; i >= 0; i--) {
+		for(int i = frameIndex; i >= 0; i--) {
 			long timestamp2 = framesIndex.get(i).timestamp;
 			if(timestamp2 <= timestamp) {
 				frameIndex = i;
@@ -476,7 +465,12 @@ public class ConnectionCamera extends Connection {
 		
 		// give up if there's no frame before the specified timestamp
 		if(frameTimestamp > timestamp)
-			return new GLframe(null, true, 1, 1, "[no image]", 0);
+			return new Frame(null, true, 1, 1, "[no image]", 0);
+		
+		// return live image if appropriate
+		// when importing we always want the label to show that frame's timestamp, so the liveImage is never updated or used while importing
+		if(!ConnectionsController.importing && (frameTimestamp == liveImage.timestamp || frameIndex == framesIndex.size() - 1))
+			return liveImage;
 		
 		// return cached image if appropriate
 		if(frameTimestamp == oldImage.timestamp)
@@ -489,7 +483,7 @@ public class ConnectionCamera extends Connection {
 			file.read(ByteBuffer.wrap(jpegBytes), info.offset);
 		} catch(Exception e) {
 			e.printStackTrace();
-			return new GLframe(null, true, 1, 1, "[error reading image from disk]", 0);
+			return new Frame(null, true, 1, 1, "[error reading image from disk]", 0);
 		}
 		
 		int width = 0;
@@ -505,7 +499,7 @@ public class ConnectionCamera extends Connection {
 			bgrBytes = new byte[width * height * 3];
 			tjd.decompress(bgrBytes, 0, 0, width, 0, height, TJ.PF_BGR, 0);
 			tjd.close();
-			oldImage = new GLframe(bgrBytes, true, width, height, label, info.timestamp);
+			oldImage = new Frame(bgrBytes, true, width, height, label, info.timestamp);
 			return oldImage;
 		} catch(Error | Exception e) {
 			// fallback to the JRE library
@@ -514,11 +508,11 @@ public class ConnectionCamera extends Connection {
 				width = bi.getWidth();
 				height = bi.getHeight();
 				bgrBytes = ((DataBufferByte)bi.getRaster().getDataBuffer()).getData();
-				oldImage = new GLframe(bgrBytes, true, width, height, label, info.timestamp);
+				oldImage = new Frame(bgrBytes, true, width, height, label, info.timestamp);
 				return oldImage;
 			} catch(Exception e2) {
 				e.printStackTrace();
-				return new GLframe(null, true, 1, 1, "[error decoding image]", 0);
+				return new Frame(null, true, 1, 1, "[error decoding image]", 0);
 			}
 		}
 		
@@ -743,7 +737,7 @@ public class ConnectionCamera extends Connection {
 				if(frameCount > 30)
 					fps = 30000.0 / (double) (framesIndex.get(frameCount - 1).timestamp - framesIndex.get(frameCount - 30).timestamp);
 				String label = String.format("%s (%d x %d, %01.1f FPS)", isMjpeg ? url.get() : name.get().substring(5), width, height, fps);
-				liveImage = new GLframe(bgrBytes, true, width, height, label, timestamp);
+				liveImage = new Frame(bgrBytes, true, width, height, label, timestamp);
 				
 				liveJpegThreads.decrementAndGet();
 				
@@ -850,14 +844,14 @@ public class ConnectionCamera extends Connection {
 		String label = String.format("%s (%d x %d, %01.1f FPS)", isMjpeg ? url.get() : name.get().substring(5), resolution.width, resolution.height, fps);
 		
 		image.rewind();
-		liveImage = new GLframe(image, resolution.width, resolution.height, label, timestamp);
+		liveImage = new Frame(image, resolution.width, resolution.height, label, timestamp);
 		
 	}
 	
 	/**
-	 * Frames to be shown on screen are stored in GLframe objects.
+	 * Frames to be shown on screen are stored in an object with all relevant data.
 	 */
-	public static class GLframe {
+	public static class Frame {
 		ByteBuffer buffer;
 		boolean isBgr; // if buffer uses the BGR or RGB pixel format
 		int width;
@@ -865,7 +859,7 @@ public class ConnectionCamera extends Connection {
 		String label;
 		long timestamp;
 		
-		public GLframe(byte[] bytes, boolean isBgr, int width, int height, String label, long timestamp) {
+		public Frame(byte[] bytes, boolean isBgr, int width, int height, String label, long timestamp) {
 			this.buffer = Buffers.newDirectByteBuffer(width * height * 3);
 			this.isBgr = isBgr;
 			this.width = width;
@@ -883,7 +877,7 @@ public class ConnectionCamera extends Connection {
 			}
 		}
 		
-		public GLframe(ByteBuffer bytes, int width, int height, String label, long timestamp) {
+		public Frame(ByteBuffer bytes, int width, int height, String label, long timestamp) {
 			this.buffer = bytes;
 			this.isBgr = false;
 			this.width = width;

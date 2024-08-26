@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.NetworkInterface;
 import java.nio.FloatBuffer;
+import java.nio.LongBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -1507,6 +1508,12 @@ public abstract class ConnectionTelemetry extends Connection {
 		
 	}
 	
+	public LongBuffer getTimestampsBuffer(int firstSampleNumber, int lastSampleNumber, StorageTimestamps.Cache cache) {
+		
+		return timestamps.getTampstamps(firstSampleNumber, lastSampleNumber, cache);
+		
+	}
+	
 	/**
 	 * @return    The current number of samples stored in the Datasets.
 	 */
@@ -1684,6 +1691,9 @@ public abstract class ConnectionTelemetry extends Connection {
 		
 		// remove charts containing the dataset
 		ChartsController.getCharts().stream().filter(chart -> chart.datasets.contains(field)).toList().forEach(chart -> ChartsController.removeChart(chart));
+		
+		// remove any charts triggering on the dataset
+		ChartsController.getCharts().stream().filter(chart -> chart.trigger != null && field == chart.trigger.triggerChannel).toList().forEach(chart -> ChartsController.removeChart(chart));
 		
 		// remove the dataset
 		fields.remove(location);

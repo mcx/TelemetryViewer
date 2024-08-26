@@ -14,11 +14,10 @@ import javax.swing.JPanel;
 
 public class WidgetDatasetComboboxes implements Widget {
 	
-	private List<JLabel> comboboxLabels = new ArrayList<JLabel>();
-	private List<JComboBox<Field>> comboboxes = new ArrayList<JComboBox<Field>>();
-	
-	private String[] labels;
-	private Consumer<List<Field>> eventHandler;
+	private final List<JLabel> comboboxLabels = new ArrayList<JLabel>();
+	private final List<JComboBox<Field>> comboboxes = new ArrayList<JComboBox<Field>>();
+	private final String[] labels;
+	private final Consumer<List<Field>> eventHandler;
 	
 	/**
 	 * A widget that lets the user select a specific number of datasets via comboboxes.
@@ -145,6 +144,7 @@ public class WidgetDatasetComboboxes implements Widget {
 	
 	public void setEnabled(boolean isEnabled) {
 		
+		comboboxLabels.forEach(label -> label.setEnabled(isEnabled));
 		comboboxes.forEach(combobox -> combobox.setEnabled(isEnabled));
 		
 	}

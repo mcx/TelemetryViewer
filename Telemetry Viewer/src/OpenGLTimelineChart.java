@@ -1,45 +1,23 @@
-import java.util.List;
+import java.util.Arrays;
 import java.util.Map;
 
 import javax.swing.JPanel;
 
+import com.jogamp.opengl.GL;
 import com.jogamp.opengl.GL2ES3;
 import com.jogamp.opengl.GL3;
 
 public class OpenGLTimelineChart extends PositionedChart {
 	
-	// timeline region
-	float yTimelineTickBottom;
-	float yTimelineTickTop;
-	float xTimelineLeft;
-	float xTimelineRight;
-	float timelineWidth;
-	float yTimelineBottom;
-	float yTimelineTop;
-	float timelineHeight;
+	private WidgetCheckbox showControls;
+	private WidgetCheckbox showTime;
+	private WidgetCheckbox showTimeline;
+	private WidgetDatasetCheckboxes datasetsWidget;
 	
-	// playback controls
-	float yButtonsBottom;
-	int yButtonsTextBaseline;
-	
+	// these timestamps need to be fields so the mouse event handler can see the *current* values
+	// otherwise the handler will only see the values from when the handler was defined, and click-and-dragging will not work as expected!
 	long minTimestamp;
 	long maxTimestamp;
-	
-	// time marker
-	float markerWidth;
-	
-	// time label region
-	float yTimeBaseline1;
-	float yTimeBaseline2; // only used if label uses 2 lines
-	float xTimeRight;
-	
-	BitfieldEvents events;
-	
-	// user settings
-	WidgetCheckbox showControls;
-	WidgetCheckbox showTime;
-	WidgetCheckbox showTimeline;
-	WidgetDatasetCheckboxes datasetsWidget;
 	
 	@Override public String toString() {
 		
@@ -50,8 +28,8 @@ public class OpenGLTimelineChart extends PositionedChart {
 	public OpenGLTimelineChart() {
 		
 		datasetsWidget = new WidgetDatasetCheckboxes(null,
-		                                             newBitfieldEdges  -> { datasets.setEdges(newBitfieldEdges);   events = null; },
-		                                             newBitfieldLevels -> { datasets.setLevels(newBitfieldLevels); events = null; },
+		                                             newBitfieldEdges  -> datasets.setEdges(newBitfieldEdges),
+		                                             newBitfieldLevels -> datasets.setLevels(newBitfieldLevels),
 		                                             null,
 		                                             false);
 		
@@ -83,6 +61,8 @@ public class OpenGLTimelineChart extends PositionedChart {
 	@Override public EventHandler drawChart(GL2ES3 gl, float[] chartMatrix, int width, int height, long nowTimestamp, int lastSampleNumber, double zoomLevel, int mouseX, int mouseY) {
 		
 		EventHandler handler = null;
+		
+		WidgetTrigger.Result triggerDetails = OpenGLChartsView.instance.triggerDetails;
 
 		boolean haveTelemetry = ConnectionsController.telemetryExists();
 		if(!haveTelemetry)
@@ -90,29 +70,31 @@ public class OpenGLTimelineChart extends PositionedChart {
 		
 		minTimestamp = haveTelemetry ? ConnectionsController.getFirstTimestamp() : 0;
 		maxTimestamp = haveTelemetry ? ConnectionsController.getLastTimestamp()  : 0;
-		if(OpenGLChartsView.instance.isLiveView())
-			maxTimestamp = nowTimestamp;
 		
 		boolean twoLineTimestamps = SettingsView.isTimeFormatTwoLines();
-		String timeText = haveTelemetry ? SettingsView.formatTimestampToMilliseconds(nowTimestamp) : "[waiting for telemetry]";
+		String timeText = !haveTelemetry                      ? "[waiting for telemetry]" :
+		                  triggerDetails.connection() == null ? SettingsView.formatTimestampToMilliseconds(nowTimestamp) :
+		                  triggerDetails.isTriggered()        ? "Triggered " + SettingsView.formatTimestampToMilliseconds(nowTimestamp) :
+		                                                        "[Not Triggered] " + SettingsView.formatTimestampToMilliseconds(triggerDetails.nonTriggeredEndTimestamp());
+		
 		String[] timeTextLine = timeText.split("\n");
 		boolean useTwoLines = haveTelemetry ? twoLineTimestamps && OpenGL.largeTextWidth(gl, timeText.replace('\n', ' ')) > (width - 2*Theme.tilePadding) : false;
 		float timeHeight = useTwoLines ? 2.3f * OpenGL.largeTextHeight : OpenGL.largeTextHeight;
+		
+		float yTop = height - Theme.tilePadding;
 		
 		if(showControls.isTrue()) {
 			
 			// x and y locations
 			float buttonSize = OpenGL.largeTextHeight + 2 * Theme.tilePadding;
-			yButtonsBottom = height - Theme.tilePadding - buttonSize;
+			float yButtonsBottom = height - Theme.tilePadding - buttonSize;
 			if(showTimeline.isFalse() && showTime.isFalse())
 				yButtonsBottom = (height / 2f) - (buttonSize / 2f);
 			else if(showTimeline.isFalse() && showTime.isTrue())
 				yButtonsBottom = (height / 2f) - (buttonSize / 2f) + (Theme.tilePadding / 2f) + (timeHeight / 2f);
-				
-			yButtonsTextBaseline = (int) (yButtonsBottom + Theme.tilePadding);
+			
 			float yButtonsTop = yButtonsBottom + buttonSize;
-			float xCenter = width / 2f;
-			float xBeginButtonLeft   = xCenter - (0.5f * buttonSize) - Theme.tilePadding - buttonSize - Theme.tilePadding - buttonSize;
+			float xBeginButtonLeft   = (width / 2f) - (0.5f * buttonSize) - Theme.tilePadding - buttonSize - Theme.tilePadding - buttonSize;
 			float xBeginButtonRight  = xBeginButtonLeft + buttonSize;
 			float xRewindButtonLeft  = xBeginButtonRight + Theme.tilePadding;
 			float xRewindButtonRight = xRewindButtonLeft + buttonSize;
@@ -175,8 +157,7 @@ public class OpenGLTimelineChart extends PositionedChart {
 				handler = EventHandler.onPress(event -> OpenGLChartsView.instance.setPlayBackwards());
 			} else if(mouseX >= xPauseButtonLeft && mouseX <= xPauseButtonRight && mouseY >= yButtonsBottom && mouseY <= yButtonsTop) {
 				OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xPauseButtonLeft, yButtonsBottom, buttonSize, buttonSize);
-				long now = nowTimestamp;
-				handler = EventHandler.onPress(event -> OpenGLChartsView.instance.setPaused(now, null, 0));
+				handler = EventHandler.onPress(event -> OpenGLChartsView.instance.setPaused(triggerDetails.nonTriggeredEndTimestamp(), null, 0));
 			} else if(mouseX >= xPlayButtonLeft && mouseX <= xPlayButtonRight && mouseY >= yButtonsBottom && mouseY <= yButtonsTop) {
 				OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xPlayButtonLeft, yButtonsBottom, buttonSize, buttonSize);
 				handler = EventHandler.onPress(event -> OpenGLChartsView.instance.setPlayForwards());
@@ -195,19 +176,18 @@ public class OpenGLTimelineChart extends PositionedChart {
 					                           OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xBeginButtonLeft, yButtonsBottom, buttonSize, buttonSize);
 					                       else
 					                           OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xPauseButtonLeft,  yButtonsBottom, buttonSize, buttonSize);}
-					case TRIGGERED    -> OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xEndButtonLeft,    yButtonsBottom, buttonSize, buttonSize);
 				}
+			
+			yTop = yButtonsBottom - Theme.tilePadding;
 			
 		}
 		
 		if(showTime.isTrue()) {
 			
-			float yTimeTop = showControls.isTrue() ? yButtonsBottom - Theme.tilePadding :
-			                 showTimeline.isTrue() ? height - Theme.tilePadding :
-			                                         (height / 2f) + (timeHeight / 2f);
-			yTimeBaseline1 = yTimeTop - OpenGL.largeTextHeight;
-			yTimeBaseline2 = useTwoLines ? yTimeBaseline1 - (1.3f * OpenGL.largeTextHeight) : yTimeBaseline1;
-			if(yTimeBaseline2 > 0)
+			float yTimeTop = showControls.isTrue() || showTimeline.isTrue() ? yTop : (height / 2f) + (timeHeight / 2f);
+			float yTimeBaseline1 = yTimeTop - OpenGL.largeTextHeight;
+			float yTimeBaseline2 = useTwoLines ? yTimeBaseline1 - (1.3f * OpenGL.largeTextHeight) : yTimeBaseline1;
+			if(yTimeBaseline2 > 0) {
 				if(useTwoLines) {
 					float xTimeLeft1 = (width / 2) - (OpenGL.largeTextWidth(gl, timeTextLine[0]) / 2);
 					float xTimeLeft2 = (width / 2) - (OpenGL.largeTextWidth(gl, timeTextLine[1]) / 2);
@@ -218,6 +198,8 @@ public class OpenGLTimelineChart extends PositionedChart {
 					float xTimeLeft1 = (width / 2) - (OpenGL.largeTextWidth(gl, timeText) / 2);
 					OpenGL.drawLargeText(gl, timeText, (int) xTimeLeft1, (int) yTimeBaseline1, 0);
 				}
+				yTop = yTimeBaseline2 - Theme.tilePadding;
+			}
 			
 		}
 		
@@ -228,18 +210,18 @@ public class OpenGLTimelineChart extends PositionedChart {
 			float yTimelineTextTop = yTimelineTextBaseline + OpenGL.smallTextHeight;
 			if(twoLineTimestamps)
 				yTimelineTextTop += 1.3 * OpenGL.smallTextHeight;
-			yTimelineTickBottom = yTimelineTextTop + Theme.tickTextPadding;
-			yTimelineTickTop = yTimelineTickBottom + Theme.tickLength;
-			xTimelineLeft = Theme.tilePadding;
-			xTimelineRight = width - Theme.tilePadding;
-			timelineWidth = xTimelineRight - xTimelineLeft;
-			yTimelineBottom = yTimelineTickTop;
-			yTimelineTop = yTimelineBottom + (Theme.lineWidth * 2);
-			timelineHeight = yTimelineTop - yTimelineBottom;
-			markerWidth = 6 * ChartsController.getDisplayScalingFactor();
+			float yTimelineTickBottom = yTimelineTextTop + Theme.tickTextPadding;
+			float yTimelineTickTop = yTimelineTickBottom + Theme.tickLength;
+			float xTimelineLeft = Theme.tilePadding;
+			float xTimelineRight = width - Theme.tilePadding;
+			float timelineWidth = xTimelineRight - xTimelineLeft;
+			float yTimelineBottom = yTimelineTickTop;
+			float yTimelineTop = yTimelineBottom + (Theme.lineWidth * 2);
+			float timelineHeight = yTimelineTop - yTimelineBottom;
+			float markerWidth = 6 * ChartsController.getDisplayScalingFactor();
 			
 			// only draw the timeline if there's space for it
-			if(yTimelineTop > height || (showTime.isTrue() && yTimelineTop > yTimeBaseline2) || (showControls.isTrue() && yTimelineTop > yButtonsBottom))
+			if(yTimelineTop > yTop)
 				return handler;
 			
 			// get the divisions
@@ -276,31 +258,55 @@ public class OpenGLTimelineChart extends PositionedChart {
 			// draw the timeline
 			OpenGL.drawBox(gl, Theme.tickLinesColor, xTimelineLeft, yTimelineBottom, timelineWidth, timelineHeight);
 			
-			// draw a marker at the current timestamp
-			float x = (float) (nowTimestamp - minTimestamp) / (float) (maxTimestamp - minTimestamp) * timelineWidth + xTimelineLeft;
+			// draw a marker at the current (non-triggered) timestamp
+			float x = (float) (triggerDetails.nonTriggeredEndTimestamp() - minTimestamp) / (float) (maxTimestamp - minTimestamp) * timelineWidth + xTimelineLeft;
 			float y = yTimelineTop;
 			OpenGL.drawTriangle2D(gl, Theme.tickLinesColor, x, y, x + markerWidth/2, y+markerWidth, x - markerWidth/2, y+markerWidth);
 			OpenGL.drawBox(gl, Theme.tickLinesColor, x - markerWidth/2, y+markerWidth, markerWidth, markerWidth);
 			
-			// draw any bitfield events
-			if((datasets.hasEdges() || datasets.hasLevels()) && datasets.connection.getSampleCount() > 0) {
-				int[] originalScissorArgs = new int[4];
-				gl.glGetIntegerv(GL3.GL_SCISSOR_BOX, originalScissorArgs, 0);
-				gl.glScissor(originalScissorArgs[0] + (int) xTimelineLeft, originalScissorArgs[1] + (int) (y + 2*markerWidth), (int) timelineWidth, (int) (height - yTimelineBottom));
-				int trueLastSampleNumber = datasets.connection.getSampleCount() - 1;
-				if(events == null)
-					events = new BitfieldEvents(false, false, datasets, 0, trueLastSampleNumber);
-				else
-					events.update(0, trueLastSampleNumber);
-				long min = minTimestamp;
-				long max = maxTimestamp;
-				List<BitfieldEvents.EdgeMarker>  edgeMarkers  = events.getEdgeMarkersMillisecondsMode(min, max - min, (int) timelineWidth);
-				List<BitfieldEvents.LevelMarker> levelMarkers = events.getLevelMarkersMillisecondsMode(min, max - min, (int) timelineWidth);
-				EventHandler h = ChartUtils.drawMarkers(gl, datasets, edgeMarkers, levelMarkers, xTimelineLeft, showTime.isTrue() ? yTimeBaseline2 - Theme.tickTextPadding - Theme.lineWidth : height - Theme.lineWidth, xTimelineRight, y + 2*markerWidth, mouseX, mouseY);
-				if(handler == null)
-					handler = h;
-				gl.glScissor(originalScissorArgs[0], originalScissorArgs[1], originalScissorArgs[2], originalScissorArgs[3]);
+			// if triggered, draw a "T" at the triggered timestamp
+			if(triggerDetails.isTriggered()) {
+				float xTrig = (float) (triggerDetails.triggeredTimestamp() - minTimestamp) / (float) (maxTimestamp - minTimestamp) * timelineWidth + xTimelineLeft;
+				OpenGL.buffer.rewind();
+				OpenGL.buffer.put(xTrig);                 OpenGL.buffer.put(y);
+				OpenGL.buffer.put(xTrig);                 OpenGL.buffer.put(y + markerWidth*2 + Theme.lineWidth*2);
+				OpenGL.buffer.put(xTrig - markerWidth/2); OpenGL.buffer.put(y + markerWidth*2 + Theme.lineWidth*2);
+				OpenGL.buffer.put(xTrig + markerWidth/2); OpenGL.buffer.put(y + markerWidth*2 + Theme.lineWidth*2);
+				OpenGL.drawLinesXy(gl, GL.GL_LINES, Theme.tickLinesColor, OpenGL.buffer.rewind(), 4);
 			}
+			
+			// clip to the "plot" region
+			int xPlotLeft = (int) xTimelineLeft;
+			int yPlotBottom = (int) (yTimelineTop + 2*markerWidth);
+			int plotWidth = (int) timelineWidth;
+			int plotHeight = (int) (yTop - yPlotBottom);
+			
+			int[] chartScissorArgs = new int[4];
+			gl.glGetIntegerv(GL3.GL_SCISSOR_BOX, chartScissorArgs, 0);
+			gl.glScissor(chartScissorArgs[0] + xPlotLeft, chartScissorArgs[1] + yPlotBottom, plotWidth, plotHeight + 1); // +1 so the top of tooltips don't get cropped
+			
+			// update the matrix and mouse so the "plot" region starts at (0,0)
+			// x = x + xPlotLeft;
+			// y = y + yPlotBottom;
+			float[] plotMatrix = Arrays.copyOf(chartMatrix, 16);
+			OpenGL.translateMatrix(plotMatrix, xPlotLeft, yPlotBottom, 0);
+			OpenGL.useMatrix(gl, plotMatrix);
+			mouseX -= xPlotLeft;
+			mouseY -= yPlotBottom;
+			
+			// draw any bitfield events
+			int trueLastSampleNumber = datasets.connection == null ? -1 : datasets.connection.getSampleCount() - 1;
+			EventHandler h = datasets.drawBitfields(gl, mouseX, mouseY, plotWidth, plotHeight, false, minTimestamp, maxTimestamp - minTimestamp, 0, trueLastSampleNumber, true);
+			if(h != null)
+				handler = h;
+			
+			// stop clipping to the "plot" region
+			gl.glScissor(chartScissorArgs[0], chartScissorArgs[1], chartScissorArgs[2], chartScissorArgs[3]);
+			
+			// switch back to the chart matrix
+			OpenGL.useMatrix(gl, chartMatrix);
+			mouseX += xPlotLeft;
+			mouseY += yPlotBottom;
 			
 			// draw a tooltip if the mouse is not over a button or bitfield event
 			if(handler == null && mouseX >= xTimelineLeft && mouseX <= xTimelineRight && mouseY >= 0 && mouseY <= height && haveTelemetry) {
@@ -315,6 +321,7 @@ public class OpenGLTimelineChart extends PositionedChart {
 					ConnectionsController.SampleDetails details = ConnectionsController.getClosestSampleDetailsFor(mouseTimestamp);
 					
 					mouseTimestamp = details.timestamp;
+					float tooltipX = (float) (mouseTimestamp - minTimestamp) / (float) (maxTimestamp - minTimestamp) * timelineWidth + xTimelineLeft;
 					Tooltip tooltip = new Tooltip();
 					tooltip.addRow("Sample " + details.sampleNumber);
 					if(twoLineTimestamps) {
@@ -324,8 +331,7 @@ public class OpenGLTimelineChart extends PositionedChart {
 					} else {
 						tooltip.addRow(SettingsView.formatTimestampToMilliseconds(mouseTimestamp), anchorY);
 					}
-					float tooltipX = (float) (mouseTimestamp - minTimestamp) / (float) (maxTimestamp - minTimestamp) * timelineWidth + xTimelineLeft;
-					tooltip.draw(gl, tooltipX, mouseX, mouseY, 0, height, width, 0);
+					tooltip.draw(gl, mouseX, mouseY, width, height, tooltipX);
 					
 				} else {
 					
@@ -339,7 +345,7 @@ public class OpenGLTimelineChart extends PositionedChart {
 					} else {
 						tooltip.addRow(SettingsView.formatTimestampToMilliseconds(mouseTimestamp), anchorY);
 					}
-					tooltip.draw(gl, tooltipX, mouseX, mouseY, 0, height, width, 0);
+					tooltip.draw(gl, mouseX, mouseY, width, height, tooltipX);
 					
 				}
 

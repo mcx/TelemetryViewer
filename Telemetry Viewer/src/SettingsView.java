@@ -294,7 +294,9 @@ public class SettingsView extends JPanel {
 		antialiasingSlider = new WidgetSlider("Antialiasing", 1, 16, 8) // MSAA levels
 		                         .setExportLabel("antialiasing level")
 		                         .setLog2Mode()
-		                         .onChange(newLevel -> OpenGLChartsView.regenerate());
+		                         .onChange(null,
+		                                   newLevel -> OpenGLChartsView.regenerate(),
+		                                   null);
 
 		// populate with everything except the TX panels
 		panel.add(Theme.newWidgetsPanel("Notifications")
