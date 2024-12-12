@@ -359,9 +359,9 @@ public class PlotMilliseconds extends Plot {
 		}
 		
 		// save current state
-		previousNormalDatasets = datasets.normalDatasets;
-		previousEdgeStates = datasets.edgeStates;
-		previousLevelStates = datasets.levelStates;
+		previousNormalDatasets = List.copyOf(datasets.normalDatasets);
+		previousEdgeStates = List.copyOf(datasets.edgeStates);
+		previousLevelStates = List.copyOf(datasets.levelStates);
 		previousPlotMinX = plotMinX;
 		previousPlotMaxX = plotMaxX;
 		previousPlotMinY = plotMinY;

@@ -34,7 +34,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 	private int[] waterfallTexHandle;
 	
 	// user settings
-	private WidgetDatasetCheckboxes datasetsWidget;
+	private DatasetsInterface.WidgetDatasets datasetsWidget;
 	private WidgetTextfield<Integer> sampleCountTextfield;
 	private WidgetCheckbox legendVisibility;
 	
@@ -43,7 +43,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		HISTOGRAM { @Override public String toString() { return "Histogram"; } },
 		WATERFALL { @Override public String toString() { return "Waterfall"; } };
 	};
-	private WidgetToggleButtonEnum<ChartStyle> chartStyle;
+	private WidgetToggleButton<ChartStyle> chartStyle;
 	private WidgetTextfield<Integer> fftCount;
 	
 	private int xAxisBins = 128;
@@ -78,11 +78,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		autoscalePower = new AutoScale(AutoScale.MODE_EXPONENTIAL, 90, 0.20f);
 		
 		// create the control widgets and event handlers
-		datasetsWidget = new WidgetDatasetCheckboxes(newDatasets -> datasets.setNormals(newDatasets),
-		                                             null,
-		                                             null,
-		                                             null,
-		                                             false);
+		datasetsWidget = datasets.getCheckboxesWidget(newDatasets -> {});
 		
 		sampleCountTextfield = WidgetTextfield.ofInt(10, Integer.MAX_VALUE / 16, ConnectionsController.getDefaultChartDuration())
 		                                      .setSuffix("Samples")
@@ -110,15 +106,15 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		                                             });
 		
 		xAxisBinsAutomatic = new WidgetCheckbox("Auto", false)
-		                                 .setExportLabel("histogram/waterfall x-axis bin count automatic")
-		                                 .onChange(isAutomatic -> {
-		                                              if(isAutomatic) {
-		                                                  xAxisBinsTextfield.disableWithMessage("Automatic");
-		                                              } else {
-		                                                  xAxisBinsTextfield.set(xAxisBins);
-		                                                  xAxisBinsTextfield.setEnabled(true);
-		                                              }
-		                                          });
+		                         .setExportLabel("histogram/waterfall x-axis bin count automatic")
+		                         .onChange(isAutomatic -> {
+		                                      if(isAutomatic) {
+		                                          xAxisBinsTextfield.disableWithMessage("Automatic");
+		                                      } else {
+		                                          xAxisBinsTextfield.set(xAxisBins);
+		                                          xAxisBinsTextfield.setEnabled(true);
+		                                      }
+		                                  });
 		
 		yAxisBinsTextfield = WidgetTextfield.ofInt(2, 4096, yAxisBins, 0, "Automatic")
 		                                    .setPrefix("Y-Axis Bins")
@@ -132,33 +128,31 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		                                             });
 		
 		yAxisBinsAutomatic = new WidgetCheckbox("Auto", false)
-		                                 .setExportLabel("histogram y-axis bin count automatic")
-		                                 .onChange(isAutomatic -> {
-		                                              if(isAutomatic) {
-		                                                  yAxisBinsTextfield.disableWithMessage("Automatic");
-		                                              } else {
-		                                                  yAxisBinsTextfield.set(yAxisBins);
-		                                                  yAxisBinsTextfield.setEnabled(true);
-		                                              }
-		                                          });
+		                         .setExportLabel("histogram y-axis bin count automatic")
+		                         .onChange(isAutomatic -> {
+		                                      if(isAutomatic) {
+		                                          yAxisBinsTextfield.disableWithMessage("Automatic");
+		                                      } else {
+		                                          yAxisBinsTextfield.set(yAxisBins);
+		                                          yAxisBinsTextfield.setEnabled(true);
+		                                      }
+		                                  });
 		
 		gamma = new WidgetSlider("Gamma", 0, 10, 5)
-		                  .setExportLabel("histogram/waterfall fft gamma")
-		                  .setDividedByTen();
+		            .setExportLabel("histogram/waterfall fft gamma")
+		            .setDividedByTen();
 		
-		chartStyle = new WidgetToggleButtonEnum<ChartStyle>("Style",
-		                                                           "fft style",
-		                                                           ChartStyle.values(),
-		                                                           ChartStyle.SINGLE,
-		                                                           newStyle -> {
-		                                                               fftCount.setVisible(newStyle != ChartStyle.SINGLE);
-		                                                               xAxisBinsTextfield.setVisible(newStyle != ChartStyle.SINGLE);
-		                                                               xAxisBinsAutomatic.setVisible(newStyle != ChartStyle.SINGLE);
-		                                                               yAxisBinsTextfield.setVisible(newStyle == ChartStyle.HISTOGRAM);
-		                                                               yAxisBinsAutomatic.setVisible(newStyle == ChartStyle.HISTOGRAM);
-		                                                               gamma.setVisible(newStyle == ChartStyle.HISTOGRAM);
-		                                                               return true;
-		                                                           });
+		chartStyle = new WidgetToggleButton<ChartStyle>("Style", ChartStyle.values(), ChartStyle.SINGLE)
+		             .setExportLabel("fft style")
+		             .onChange((newStyle, oldStyle) -> {
+		                  fftCount.setVisible(newStyle != ChartStyle.SINGLE);
+		                  xAxisBinsTextfield.setVisible(newStyle != ChartStyle.SINGLE);
+		                  xAxisBinsAutomatic.setVisible(newStyle != ChartStyle.SINGLE);
+		                  yAxisBinsTextfield.setVisible(newStyle == ChartStyle.HISTOGRAM);
+		                  yAxisBinsAutomatic.setVisible(newStyle == ChartStyle.HISTOGRAM);
+		                  gamma.setVisible(newStyle == ChartStyle.HISTOGRAM);
+		                  return true;
+		              });
 		
 		maximumPower = WidgetTextfield.ofFloat(Float.MIN_VALUE, Float.MAX_VALUE, 1e9f)
 		                              .setPrefix("Max Power")
@@ -171,13 +165,13 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		                                        });
 		
 		maximumPowerAutomatic = new WidgetCheckbox("Auto", true)
-		                                    .setExportLabel("fft maximum power automatic")
-		                                    .onChange(isAutomatic -> {
-		                                                 if(isAutomatic)
-		                                                     maximumPower.disableWithMessage("Automatic");
-		                                                 else
-		                                                     maximumPower.setEnabled(true);
-		                                             });
+		                            .setExportLabel("fft maximum power automatic")
+		                            .onChange(isAutomatic -> {
+		                                         if(isAutomatic)
+		                                             maximumPower.disableWithMessage("Automatic");
+		                                         else
+		                                             maximumPower.setEnabled(true);
+		                                     });
 		
 		minimumPower = WidgetTextfield.ofFloat(Float.MIN_VALUE, Float.MAX_VALUE, 1e-9f)
 		                              .setPrefix("Min Power")
@@ -190,13 +184,13 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		                                        });
 		
 		minimumPowerAutomatic = new WidgetCheckbox("Auto", true)
-		                                    .setExportLabel("fft minimum power automatic")
-		                                    .onChange(isAutomatic -> {
-		                                                 if(isAutomatic)
-		                                                     minimumPower.disableWithMessage("Automatic");
-		                                                 else
-		                                                     minimumPower.setEnabled(true);
-		                                             });
+		                            .setExportLabel("fft minimum power automatic")
+		                            .onChange(isAutomatic -> {
+		                                         if(isAutomatic)
+		                                             minimumPower.disableWithMessage("Automatic");
+		                                         else
+		                                             minimumPower.setEnabled(true);
+		                                     });
 		
 		fftInfoVisibility = new WidgetCheckbox("Show FFT Info", true)
 		                        .setExportLabel("fft show info");

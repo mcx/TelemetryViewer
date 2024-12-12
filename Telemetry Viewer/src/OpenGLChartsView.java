@@ -422,12 +422,15 @@ public class OpenGLChartsView extends JPanel {
 					// draw the text
 					int yTextBastline = top.get() - (int) (1.5 * Theme.tilePadding) - lineHeight;
 					int xTextLeft = (canvasWidth / 2) - (maxLineWidth / 2);
-					if(xTextLeft < 0)
-						xTextLeft = 0;
+					if(xTextLeft < (int) (2.5 * Theme.tilePadding))
+						xTextLeft = (int) (2.5 * Theme.tilePadding);
+					gl.glEnable(GL3.GL_SCISSOR_TEST);
+					gl.glScissor(xBackgroundLeft, yBackgroundBottom, backgroundWidth, notificationHeight);
 					for(int i = 0; i < lineCount; i++) {
 						OpenGL.drawLargeText(gl, notification.isProgressBar ? notification.lines[i] + progressBarPercentageText : notification.lines[i], xTextLeft, yTextBastline, 0);
 						yTextBastline -= lineSpacing + lineHeight;
 					}
+					gl.glDisable(GL3.GL_SCISSOR_TEST);
 					
 					// register an event handler if mouseOver this notification: clicking removes this notification
 					if(mouseX >= xBackgroundLeft && mouseX <= xBackgroundLeft + backgroundWidth && mouseY >= yBackgroundBottom && mouseY <= yBackgroundBottom + notificationHeight && animationPosition == 0.0) {
@@ -508,26 +511,24 @@ public class OpenGLChartsView extends JPanel {
 					                                                        .stream()
 					                                                        .collect(Collectors.toMap(connection -> connection,
 					                                                                                  connection -> connection.getSampleCount() - 1));
-					case PAUSED, REWINDING, PLAYING -> ConnectionsController.interfaces
-					                                                        .entrySet()
+					case PAUSED, REWINDING, PLAYING -> ConnectionsController.telemetryConnections
 					                                                        .stream()
-					                                                        .collect(Collectors.toMap(entry -> entry.getKey(),
-					                                                                                  entry -> { ConnectionTelemetry connection = entry.getKey();
-					                                                                                             if(connection == nonLivePrimaryConnection) {
-					                                                                                                 return nonLivePrimaryConnectionSampleNumber;
-					                                                                                             } else {
-					                                                                                                 DatasetsInterface datasets = entry.getValue();
-					                                                                                                 int sampleNumber = datasets.getClosestSampleNumberAtOrBefore(nonLiveTimestamp, connection.getSampleCount() - 1);
-					                                                                                                 long timestamp = datasets.getTimestamp(sampleNumber);
-					                                                                                                 if(timestamp != nonLiveTimestamp) {
-					                                                                                                     long errorMilliseconds = nonLiveTimestamp - timestamp;
-					                                                                                                     double samplesPerMillisecond = (double) connection.getSampleRate() / 1000.0;
-					                                                                                                     int errorSampleCount = (int) Math.round(samplesPerMillisecond * errorMilliseconds);
-					                                                                                                     sampleNumber += errorSampleCount;
-					                                                                                                 }
-					                                                                                                 return sampleNumber;
-					                                                                                             }
-					                                                                                           }));
+					                                                        .collect(Collectors.toMap(connection -> connection,
+					                                                                                  connection -> {
+					                                                                                      if(connection == nonLivePrimaryConnection) {
+					                                                                                          return nonLivePrimaryConnectionSampleNumber;
+					                                                                                      } else {
+					                                                                                          int sampleNumber = connection.getClosestSampleNumberAtOrBefore(nonLiveTimestamp, connection.getSampleCount() - 1);
+					                                                                                          long timestamp = connection.getTimestamp(sampleNumber);
+					                                                                                          if(timestamp != nonLiveTimestamp) {
+					                                                                                              long errorMilliseconds = nonLiveTimestamp - timestamp;
+					                                                                                              double samplesPerMillisecond = (double) connection.getSampleRate() / 1000.0;
+					                                                                                              int errorSampleCount = (int) Math.round(samplesPerMillisecond * errorMilliseconds);
+					                                                                                              sampleNumber += errorSampleCount;
+					                                                                                          }
+					                                                                                          return sampleNumber;
+					                                                                                      }
+					                                                                                  }));
 					};
 					
 					// process the global trigger if enabled
@@ -541,26 +542,24 @@ public class OpenGLChartsView extends JPanel {
 						triggerDetails = globalTrigger.checkForTrigger(endSampleNumber, endTimestamp, zoomLevel);
 						
 						endTimestamp = triggerDetails.chartEndTimestamp();
-						endSampleNumbers = ConnectionsController.interfaces
-						                                        .entrySet()
+						endSampleNumbers = ConnectionsController.telemetryConnections
 						                                        .stream()
-						                                        .collect(Collectors.toMap(entry -> entry.getKey(),
-						                                                                  entry -> { ConnectionTelemetry connection = entry.getKey();
-						                                                                             if(connection == triggerDetails.connection()) {
-						                                                                                 return triggerDetails.chartEndSampleNumber();
-						                                                                             } else {
-						                                                                                 DatasetsInterface datasets = entry.getValue();
-						                                                                                 int sampleNumber = datasets.getClosestSampleNumberAtOrBefore(triggerDetails.chartEndTimestamp(), connection.getSampleCount() - 1);
-						                                                                                 long timestamp = datasets.getTimestamp(sampleNumber);
-						                                                                                 if(timestamp != triggerDetails.chartEndTimestamp()) {
-						                                                                                     long errorMilliseconds = triggerDetails.chartEndTimestamp() - timestamp;
-						                                                                                     double samplesPerMillisecond = (double) connection.getSampleRate() / 1000.0;
-						                                                                                     int errorSampleCount = (int) Math.round(samplesPerMillisecond * errorMilliseconds);
-						                                                                                     sampleNumber += errorSampleCount;
-						                                                                                 }
-						                                                                                 return sampleNumber;
-						                                                                             }
-						                                                                           }));
+						                                        .collect(Collectors.toMap(connection -> connection,
+						                                                                  connection -> {
+						                                                                      if(connection == triggerDetails.connection()) {
+						                                                                          return triggerDetails.chartEndSampleNumber();
+						                                                                      } else {
+						                                                                          int sampleNumber = connection.getClosestSampleNumberAtOrBefore(triggerDetails.chartEndTimestamp(), connection.getSampleCount() - 1);
+						                                                                          long timestamp = connection.getTimestamp(sampleNumber);
+						                                                                          if(timestamp != triggerDetails.chartEndTimestamp()) {
+						                                                                              long errorMilliseconds = triggerDetails.chartEndTimestamp() - timestamp;
+						                                                                              double samplesPerMillisecond = (double) connection.getSampleRate() / 1000.0;
+						                                                                              int errorSampleCount = (int) Math.round(samplesPerMillisecond * errorMilliseconds);
+						                                                                              sampleNumber += errorSampleCount;
+						                                                                          }
+						                                                                          return sampleNumber;
+						                                                                      }
+						                                                                  }));
 					}
 					
 					// draw the charts
@@ -962,7 +961,7 @@ public class OpenGLChartsView extends JPanel {
 						int trueLastSampleNumber = connection.getSampleCount() - 1;
 						int oldSampleNumber = (state == State.PLAYING_LIVE)           ? trueLastSampleNumber :
 						                      (nonLivePrimaryConnection == connection) ? nonLivePrimaryConnectionSampleNumber :
-						                      ConnectionsController.interfaces.get(connection).getClosestSampleNumberAtOrBefore(nonLiveTimestamp, trueLastSampleNumber);
+						                      connection.getClosestSampleNumberAtOrBefore(nonLiveTimestamp, trueLastSampleNumber);
 						int newSampleNumber = Guava.saturatedAdd(oldSampleNumber, (int) delta);
 						boolean reachedStartOrEnd = newSampleNumber < 0 || newSampleNumber >= trueLastSampleNumber;
 						if(newSampleNumber < 0)
@@ -970,7 +969,7 @@ public class OpenGLChartsView extends JPanel {
 						if(newSampleNumber > trueLastSampleNumber)
 							newSampleNumber = trueLastSampleNumber;
 
-						long newTimestamp = ConnectionsController.interfaces.get(connection).getTimestamp(newSampleNumber);
+						long newTimestamp = connection.getTimestamp(newSampleNumber);
 						
 						boolean beforeStartOfData = (state != State.PLAYING_LIVE) && nonLiveTimestamp < connection.getFirstTimestamp();
 						boolean afterEndOfData    = (state != State.PLAYING_LIVE) && nonLiveTimestamp > connection.getLastTimestamp();

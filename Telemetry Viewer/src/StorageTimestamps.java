@@ -121,7 +121,7 @@ public class StorageTimestamps {
 		
 	}
 	
-	public int getClosestSampleNumberAtOrBefore(long timestamp, int maxSampleNumber, Cache cache) {
+	public int getClosestSampleNumberAtOrBefore(long timestamp, int maxSampleNumber) {
 		
 		if(sampleCount == 0)
 			return -1;
@@ -162,7 +162,7 @@ public class StorageTimestamps {
 		
 	}
 	
-	public int getClosestSampleNumberAfter(long timestamp, Cache cache) {
+	public int getClosestSampleNumberAfter(long timestamp) {
 		
 		if(sampleCount == 0)
 			return -1;
@@ -239,14 +239,31 @@ public class StorageTimestamps {
 	 * Reads the timestamp for a certain sample number.
 	 * 
 	 * @param sampleNumber    Which sample number to read. This MUST be a valid sample number.
-	 * @param cache           Place to cache timestamps.
 	 * @return                The corresponding timestamp.
 	 */
-	public long getTimestamp(int sampleNumber, Cache cache) {
+	public long getTimestamp(int sampleNumber) {
 		
-		cache.update(sampleNumber, sampleNumber);
-		cache.cacheLongs.position(sampleNumber - cache.startOfCache);
-		return cache.cacheLongs.get();
+		// determine the corresponding block
+		int block = 0;
+		for(int blockN = 0; blockN <= (recordCount - 1) / BLOCK_SIZE; blockN++) {
+			if(maximumSampleNumberInBlock[blockN] >= sampleNumber) {
+				block = blockN;
+				break;
+			}
+		}
+
+		// iterate through the records to find the corresponding timestamp
+		LongBuffer records = getRecordsFromBlock(block);
+		for(int recordN = 0; recordN < BLOCK_SIZE; recordN++) {
+			int firstSampleNumberOfRecord =                             (int) records.get();
+			int lastSampleNumberOfRecord  = firstSampleNumberOfRecord + (int) records.get() - 1;
+			long timestampOfRecord        =                                   records.get();
+			if(sampleNumber >= firstSampleNumberOfRecord && sampleNumber <= lastSampleNumberOfRecord)
+				return timestampOfRecord;
+		}
+		
+		// should never get here
+		return 0;
 		
 	}
 	
@@ -455,7 +472,7 @@ public class StorageTimestamps {
 						
 						// slot must be read from disk
 						while(slot[slotN].flushing);
-						long fileOffset = (long) (start / SLOT_SIZE * SLOT_SIZE) * (long) BYTES_PER_RECORD;
+						long fileOffset = (long) slotN * (long) SLOT_SIZE * (long) BYTES_PER_RECORD;
 						int recordCount = SLOT_SIZE;
 						int byteCount = recordCount * BYTES_PER_RECORD;
 						ByteBuffer buffer = Buffers.newDirectByteBuffer(byteCount);
@@ -540,7 +557,7 @@ public class StorageTimestamps {
 						
 						// slot must be read from disk
 						while(slot[slotN].flushing);
-						long fileOffset = (long) (start / SLOT_SIZE * SLOT_SIZE) * (long) BYTES_PER_RECORD;
+						long fileOffset = (long) slotN * (long) SLOT_SIZE * (long) BYTES_PER_RECORD;
 						int recordCount = SLOT_SIZE;
 						int byteCount = recordCount * BYTES_PER_RECORD;
 						ByteBuffer buffer = Buffers.newDirectByteBuffer(byteCount);

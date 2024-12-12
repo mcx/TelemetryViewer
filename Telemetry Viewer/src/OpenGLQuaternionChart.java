@@ -1,5 +1,7 @@
 import java.nio.FloatBuffer;
 import java.util.Arrays;
+import java.util.List;
+
 import javax.swing.JPanel;
 import com.jogamp.opengl.GL2ES3;
 import com.jogamp.opengl.GL3;
@@ -16,7 +18,7 @@ public class OpenGLQuaternionChart extends PositionedChart {
 
 	FloatBuffer shape; // triangles: x1,y1,z1,u1,v1,w1,...
 	
-	private WidgetDatasetComboboxes datasetsWidget;
+	private DatasetsInterface.WidgetDatasets datasetsWidget;
 	private WidgetCheckbox quatLabelEnabled;
 	
 	@Override public String toString() {
@@ -32,8 +34,8 @@ public class OpenGLQuaternionChart extends PositionedChart {
 		shape = ChartUtils.getShapeFromAsciiStl(getClass().getResourceAsStream("monkey.stl"));
 		shape.rewind();
 		
-		datasetsWidget = new WidgetDatasetComboboxes(new String[] {"Q0", "Q1", "Q2", "Q3"},
-		                                             newDatasets -> datasets.setNormals(newDatasets));
+		datasetsWidget = datasets.getComboboxesWidget(List.of("Q0", "Q1", "Q2", "Q3"),
+		                                              null);
 		
 		quatLabelEnabled = new WidgetCheckbox("Show Quaternion Label", true);
 		

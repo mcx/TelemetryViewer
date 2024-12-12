@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.function.Consumer;
 
 import javax.swing.JPanel;
+import javax.swing.SwingUtilities;
 
 public class WidgetTrigger implements Widget {
 	
@@ -25,10 +26,10 @@ public class WidgetTrigger implements Widget {
 		BOTH_EDGES   { @Override public String toString() { return "Both Edges";   } }
 	};
 	
-	final public WidgetToggleButtonEnum<Mode> mode;
-	final public WidgetToggleButtonEnum<Affects> affects;
-	final public WidgetToggleButtonEnum<Type> type;
-	final public WidgetDatasetComboboxes channel;
+	final public WidgetToggleButton<Mode> mode;
+	final public WidgetToggleButton<Affects> affects;
+	final public WidgetToggleButton<Type> type;
+	final public DatasetsInterface.WidgetDatasets channel;
 	final public WidgetTextfield<Float> level;
 	final public WidgetTextfield<Float> hysteresis;
 	final public WidgetSlider prePostRatio;
@@ -59,31 +60,27 @@ public class WidgetTrigger implements Widget {
 		super();
 		this.chart = chart;
 		
-		affects = new WidgetToggleButtonEnum<Affects>("Affects",
-		                                              "trigger affects",
-		                                              Affects.values(),
-		                                              Affects.THIS_CHART,
-		                                              newSetting -> {
-		                                                  if(OpenGLChartsView.globalTrigger == this && newSetting == Affects.THIS_CHART) { // exiting global trigger mode
-		                                                      OpenGLChartsView.globalTrigger = null;
-		                                                  } else if(OpenGLChartsView.globalTrigger != null && OpenGLChartsView.globalTrigger != this && newSetting == Affects.EVERY_CHART) { // taking global control
-		                                                      OpenGLChartsView.globalTrigger.affects.set(Affects.THIS_CHART);
-		                                                      OpenGLChartsView.globalTrigger.mode.set(Mode.DISABLED);
-		                                                      OpenGLChartsView.globalTrigger = this;
-		                                                  } else if(newSetting == Affects.EVERY_CHART) {
-		                                                      OpenGLChartsView.globalTrigger = this;
-		                                                  }
-		                                                  return true;
-		                                              });
+		affects = new WidgetToggleButton<Affects>("Affects", Affects.values(), Affects.THIS_CHART)
+		              .setExportLabel("trigger affects")
+		              .onChange((newSetting, oldSetting) -> {
+		                   if(OpenGLChartsView.globalTrigger == this && newSetting == Affects.THIS_CHART) { // exiting global trigger mode
+		                       OpenGLChartsView.globalTrigger = null;
+		                   } else if(OpenGLChartsView.globalTrigger != null && OpenGLChartsView.globalTrigger != this && newSetting == Affects.EVERY_CHART) { // taking global control
+		                       OpenGLChartsView.globalTrigger.affects.set(Affects.THIS_CHART);
+		                       OpenGLChartsView.globalTrigger.mode.set(Mode.DISABLED);
+		                       OpenGLChartsView.globalTrigger = this;
+		                   } else if(newSetting == Affects.EVERY_CHART) {
+		                       OpenGLChartsView.globalTrigger = this;
+		                   }
+		                   return true;
+		               });
 		
-		type = new WidgetToggleButtonEnum<Type>("Type",
-		                                        "trigger type",
-		                                        Type.values(),
-		                                        Type.RISING_EDGE,
-		                                        newType -> {
-		                                            resetTrigger();
-		                                            return true;
-		                                        });
+		type = new WidgetToggleButton<Type>("Type", Type.values(), Type.RISING_EDGE)
+		           .setExportLabel("trigger type")
+		           .onChange((newType, oldType) -> {
+		                resetTrigger();
+		                return true;
+		            });
 		
 		level = WidgetTextfield.ofFloat(-Float.MAX_VALUE, Float.MAX_VALUE, 0)
 		                       .setPrefix("Level")
@@ -101,20 +98,19 @@ public class WidgetTrigger implements Widget {
 		                                          return true;
 		                                      });
 		
-		channel = new WidgetDatasetComboboxes(new String[] {"Channel"},
-		                                      newDatasets -> {
-		                                          if(newDatasets.isEmpty()) // no telemetry connections
-		                                              return;
-		                                          datasets.setNormals(newDatasets);
-		                                          triggerChannel = newDatasets.get(0);
-		                                          userSpecifiedTheChannel = true;
-		                                          resetTrigger();
-		                                          level.setSuffix(datasets.getNormal(0).unit.get());
-		                                          hysteresis.setSuffix(datasets.getNormal(0).unit.get());
-		                                      });
+		channel = datasets.getComboboxesWidget(List.of("Channel"),
+		                                       newDatasets -> {
+		                                           if(newDatasets.isEmpty()) // no telemetry connections
+		                                               return;
+		                                           triggerChannel = newDatasets.get(0);
+		                                           userSpecifiedTheChannel = true;
+		                                           resetTrigger();
+		                                           level.setSuffix(datasets.getNormal(0).unit.get());
+		                                           hysteresis.setSuffix(datasets.getNormal(0).unit.get());
+		                                       });
 		
 		// the event handler above will get called automatically, so reset userSpecifiedTheChannel to false
-		userSpecifiedTheChannel = false;
+		SwingUtilities.invokeLater(() -> userSpecifiedTheChannel = false);
 		
 		prePostRatio = new WidgetSlider("Pre/Post Ratio", 0, 100, 20)
 		                   .setExportLabel("trigger pre/post ratio")
@@ -122,24 +118,22 @@ public class WidgetTrigger implements Widget {
 		                             null,
 		                             dragEnded -> setPaused(false));
 		
-		mode = new WidgetToggleButtonEnum<Mode>("",
-		                                        "trigger mode",
-		                                        Mode.values(),
-		                                        Mode.DISABLED,
-		                                        newMode -> {
-		                                            if(newMode != Mode.DISABLED && triggerChannel == null)
-		                                                return false;
-		                                            resetTrigger();
-		                                            boolean triggerEnabled = newMode != Mode.DISABLED && triggerChannel != null;
-		                                            affects.setEnabled(triggerEnabled);
-		                                            type.setEnabled(triggerEnabled);
-		                                            channel.setEnabled(triggerEnabled);
-		                                            level.setEnabled(triggerEnabled);
-		                                            hysteresis.setEnabled(triggerEnabled);
-		                                            prePostRatio.setEnabled(triggerEnabled);
-		                                            eventHandler.accept(triggerEnabled);
-		                                            return true;
-		                                        });
+		mode = new WidgetToggleButton<Mode>("", Mode.values(), Mode.DISABLED)
+		           .setExportLabel("trigger mode")
+		           .onChange((newMode, oldMode) -> {
+		                if(newMode != Mode.DISABLED && triggerChannel == null)
+		                    return false;
+		                resetTrigger();
+		                boolean triggerEnabled = newMode != Mode.DISABLED && triggerChannel != null;
+		                affects.setEnabled(triggerEnabled);
+		                type.setEnabled(triggerEnabled);
+		                channel.setEnabled(triggerEnabled);
+		                level.setEnabled(triggerEnabled);
+		                hysteresis.setEnabled(triggerEnabled);
+		                prePostRatio.setEnabled(triggerEnabled);
+		                eventHandler.accept(triggerEnabled);
+		                return true;
+		            });
 		
 		widgets = List.of(mode, affects, type, channel, level, hysteresis, prePostRatio);
 		
@@ -159,7 +153,7 @@ public class WidgetTrigger implements Widget {
 	
 	public void setDefaultChannel(Field dataset) {
 		if(!userSpecifiedTheChannel) {
-			channel.setDataset(0, dataset);
+			channel.comboboxes.get(0).set(dataset);
 			userSpecifiedTheChannel = false; // the event handler will set this to true, so reset it to false
 		}
 	}
@@ -415,12 +409,14 @@ public class WidgetTrigger implements Widget {
 		widgets.forEach(widget -> widget.appendTo(panel, ""));
 	}
 	
-	@Override public void setVisible(boolean isVisible) {
+	@Override public WidgetTrigger setVisible(boolean isVisible) {
 		widgets.forEach(widget -> widget.setVisible(isVisible));
+		return this;
 	}
 	
 	@Override public void importFrom(ConnectionsController.QueueOfLines lines) throws AssertionError {
 		widgets.forEach(widget -> widget.importFrom(lines));
+		SwingUtilities.invokeLater(() -> userSpecifiedTheChannel = true); // invokeLater because the constructor also invokeLater's this to false
 	}
 	
 	@Override public void exportTo(PrintWriter file) {

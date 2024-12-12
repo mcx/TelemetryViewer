@@ -5,7 +5,7 @@ import com.jogamp.opengl.GL2ES3;
 
 public class OpenGLStatisticsChart extends PositionedChart {
 	
-	private WidgetDatasetCheckboxes datasetsWidget;
+	private DatasetsInterface.WidgetDatasets datasetsWidget;
 	private WidgetTextfield<Integer> sampleCountTextfield;
 	private WidgetCheckbox sampleCountVisibility;
 	private WidgetCheckbox currentValuesVisibility;
@@ -28,11 +28,7 @@ public class OpenGLStatisticsChart extends PositionedChart {
 	
 	public OpenGLStatisticsChart() {
 		
-		datasetsWidget = new WidgetDatasetCheckboxes(newDatasets -> datasets.setNormals(newDatasets),
-		                                             null,
-		                                             null,
-		                                             null,
-		                                             false);
+		datasetsWidget = datasets.getCheckboxesWidget(newDatasets -> {});
 		
 		sampleCountTextfield = WidgetTextfield.ofInt(1, Integer.MAX_VALUE / 16, ConnectionsController.getDefaultChartDuration())
 		                                      .setSuffix("Samples")

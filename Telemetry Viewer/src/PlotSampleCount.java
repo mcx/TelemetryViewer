@@ -214,9 +214,9 @@ public class PlotSampleCount extends Plot {
 		}
 		
 		// save current state
-		previousNormalDatasets = datasets.normalDatasets;
-		previousEdgeStates = datasets.edgeStates;
-		previousLevelStates = datasets.levelStates;
+		previousNormalDatasets = List.copyOf(datasets.normalDatasets);
+		previousEdgeStates = List.copyOf(datasets.edgeStates);
+		previousLevelStates = List.copyOf(datasets.levelStates);
 		previousPlotMinY = plotMinY;
 		previousPlotMaxY = plotMaxY;
 		previousPlotWidth = plotWidth;

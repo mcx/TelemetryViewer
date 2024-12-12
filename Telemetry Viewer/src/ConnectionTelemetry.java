@@ -79,21 +79,24 @@ public abstract class ConnectionTelemetry extends Connection {
 	
 	// connection settings
 	protected WidgetTextfield<Integer> sampleRate;
-	protected WidgetComboboxEnum<Protocol> protocol;
-	protected WidgetComboboxString baudRate; // for UART/Demo modes
+	protected WidgetCombobox<Protocol> protocol;
+	protected WidgetCombobox<String> baudRate; // for UART/Demo modes
 	protected WidgetTextfield<Integer> portNumber; // for TCP/UDP modes
 	
 	private Timer sampleRateCalculator;
 	protected long previousSampleCountTimestamp = 0;
 	protected int  previousSampleCount = 0;
+	protected int  calculatedSamplesPerSecond = 0;
 	
 	public int getSampleRate() {
 		int rate = sampleRate.get();
+		if(rate == 0)
+			rate = calculatedSamplesPerSecond;
 		return (rate == 0) ? 1000 : rate; // because charts expect >0
 	}
 	
 	// transmit settings
-	protected WidgetComboboxEnum<WidgetTextfield.Mode> transmitDatatype;
+	protected WidgetCombobox<WidgetTextfield.Mode> transmitDatatype;
 	protected WidgetTextfield<String> transmitData;
 	protected WidgetCheckbox transmitAppendCR;
 	protected WidgetCheckbox transmitAppendLF;
@@ -153,8 +156,8 @@ public abstract class ConnectionTelemetry extends Connection {
 				int  currentSampleCount = getSampleCount();
 				long millisecondsDelta = currentTimestamp - previousSampleCountTimestamp;
 				int sampleCountDelta = currentSampleCount - previousSampleCount;
-				int samplesPerSecond = (int) Math.round((double) sampleCountDelta / ((double) millisecondsDelta / 1000.0));
-				sampleRate.disableWithNumber(samplesPerSecond);
+				calculatedSamplesPerSecond = (int) Math.round((double) sampleCountDelta / ((double) millisecondsDelta / 1000.0));
+				sampleRate.disableWithNumber(calculatedSamplesPerSecond);
 				previousSampleCountTimestamp = currentTimestamp;
 				previousSampleCount = currentSampleCount;
 			}
@@ -162,19 +165,21 @@ public abstract class ConnectionTelemetry extends Connection {
 		sampleRateCalculator.start();
 		
 		// baud rate
-		baudRate = new WidgetComboboxString(List.of("9600 Baud",
-		                                            "19200 Baud",
-		                                            "38400 Baud",
-		                                            "57600 Baud",
-		                                            "115200 Baud",
-		                                            "230400 Baud",
-		                                            "460800 Baud",
-		                                            "921600 Baud",
-		                                            "1000000 Baud",
-		                                            "2000000 Baud"), "9600 Baud")
+		baudRate = new WidgetCombobox<String>(null,
+		                                      List.of("9600 Baud",
+		                                              "19200 Baud",
+		                                              "38400 Baud",
+		                                              "57600 Baud",
+		                                              "115200 Baud",
+		                                              "230400 Baud",
+		                                              "460800 Baud",
+		                                              "921600 Baud",
+		                                              "1000000 Baud",
+		                                              "2000000 Baud"),
+		                                      "9600 Baud")
 		               .setEditable(true)
 		               .setExportLabel("speed")
-		               .onChange(newValue -> {
+		               .onChange((newValue, oldValue) -> {
 		                   try {
 		                       String text = newValue.trim();
 		                       if(text.toLowerCase().endsWith("baud"))
@@ -194,7 +199,26 @@ public abstract class ConnectionTelemetry extends Connection {
 		// TCP or UDP port number
 		portNumber = WidgetTextfield.ofInt(1, 65535, 8080)
 		                            .setPrefix("Port")
-		                            .setExportLabel("server port");
+		                            .setExportLabel("server port")
+		                            .setFixedWidth(9)
+		                            .onChange((newValue, oldValue) -> {
+		                            	// the port number must be unique among all connections
+		                                List<Integer> usedPorts = ConnectionsController.telemetryConnections
+		                                                                               .stream()
+		                                                                               .filter(connection -> connection != this)
+		                                                                               .filter(connection -> connection.name.get().equals("TCP") || connection.name.get().equals("UDP"))
+		                                                                               .map(connection -> connection.portNumber.get())
+		                                                                               .toList();
+		                                if(!usedPorts.contains(newValue)) {
+		                                    return true;
+		                                } else {
+		                                    int firstUnusedPort = IntStream.rangeClosed(8080, 65535)
+		                                                                   .filter(number -> !usedPorts.contains(number))
+		                                                                   .findFirst().getAsInt();
+		                                    portNumber.set(firstUnusedPort);
+		                                    return true;
+		                                }
+		                            });
 		
 		// transmitted data can be automatically repeated every n milliseconds
 		transmitRepeatedly = new WidgetCheckbox("Repeat", false)
@@ -263,11 +287,11 @@ public abstract class ConnectionTelemetry extends Connection {
 		                       });
 		
 		// which data format the user will provide
-		transmitDatatype = new WidgetComboboxEnum<WidgetTextfield.Mode>(WidgetTextfield.Mode.values(), WidgetTextfield.Mode.TEXT)
+		transmitDatatype = new WidgetCombobox<WidgetTextfield.Mode>(null, Arrays.asList(WidgetTextfield.Mode.values()), WidgetTextfield.Mode.TEXT)
 		                       .removeValue(WidgetTextfield.Mode.INTEGER) // only support TEXT / HEX / BINARY modes
 		                       .removeValue(WidgetTextfield.Mode.FLOAT)
 		                       .setExportLabel("transmit data type")
-		                       .onChange(newDatatype -> {
+		                       .onChange((newDatatype, oldDatatype) -> {
 		                           byte[] oldDataBytes = transmitData.getAsBytes(transmitAppendCR.get(), transmitAppendLF.get());
 		                           transmitData.setDataType(newDatatype);
 		                           transmitAppendCR.setEnabled(newDatatype == WidgetTextfield.Mode.TEXT);
@@ -291,12 +315,13 @@ public abstract class ConnectionTelemetry extends Connection {
 		                       });
 		
 		// communication protocol
-		protocol = new WidgetComboboxEnum<Protocol>(Protocol.values(), Protocol.CSV)
+		protocol = new WidgetCombobox<Protocol>(null, Arrays.asList(Protocol.values()), Protocol.CSV)
 		               .setExportLabel("protocol")
-		               .onChange(newProtocol -> {
-		                   if(newProtocol == protocol.get())
-		                       return true; // no change, must ignore this case so we don't reset things while importing!
-		                   
+		               .onChange((newProtocol, oldProtocol) -> {
+		            	   // this will be called automatically after constructing, that event should be ignored because there is no change
+		            	   if(newProtocol == oldProtocol)
+		            		   return true;
+		            	   
 		                   // reset everything when changing protocols
 		                   removeAllFields();
 		                   dsPanel = null;
@@ -340,6 +365,19 @@ public abstract class ConnectionTelemetry extends Connection {
 		                   return true;
 		               });
 		
+	}
+	
+	/**
+	 * @return    A user-friendly String describing this ConnectionTelemetry.
+	 *            If there is >1 ConnectionTelemetry:
+	 *                This will be shown to the user by WidgetDatasets, and will also be used when exporting/importing.
+	 *            Therefore this String *must* uniquely identify this ConnectionTelemetry among *every* ConnectionTelemetry!
+	 */
+	@Override public String toString() {
+		String text = name.get();
+		if(text.equals("TCP") || text.equals("UDP"))
+			text += " :" + portNumber.get();
+		return text;
 	}
 	
 	JPanel dsPanel;
@@ -799,9 +837,9 @@ public abstract class ConnectionTelemetry extends Connection {
 					text[i] = Integer.toString(firstSampleNumber + i);
 			} else if(csvColumnNumber == 1) {
 				// second column is the UNIX timestamp
-				StorageTimestamps.Cache cache = createTimestampsCache();
+				LongBuffer buffer = getTimestampsBuffer(firstSampleNumber, firstSampleNumber + sampleCount - 1, createTimestampsCache());
 				for(int i = 0; i < sampleCount; i++)
-					text[i] = Long.toString(getTimestamp(firstSampleNumber + i, cache));
+					text[i] = Long.toString(buffer.get());
 			} else {
 				// other columns are the datasets
 				Field dataset = getDatasetByIndex(csvColumnNumber - 2);
@@ -1457,15 +1495,15 @@ public abstract class ConnectionTelemetry extends Connection {
 		
 	}
 	
-	public int getClosestSampleNumberAtOrBefore(long timestamp, int maxSampleNumber, StorageTimestamps.Cache cache) {
+	public int getClosestSampleNumberAtOrBefore(long timestamp, int maxSampleNumber) {
 		
-		return timestamps.getClosestSampleNumberAtOrBefore(timestamp, maxSampleNumber, cache);
+		return timestamps.getClosestSampleNumberAtOrBefore(timestamp, maxSampleNumber);
 		
 	}
 	
-	public int getClosestSampleNumberAfter(long timestamp, StorageTimestamps.Cache cache) {
+	public int getClosestSampleNumberAfter(long timestamp) {
 		
-		return timestamps.getClosestSampleNumberAfter(timestamp, cache);
+		return timestamps.getClosestSampleNumberAfter(timestamp);
 		
 	}
 	
@@ -1493,12 +1531,12 @@ public abstract class ConnectionTelemetry extends Connection {
 	 * @param sampleNumber    Which sample to check.
 	 * @return                The corresponding UNIX timestamp.
 	 */
-	@Override public long getTimestamp(int sampleNumber, StorageTimestamps.Cache cache) {
+	@Override public long getTimestamp(int sampleNumber) {
 		
 		if(sampleNumber < 0)
 			return firstTimestamp;
 		
-		return timestamps.getTimestamp(sampleNumber, cache);
+		return timestamps.getTimestamp(sampleNumber);
 		
 	}
 	
@@ -1575,7 +1613,7 @@ public abstract class ConnectionTelemetry extends Connection {
 		if(newType.isSyncWord() && existingSyncWord != null && field != existingSyncWord)
 			return "A sync word has already been defined.";
 		
-		if(newType.isSyncWord() && fields.values().stream().anyMatch(existingField -> existingField.location.is(0)))
+		if(newType.isSyncWord() && existingSyncWord == null & fields.values().stream().anyMatch(existingField -> existingField.location.is(0)))
 			return "A dataset already exists at the start of the packet.";
 		
 		if(newType.isSyncWord() && newLocation != 0)

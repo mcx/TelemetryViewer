@@ -34,6 +34,7 @@ public class ConnectionTelemetryUART extends ConnectionTelemetry {
 		
 		previousSampleCountTimestamp = 0;
 		previousSampleCount = 0;
+		calculatedSamplesPerSecond = 0;
 		
 		SerialPort uartPort = SerialPort.getCommPort(name.get().substring(6)); // trim the leading "UART: "
 		uartPort.setBaudRate(Integer.parseInt(baudRate.get().split(" ")[0]));

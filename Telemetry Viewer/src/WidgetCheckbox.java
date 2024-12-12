@@ -9,7 +9,8 @@ public class WidgetCheckbox implements Widget {
 	
 	private String importExportLabel;
 	private JCheckBox checkbox;
-	private Consumer<Boolean> handler;
+	private boolean changeHandlerCalled = false;
+	private Consumer<Boolean> changeHandler = null;
 	private volatile boolean isChecked;
 	
 	/**
@@ -25,12 +26,13 @@ public class WidgetCheckbox implements Widget {
 		checkbox = new JCheckBox(label, isChecked);
 		checkbox.addActionListener(event -> {
 			this.isChecked = checkbox.isSelected();
-			if(handler != null)
-				handler.accept(this.isChecked);
+			if(changeHandler != null) {
+				changeHandlerCalled = true;
+				changeHandler.accept(this.isChecked);
+			}
 		});
 		
 		importExportLabel = label.toLowerCase();
-		handler = null;
 		
 	}
 	
@@ -49,16 +51,23 @@ public class WidgetCheckbox implements Widget {
 	 */
 	public WidgetCheckbox onChange(Consumer<Boolean> eventHandler) {
 		
-		handler = eventHandler;
+		changeHandler = eventHandler;
+		changeHandlerCalled = false;
 		
 		// call the handler, but later, so the calling code can finish constructing things before the handler is triggered
 		SwingUtilities.invokeLater(() -> {
-			if(handler != null)
-				handler.accept(isChecked);
+			if(changeHandler != null && changeHandlerCalled == false) {
+				changeHandlerCalled = true;
+				changeHandler.accept(isChecked);
+			}
 		});
 		
 		return this;
 		
+	}
+	
+	public void setText(String text) {
+		checkbox.setText(text);
 	}
 	
 	public void set(boolean newValue) {
@@ -68,8 +77,10 @@ public class WidgetCheckbox implements Widget {
 		
 		isChecked = newValue;
 		checkbox.setSelected(isChecked);
-		if(handler != null)
-			handler.accept(isChecked);
+		if(changeHandler != null) {
+			changeHandlerCalled = true;
+			changeHandler.accept(isChecked);
+		}
 		
 	}
 	
@@ -97,9 +108,10 @@ public class WidgetCheckbox implements Widget {
 		
 	}
 
-	@Override public void setVisible(boolean isVisible) {
+	@Override public WidgetCheckbox setVisible(boolean isVisible) {
 
 		checkbox.setVisible(isVisible);
+		return this;
 		
 	}
 	

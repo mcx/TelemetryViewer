@@ -13,14 +13,14 @@ public class OpenGLHistogramChart extends PositionedChart {
 	int[][] bins; // [datasetN][binN]
 	FloatBuffer[] binsAsTriangles; // [datasetN], filled with binN's, for drawing
 	
-	private WidgetDatasetCheckboxes datasetsWidget;
+	private DatasetsInterface.WidgetDatasets datasetsWidget;
 	private WidgetTextfield<Integer> durationWidget;
 	private WidgetCheckbox legendVisibility;
 	private enum XAxisScale {
 		MIN_MAX     { @Override public String toString() { return "Minimum/Maximum"; } },
 		CENTER_SPAN { @Override public String toString() { return "Center/Span";     } };
 	};
-	private WidgetToggleButtonEnum<XAxisScale> xAxisScale;
+	private WidgetToggleButton<XAxisScale> xAxisScale;
 	private WidgetTextfield<Float> xAxisMinimum;
 	private WidgetCheckbox xAxisMinimumAutomatic;
 	private WidgetTextfield<Float> xAxisMaximum;
@@ -37,7 +37,7 @@ public class OpenGLHistogramChart extends PositionedChart {
 		RELATIVE_FREQUENCY { @Override public String toString() { return "Relative Frequency"; } },
 		BOTH               { @Override public String toString() { return "Both";               } };
 	};
-	private WidgetToggleButtonEnum<YAxisScale> yAxisScale;
+	private WidgetToggleButton<YAxisScale> yAxisScale;
 	private WidgetTextfield<Integer> yAxisMinimumFrequency;
 	private WidgetCheckbox yAxisMinimumFrequencyIsZero;
 	private WidgetTextfield<Integer> yAxisMaximumFrequency;
@@ -139,46 +139,39 @@ public class OpenGLHistogramChart extends PositionedChart {
 		                                        return true;
 		                                    });
 
-		datasetsWidget = new WidgetDatasetCheckboxes(newDatasets -> {
-		                                                 datasets.setNormals(newDatasets);
-		                                                 int datasetsCount = datasets.normalsCount();
-		                                                 samples = new FloatBuffer[datasetsCount];
-		                                                 bins = new int[datasetsCount][binCount.get()];
-		                                                 binsAsTriangles = new FloatBuffer[datasetsCount];
-		                                                 for(int i = 0; i < datasetsCount; i++)
-		                                                     binsAsTriangles[i] = Buffers.newDirectFloatBuffer(binCount.get() * 12);
-		                                                 if(datasets.normalsCount() == 1) {
-		                                                     xAxisMinimum.setSuffix(datasets.getNormal(0).unit.get());
-		                                                     xAxisMaximum.setSuffix(datasets.getNormal(0).unit.get());
-		                                                     xAxisCenter.setSuffix(datasets.getNormal(0).unit.get());
-		                                                     xAxisSpan.setSuffix(datasets.getNormal(0).unit.get());
-		                                                 } else if(datasets.normalsCount() == 0) {
-		                                                     xAxisMinimum.setSuffix("");
-		                                                     xAxisMaximum.setSuffix("");
-		                                                     xAxisCenter.setSuffix("");
-		                                                     xAxisSpan.setSuffix("");
-		                                                 }
-		                                             },
-		                                             null,
-		                                             null,
-		                                             null,
-		                                             false);
+		datasetsWidget = datasets.getCheckboxesWidget(newDatasets -> {
+		                                                  int datasetsCount = datasets.normalsCount();
+		                                                  samples = new FloatBuffer[datasetsCount];
+		                                                  bins = new int[datasetsCount][binCount.get()];
+		                                                  binsAsTriangles = new FloatBuffer[datasetsCount];
+		                                                  for(int i = 0; i < datasetsCount; i++)
+		                                                      binsAsTriangles[i] = Buffers.newDirectFloatBuffer(binCount.get() * 12);
+		                                                  if(datasets.normalsCount() == 1) {
+		                                                      xAxisMinimum.setSuffix(datasets.getNormal(0).unit.get());
+		                                                      xAxisMaximum.setSuffix(datasets.getNormal(0).unit.get());
+		                                                      xAxisCenter.setSuffix(datasets.getNormal(0).unit.get());
+		                                                      xAxisSpan.setSuffix(datasets.getNormal(0).unit.get());
+		                                                  } else if(datasets.normalsCount() == 0) {
+		                                                      xAxisMinimum.setSuffix("");
+		                                                      xAxisMaximum.setSuffix("");
+		                                                      xAxisCenter.setSuffix("");
+		                                                      xAxisSpan.setSuffix("");
+		                                                  }
+		                                              });
 		
-		xAxisScale = new WidgetToggleButtonEnum<XAxisScale>("Specify as",
-		                                                    "x-axis scale",
-		                                                    XAxisScale.values(),
-		                                                    XAxisScale.MIN_MAX,
-		                                                    newScale -> {
-		                                                        xAxisMinimum.setVisible(newScale == XAxisScale.MIN_MAX);
-		                                                        xAxisMinimumAutomatic.setVisible(newScale == XAxisScale.MIN_MAX);
-		                                                        xAxisMaximum.setVisible(newScale == XAxisScale.MIN_MAX);
-		                                                        xAxisMaximumAutomatic.setVisible(newScale == XAxisScale.MIN_MAX);
-		                                                        xAxisCenter.setVisible(newScale == XAxisScale.CENTER_SPAN);
-		                                                        xAxisCenterPlaceholder.setVisible(newScale == XAxisScale.CENTER_SPAN);
-		                                                        xAxisSpan.setVisible(newScale == XAxisScale.CENTER_SPAN);
-		                                                        xAxisSpanAutomatic.setVisible(newScale == XAxisScale.CENTER_SPAN);
-		                                                        return true;
-		                                                    });
+		xAxisScale = new WidgetToggleButton<XAxisScale>("Specify as", XAxisScale.values(), XAxisScale.MIN_MAX)
+		                 .setExportLabel("x-axis scale")
+		                 .onChange((newScale, oldScale) -> {
+		                      xAxisMinimum.setVisible(newScale == XAxisScale.MIN_MAX);
+		                      xAxisMinimumAutomatic.setVisible(newScale == XAxisScale.MIN_MAX);
+		                      xAxisMaximum.setVisible(newScale == XAxisScale.MIN_MAX);
+		                      xAxisMaximumAutomatic.setVisible(newScale == XAxisScale.MIN_MAX);
+		                      xAxisCenter.setVisible(newScale == XAxisScale.CENTER_SPAN);
+		                      xAxisCenterPlaceholder.setVisible(newScale == XAxisScale.CENTER_SPAN);
+		                      xAxisSpan.setVisible(newScale == XAxisScale.CENTER_SPAN);
+		                      xAxisSpanAutomatic.setVisible(newScale == XAxisScale.CENTER_SPAN);
+		                      return true;
+		                  });
 		
 		xAxisTicksVisibility = new WidgetCheckbox("Show Ticks", true)
 		                           .setExportLabel("x-axis show ticks");
@@ -258,21 +251,19 @@ public class OpenGLHistogramChart extends PositionedChart {
 		                                                               yAxisMaximumRelativeFrequency.setEnabled(true);
 		                                                       });
 		
-		yAxisScale = new WidgetToggleButtonEnum<YAxisScale>("Scale",
-		                                                    "y-axis scale",
-		                                                    YAxisScale.values(),
-		                                                    YAxisScale.RELATIVE_FREQUENCY,
-		                                                    newScale -> {
-		                                                        yAxisMinimumFrequency.setVisible(newScale == YAxisScale.FREQUENCY);
-		                                                        yAxisMinimumFrequencyIsZero.setVisible(newScale == YAxisScale.FREQUENCY);
-		                                                        yAxisMaximumFrequency.setVisible(newScale == YAxisScale.FREQUENCY);
-		                                                        yAxisMaximumFrequencyAutomatic.setVisible(newScale == YAxisScale.FREQUENCY);
-		                                                        yAxisMinimumRelativeFrequency.setVisible(newScale != YAxisScale.FREQUENCY);
-		                                                        yAxisMinimumRelativeFrequencyIsZero.setVisible(newScale != YAxisScale.FREQUENCY);
-		                                                        yAxisMaximumRelativeFrequency.setVisible(newScale != YAxisScale.FREQUENCY);
-		                                                        yAxisMaximumRelativeFrequencyAutomatic.setVisible(newScale != YAxisScale.FREQUENCY);
-		                                                        return true;
-		                                                    });
+		yAxisScale = new WidgetToggleButton<YAxisScale>("Scale", YAxisScale.values(), YAxisScale.RELATIVE_FREQUENCY)
+		                 .setExportLabel("y-axis scale")
+		                 .onChange((newScale, oldScale) -> {
+		                      yAxisMinimumFrequency.setVisible(newScale == YAxisScale.FREQUENCY);
+		                      yAxisMinimumFrequencyIsZero.setVisible(newScale == YAxisScale.FREQUENCY);
+		                      yAxisMaximumFrequency.setVisible(newScale == YAxisScale.FREQUENCY);
+		                      yAxisMaximumFrequencyAutomatic.setVisible(newScale == YAxisScale.FREQUENCY);
+		                      yAxisMinimumRelativeFrequency.setVisible(newScale != YAxisScale.FREQUENCY);
+		                      yAxisMinimumRelativeFrequencyIsZero.setVisible(newScale != YAxisScale.FREQUENCY);
+		                      yAxisMaximumRelativeFrequency.setVisible(newScale != YAxisScale.FREQUENCY);
+		                      yAxisMaximumRelativeFrequencyAutomatic.setVisible(newScale != YAxisScale.FREQUENCY);
+		                      return true;
+		                  });
 		
 		yAxisTicksVisibility = new WidgetCheckbox("Show Ticks", true)
 		                           .setExportLabel("y-axis show ticks");

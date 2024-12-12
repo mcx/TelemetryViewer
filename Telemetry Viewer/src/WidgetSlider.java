@@ -174,11 +174,12 @@ public class WidgetSlider implements Widget {
 
 	}
 
-	@Override public void setVisible(boolean isVisible) {
+	@Override public WidgetSlider setVisible(boolean isVisible) {
 		
 		if(prefixLabel != null)
 			prefixLabel.setVisible(isVisible);
 		slider.setVisible(isVisible);
+		return this;
 		
 	}
 

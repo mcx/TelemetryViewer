@@ -34,11 +34,11 @@ public interface Widget {
 	public void appendTo(JPanel panel, String constraints);
 	
 	/**
-	 * Enables or disables visibility of the widgets.
+	 * Enables or disables visibility of the widget.
 	 * 
-	 * @param isVisible    If the widgets should be shown on screen.
+	 * @param isVisible    If the widget should be shown on screen.
 	 */
-	public void setVisible(boolean isVisible);
+	public Widget setVisible(boolean isVisible);
 
 	/**
 	 * Updates the widget based on a settings file.

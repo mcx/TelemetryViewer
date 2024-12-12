@@ -27,6 +27,7 @@ public class ConnectionTelemetryTCP extends ConnectionTelemetry {
 		
 		previousSampleCountTimestamp = 0;
 		previousSampleCount = 0;
+		calculatedSamplesPerSecond = 0;
 		
 		if(showGui)
 			setFieldsDefined(false);

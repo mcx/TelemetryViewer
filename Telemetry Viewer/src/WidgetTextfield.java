@@ -843,9 +843,10 @@ public class WidgetTextfield<T> implements Widget {
 		
 	}
 
-	@Override public void setVisible(boolean isVisible) {
+	@Override public WidgetTextfield<T> setVisible(boolean isVisible) {
 
 		textfield.setVisible(isVisible);
+		return this;
 		
 	}
 	

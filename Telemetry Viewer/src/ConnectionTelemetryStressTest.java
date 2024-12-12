@@ -29,6 +29,7 @@ public class ConnectionTelemetryStressTest extends ConnectionTelemetry {
 		removeAllData();
 		previousSampleCountTimestamp = 0;
 		previousSampleCount = 0;
+		calculatedSamplesPerSecond = 0;
 		
 		ChartsController.removeAllCharts();
 		
@@ -48,10 +49,9 @@ public class ConnectionTelemetryStressTest extends ConnectionTelemetry {
 		SettingsView.instance.antialiasingSlider.set(1);
 		
 		OpenGLTimeDomainChart chart = (OpenGLTimeDomainChart) ChartsController.createAndAddChart("Time Domain").setPosition(0, 0, 5, 5);
-		chart.datasetsAndDurationWidget.setNormalDatasetSelected(getDatasetByLocation(1), true);
-		chart.datasetsAndDurationWidget.setDurationUnit(WidgetDatasetCheckboxes.DurationUnit.SAMPLES);
-		chart.datasetsAndDurationWidget.setAxisType(WidgetDatasetCheckboxes.AxisType.SAMPLE_COUNT);
-		chart.datasetsAndDurationWidget.setDuration("10000000", false);
+		chart.datasetsAndDurationWidget.datasets.get(getDatasetByLocation(1)).set(true);
+		chart.datasetsAndDurationWidget.durationUnit.set(DatasetsInterface.DurationUnit.SAMPLES);
+		chart.datasetsAndDurationWidget.duration.set("10000000");
 		chart.cacheEnabled.set(true);
 		
 		Main.window.setExtendedState(JFrame.NORMAL);

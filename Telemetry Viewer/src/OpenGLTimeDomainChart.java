@@ -12,7 +12,7 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 	boolean isTimestampsMode;
 	AutoScale autoscale;
 	
-	Plot plot;
+	Plot plot = new PlotSampleCount();
 	List<Field> allDatasets = new ArrayList<Field>(); // normal and bitfields
 	
 	// trigger
@@ -20,7 +20,7 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 	float earlierPlotMaxY = 1;
 	float earlierPlotMinY = -1;
 	
-	public WidgetDatasetCheckboxes datasetsAndDurationWidget;
+	public DatasetsInterface.WidgetDatasets datasetsAndDurationWidget;
 	private WidgetCheckbox legendVisibility;
 	public WidgetCheckbox cacheEnabled;
 	private WidgetCheckbox xAxisTicksVisibility;
@@ -117,38 +117,32 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		yAxisTitleVisibility = new WidgetCheckbox("Show Title", true)
 		                           .setExportLabel("y-axis show title");
 		
-		datasetsAndDurationWidget = new WidgetDatasetCheckboxes(newDatasets -> {
-		                                                            datasets.setNormals(newDatasets);
-		                                                            updateAllDatasetsList();
-		                                                            if(datasets.normalsCount() == 1) {
-		                                                                yAxisMinimum.setSuffix(datasets.getNormal(0).unit.get());
-		                                                                yAxisMaximum.setSuffix(datasets.getNormal(0).unit.get());
-		                                                                trigger.setDefaultChannel(datasets.getNormal(0));
-		                                                            } else if(datasets.normalsCount() == 0) {
-		                                                                yAxisMinimum.setSuffix("");
-		                                                                yAxisMaximum.setSuffix("");
-		                                                            }
-		                                                        },
-		                                                        newBitfieldEdges -> {
-		                                                            datasets.setEdges(newBitfieldEdges);
-		                                                            updateAllDatasetsList();
-		                                                        },
-		                                                        newBitfieldLevels -> {
-		                                                            datasets.setLevels(newBitfieldLevels);
-		                                                            updateAllDatasetsList();
-		                                                        },
-		                                                        (newDurationType, newDuration) -> {
-		                                                            sampleCountMode  = newDurationType == WidgetDatasetCheckboxes.AxisType.SAMPLE_COUNT;
-		                                                            isTimestampsMode = newDurationType == WidgetDatasetCheckboxes.AxisType.TIMESTAMPS;
-		                                                            if(sampleCountMode)
-		                                                            	newDuration = Math.min(newDuration, Integer.MAX_VALUE / 16);
-		                                                            duration = (int) (long) newDuration;
-		                                                            plot = sampleCountMode ? new PlotSampleCount() : new PlotMilliseconds();
-		                                                            if(trigger != null)
-		                                                                trigger.resetTrigger();
-		                                                            return newDuration;
-		                                                        },
-		                                                        true);
+		datasetsAndDurationWidget = datasets.getCheckboxesAndButtonsWidget(newDatasets -> {
+		                                               updateAllDatasetsList();
+		                                               if(datasets.normalsCount() == 1) {
+		                                                   yAxisMinimum.setSuffix(datasets.getNormal(0).unit.get());
+		                                                   yAxisMaximum.setSuffix(datasets.getNormal(0).unit.get());
+		                                                   trigger.setDefaultChannel(datasets.getNormal(0));
+		                                               } else if(datasets.normalsCount() == 0) {
+		                                                   yAxisMinimum.setSuffix("");
+		                                                   yAxisMaximum.setSuffix("");
+		                                               }
+		                                           },
+		                                           newBitfieldEdges -> {
+		                                               updateAllDatasetsList();
+		                                           },
+		                                           newBitfieldLevels -> {
+		                                               updateAllDatasetsList();
+		                                           },
+		                                           (newDurationType, newDuration) -> {
+		                                               sampleCountMode  = newDurationType == DatasetsInterface.DurationUnit.SAMPLES;
+		                                               isTimestampsMode = newDurationType == DatasetsInterface.DurationUnit.MILLISECONDS;
+		                                               duration = (int) (long) newDuration;
+		                                               plot = sampleCountMode ? new PlotSampleCount() : new PlotMilliseconds();
+		                                               if(trigger != null)
+		                                                   trigger.resetTrigger();
+		                                           },
+		                                           true);
 		
 		trigger = new WidgetTrigger(this,
 		                            isEnabled -> triggerEnabled = isEnabled);

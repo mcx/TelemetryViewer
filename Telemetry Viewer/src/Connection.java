@@ -18,7 +18,7 @@ public abstract class Connection {
 	Thread processorThread;   // processes the received data
 	Thread transmitterThread; // sends data
 	private volatile boolean connected = false;
-	protected volatile WidgetComboboxString name;
+	protected volatile WidgetCombobox<String> name;
 	
 	final public void setConnected(boolean isConnected) {
 		connected = isConnected;
@@ -90,11 +90,10 @@ public abstract class Connection {
 	/**
 	 * Reads the timestamp for a specific sample number or frame number.
 	 * 
-	 * @param sampleNumber    The sample or frame number.
-	 * @param cache           Places to cache timestamps.
+	 * @param sampleNumber    The sample number or frame number.
 	 * @return                Corresponding timestamp.
 	 */
-	public abstract long getTimestamp(int sampleNumber, StorageTimestamps.Cache cache);
+	public abstract long getTimestamp(int sampleNumber);
 	
 	/**
 	 * @return    Timestamp of the first sample or frame, or 0 if none exist.

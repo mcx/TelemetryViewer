@@ -10,6 +10,7 @@ import java.io.PrintWriter;
 import java.nio.FloatBuffer;
 import java.nio.LongBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -48,7 +49,7 @@ public class Field implements Comparable<Field> {
 	
 	// GUI widgets
 	WidgetTextfield<Integer> location;
-	WidgetComboboxEnum<Type> type;
+	WidgetCombobox<Type> type;
 	WidgetTextfield<String> name;
 	WidgetColorPicker color;
 	WidgetTextfield<String> unit;
@@ -91,17 +92,17 @@ public class Field implements Comparable<Field> {
 		                                  return false;
 		                              } else {
 		                                  // new location has >= 1 byte available, so update the list of appropriate data types
-		                                  type.setDisabledItems(Stream.of(Type.values())
-		                                                              .filter(field -> connection.isFieldAllowed(this, newOffset, field) != null)
-		                                                              .collect(Collectors.toMap(field -> field,
-		                                                                                        field -> connection.isFieldAllowed(this, newOffset, field))));
+		                                  type.setDisabledValues(Stream.of(Type.values())
+		                                                               .filter(field -> connection.isFieldAllowed(this, newOffset, field) != null)
+		                                                               .collect(Collectors.toMap(field -> field,
+		                                                                                         field -> connection.isFieldAllowed(this, newOffset, field))));
 		                                  return true;
 		                              }
 		                          });
 		
-		type = new WidgetComboboxEnum<Type>(Type.values(), Type.values()[1])
+		type = new WidgetCombobox<Type>(null, Arrays.asList(Type.values()), Type.values()[1])
 		           .setExportLabel("binary processor")
-		           .onChange(newDatatype -> {
+		           .onChange((newDatatype, oldDatatype) -> {
 		               if(connection.isFieldAllowed(this, location.get(), newDatatype) != null)
 		                   return false; // not allowed
 		               boolean isSyncWord = newDatatype.isSyncWord();
@@ -148,6 +149,7 @@ public class Field implements Comparable<Field> {
 		                      .setFixedWidth(22)
 		                      .onEnter(event -> addButton.doClick())
 		                      .onChange((newText, oldText) -> {
+		                          // the field name must be unique within this ConnectionTelemetry, but that will be enforced when clicking Add (to be less annoying when defining the data structure)
 		                          if(isSyncWord()) {
 		                              try {
 		                                  if(!newText.toLowerCase().startsWith("0x") || newText.length() > 4 || newText.length() < 3)
@@ -201,6 +203,14 @@ public class Field implements Comparable<Field> {
 		                                .onEnter(event -> addButton.doClick());
 		
 		addButton.addActionListener(event -> {
+			// the field name must be unique within this connection
+			List<String> usedNames = connection.getDatasetsList().stream().map(field -> field.name.get()).toList();
+			if(usedNames.contains(name.get())) {
+				if(insertHandler != null)
+					insertHandler.accept("The dataset name must be unique.");
+				return;
+			}
+			
 			if(!type.get().toString().contains("Bitfield")) {
 				// not a bitfield, so just insert it
 				insert();
@@ -245,7 +255,10 @@ public class Field implements Comparable<Field> {
 	}
 	
 	@Override public int compareTo(Field other) {
-		return this.location.get() - other.location.get();
+		// hopefully no connection has a packet size >10,000 bytes (>80,000 bits)
+		int thisBitOffset  = (ConnectionsController.telemetryConnections.indexOf(this.connection)  * 80000) + ( this.location.get() * 8);
+		int otherBitOffset = (ConnectionsController.telemetryConnections.indexOf(other.connection) * 80000) + (other.location.get() * 8);
+		return thisBitOffset - otherBitOffset;
 	}
 	
 	public Field onInsert(Consumer<String> handler) {
@@ -399,11 +412,15 @@ public class Field implements Comparable<Field> {
 	}
 	
 	/**
-	 * @return    The name of this dataset.
+	 * @return    A user-friendly String describing this Field.
+	 *            This will be shown to the user by WidgetDatasets, and will also be used when exporting/importing.
+	 *            Therefore this String *must* uniquely identify this field among *every* Field of *every* ConnectionTelemetry!
 	 */
 	@Override public String toString() {
 		
-		return name.get();
+		boolean oneConnection = ConnectionsController.telemetryConnections.size() == 1;
+		return oneConnection ? name.get() : "[" + connection.toString() + "] " + name.get();
+		
 		
 	}
 	
@@ -646,7 +663,7 @@ public class Field implements Comparable<Field> {
 				}
 			}
 			
-			if(levels.containsKey(states[stateN]))
+			if(levels.containsKey(states[stateN])) {
 				sampleNumber--; // undo the last sampleNumber++ in the above for() loop
 				if(updateExistingLevel) {
 					int i = levels.get(states[stateN]).size() - 1;
@@ -657,6 +674,7 @@ public class Field implements Comparable<Field> {
 				} else {
 					levels.get(states[stateN]).add(new LevelRange(startingSampleNumber, startingTimestamp, sampleNumber, timestamp));
 				}
+			}
 			
 		}
 
@@ -664,11 +682,10 @@ public class Field implements Comparable<Field> {
 		 * For sorting a Collection of Bitfields so the fields occupying less-significant bits come first.
 		 */
 		@Override public int compareTo(Bitfield other) {
-			
-			int thisBitOffset  = ( this.dataset.location.get() * 8) +  this.LSBit;
-			int otherBitOffset = (other.dataset.location.get() * 8) + other.LSBit;
+			// hopefully no connection has a packet size >10,000 bytes (>80,000 bits)
+			int thisBitOffset  = (ConnectionsController.telemetryConnections.indexOf(this.dataset.connection)  * 80000) + ( this.dataset.location.get() * 8) +  this.LSBit;
+			int otherBitOffset = (ConnectionsController.telemetryConnections.indexOf(other.dataset.connection) * 80000) + (other.dataset.location.get() * 8) + other.LSBit;
 			return thisBitOffset - otherBitOffset;
-			
 		}
 		
 		/**
@@ -707,14 +724,14 @@ public class Field implements Comparable<Field> {
 			 * For sorting a collections of States so earlier datasets come first, and smaller values come first.
 			 */
 			@Override public int compareTo(State other) {
-
-				if(this.bitfield == other.bitfield)
-					return this.value - other.value;
-				else if(this.dataset == other.dataset)
-					return this.bitfield.MSBit - other.bitfield.MSBit;
-				else
-					return this.dataset.location.get() - other.dataset.location.get();
+				// hopefully no connection has a packet size >10,000 bytes (>80,000 bits)
+				int thisBitOffset  = (ConnectionsController.telemetryConnections.indexOf(this.dataset.connection)  * 80000) + ( this.dataset.location.get() * 8) +  this.bitfield.LSBit;
+				int otherBitOffset = (ConnectionsController.telemetryConnections.indexOf(other.dataset.connection) * 80000) + (other.dataset.location.get() * 8) + other.bitfield.LSBit;
 				
+				// with 8-bit bitfields, every bitfield value will be <=255
+				int thisValue  = (thisBitOffset  * 8) +  this.value;
+				int otherValue = (otherBitOffset * 8) + other.value;
+				return thisValue - otherValue;
 			}
 			
 		}

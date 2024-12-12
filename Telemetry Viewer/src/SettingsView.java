@@ -3,9 +3,9 @@ import java.awt.Dimension;
 import java.io.PrintWriter;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
-import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import net.miginfocom.swing.MigLayout;
@@ -21,21 +21,21 @@ public class SettingsView extends JPanel {
 	
 	public static SettingsView instance = new SettingsView();
 	
-	public WidgetCheckbox                 hintsCheckbox;
-	public WidgetColorPicker              hintsColorButton;
-	public WidgetCheckbox                 warningsCheckbox;
-	public WidgetColorPicker              warningsColorButton;
-	public WidgetCheckbox                 failuresCheckbox;
-	public WidgetColorPicker              failuresColorButton;
-	public WidgetCheckbox                 verboseCheckbox;
-	public WidgetColorPicker              verboseColorButton;
-	public WidgetTextfield<Integer>       tileColumnsTextfield;
-	public WidgetTextfield<Integer>       tileRowsTextfield;
-	public WidgetComboboxEnum<TimeFormat> timeFormatCombobox;
-	public WidgetCheckbox                 timeFormat24hoursCheckbox;
-	public WidgetCheckbox                 tooltipsVisibility;
-	public WidgetCheckbox                 benchmarkingCheckbox;
-	public WidgetSlider                   antialiasingSlider;
+	public WidgetCheckbox             hintsCheckbox;
+	public WidgetColorPicker          hintsColorButton;
+	public WidgetCheckbox             warningsCheckbox;
+	public WidgetColorPicker          warningsColorButton;
+	public WidgetCheckbox             failuresCheckbox;
+	public WidgetColorPicker          failuresColorButton;
+	public WidgetCheckbox             verboseCheckbox;
+	public WidgetColorPicker          verboseColorButton;
+	public WidgetTextfield<Integer>   tileColumnsTextfield;
+	public WidgetTextfield<Integer>   tileRowsTextfield;
+	public WidgetCombobox<TimeFormat> timeFormatCombobox;
+	public WidgetCheckbox             timeFormat24hoursCheckbox;
+	public WidgetCheckbox             tooltipsVisibility;
+	public WidgetCheckbox             benchmarkingCheckbox;
+	public WidgetSlider               antialiasingSlider;
 	
 	public void importFrom(ConnectionsController.QueueOfLines lines) throws AssertionError {
 		
@@ -228,9 +228,9 @@ public class SettingsView extends JPanel {
 		                                       }
 		                                   });
 		
-		timeFormatCombobox = new WidgetComboboxEnum<TimeFormat>(TimeFormat.values(), TimeFormat.ONLY_TIME)
+		timeFormatCombobox = new WidgetCombobox<TimeFormat>("Time Format", Arrays.asList(TimeFormat.values()), TimeFormat.ONLY_TIME)
 		                         .setExportLabel("time format")
-		                         .onChange(newFormat -> {
+		                         .onChange((newFormat, oldFormat) -> {
 		                             boolean is24hourMode = timeFormat24hoursCheckbox.get();
 		                             switch(newFormat) {
 		                                 case TIME_AND_YYYY_MM_DD -> {
@@ -314,8 +314,7 @@ public class SettingsView extends JPanel {
 		               .with(tileColumnsTextfield)
 		               .with(tileRowsTextfield)
 		               .withGap(Theme.padding)
-		               .with(new JLabel("Time Format: "), "split 2")
-		               .with(timeFormatCombobox, "grow x")
+		               .with(timeFormatCombobox)
 		               .with(timeFormat24hoursCheckbox)
 		               .withGap(Theme.padding)
 		               .with(tooltipsVisibility)

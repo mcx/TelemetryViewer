@@ -1,3 +1,5 @@
+import java.util.List;
+
 import javax.swing.JPanel;
 import com.jogamp.opengl.GL2ES3;
 import com.jogamp.opengl.GL3;
@@ -7,7 +9,7 @@ public class OpenGLDialChart extends PositionedChart {
 	final int   dialResolution = 400; // how many quads to draw
 	final float dialThickness = 0.4f; // percentage of the radius
 	
-	private WidgetDatasetComboboxes datasetWidget;
+	private DatasetsInterface.WidgetDatasets datasetWidget;
 	private WidgetCheckbox datasetLabelVisibility;
 	private WidgetTextfield<Float> dialMinimum;
 	private WidgetTextfield<Float> dialMaximum;
@@ -42,14 +44,13 @@ public class OpenGLDialChart extends PositionedChart {
 		                                           return true;
 		                                       });
 		
-		datasetWidget = new WidgetDatasetComboboxes(new String[] {"Dataset"},
-		                                            newDatasets -> {
-		                                                if(newDatasets.isEmpty()) // no telemetry connections
-		                                                    return;
-		                                                datasets.setNormals(newDatasets);
-		                                                dialMinimum.setSuffix(datasets.getNormal(0).unit.get());
-		                                                dialMaximum.setSuffix(datasets.getNormal(0).unit.get());
-		                                            });
+		datasetWidget = datasets.getComboboxesWidget(List.of("Dataset"),
+		                                             newDatasets -> {
+		                                                 if(newDatasets.isEmpty()) // no telemetry connections
+		                                                     return;
+		                                                 dialMinimum.setSuffix(datasets.getNormal(0).unit.get());
+		                                                 dialMaximum.setSuffix(datasets.getNormal(0).unit.get());
+		                                             });
 		
 		readingLabelVisibility = new WidgetCheckbox("Show Reading Label", true);
 		

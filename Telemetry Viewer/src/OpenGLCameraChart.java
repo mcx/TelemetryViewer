@@ -9,7 +9,7 @@ public class OpenGLCameraChart extends PositionedChart {
 	long previousFrameTimestamp = 0;
 	int[] texHandle;
 	
-	WidgetComboboxString cameraName;
+	WidgetCombobox<String> cameraName;
 	WidgetCheckbox mirrorX;
 	WidgetCheckbox mirrorY;
 	WidgetCheckbox rotateClockwise;
@@ -31,9 +31,9 @@ public class OpenGLCameraChart extends PositionedChart {
 		if(cameraNames.isEmpty())
 			cameraNames = List.of("[No cameras available]");
 		
-		cameraName = new WidgetComboboxString(cameraNames, cameraNames.get(0))
+		cameraName = new WidgetCombobox<String>(null, cameraNames, cameraNames.get(0))
 		                 .setExportLabel("camera name")
-		                 .onChange(newName -> {
+		                 .onChange((newName, oldName) -> {
 		                               connection = ConnectionsController.cameraConnections.stream().filter(connection -> connection.name.get().equals(newName)).findFirst().orElse(null);
 		                               return true;
 		                           });
@@ -62,9 +62,9 @@ public class OpenGLCameraChart extends PositionedChart {
 			noCameras = true;
 		}
 		
-		cameraName = new WidgetComboboxString(cameraNames, (connection == null) ? cameraNames.get(0) : connection.name.get())
+		cameraName = new WidgetCombobox<String>(null, cameraNames, (connection == null) ? cameraNames.get(0) : connection.name.get())
 		             .setExportLabel("camera name")
-		             .onChange(newName -> {
+		             .onChange((newName, oldName) -> {
 		                           connection = ConnectionsController.cameraConnections.stream().filter(connection -> connection.name.get().equals(newName)).findFirst().orElse(null);
 		                           return true;
 		                       });

@@ -12,7 +12,7 @@ public class OpenGLTimelineChart extends PositionedChart {
 	private WidgetCheckbox showControls;
 	private WidgetCheckbox showTime;
 	private WidgetCheckbox showTimeline;
-	private WidgetDatasetCheckboxes datasetsWidget;
+	private DatasetsInterface.WidgetDatasets datasetsWidget;
 	
 	// these timestamps need to be fields so the mouse event handler can see the *current* values
 	// otherwise the handler will only see the values from when the handler was defined, and click-and-dragging will not work as expected!
@@ -27,11 +27,8 @@ public class OpenGLTimelineChart extends PositionedChart {
 	
 	public OpenGLTimelineChart() {
 		
-		datasetsWidget = new WidgetDatasetCheckboxes(null,
-		                                             newBitfieldEdges  -> datasets.setEdges(newBitfieldEdges),
-		                                             newBitfieldLevels -> datasets.setLevels(newBitfieldLevels),
-		                                             null,
-		                                             false);
+		datasetsWidget = datasets.getButtonsWidget(newEdge   -> {},
+		                                           newLevels -> {});
 		
 		showControls = new WidgetCheckbox("Show Controls", true);
 		

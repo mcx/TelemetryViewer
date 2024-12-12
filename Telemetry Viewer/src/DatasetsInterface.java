@@ -1,3 +1,5 @@
+import java.awt.Dimension;
+import java.io.PrintWriter;
 import java.nio.FloatBuffer;
 import java.nio.LongBuffer;
 import java.util.ArrayList;
@@ -8,8 +10,12 @@ import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import javax.swing.JPanel;
 
 import com.jogamp.common.nio.Buffers;
 import com.jogamp.opengl.GL;
@@ -45,18 +51,15 @@ public class DatasetsInterface {
 		
 	}
 	
-	/**
-	 * Sets the normal (non-bitfield) datasets that can be subsequently accessed, replacing any existing ones.
-	 * 
-	 * @param newDatasets    Normal datasets to use.
-	 */
-	public void setNormals(List<Field> newDatasets) {
+	private void flushCaches() {
 		
-		// update normal datasets
-		normalDatasets.clear();
-		normalDatasets.addAll(newDatasets);
+		connection = !normalDatasets.isEmpty() ? normalDatasets.getFirst().connection :
+		             !edgeStates.isEmpty()     ? edgeStates.getFirst().connection :
+		             !levelStates.isEmpty()    ? levelStates.getFirst().connection :
+		                                         null;
 		
-		// update caches
+		timestampsCache = (connection == null) ? null : connection.createTimestampsCache();
+		
 		sampleCaches.clear();
 		normalDatasets.forEach(dataset -> sampleCaches.put(dataset, dataset.createCache()));
 		edgeStates.forEach(state -> sampleCaches.put(state.dataset, state.dataset.createCache()));
@@ -66,81 +69,6 @@ public class DatasetsInterface {
 		levelStates.forEach(level -> levelsCache.put(level, new ArrayList<Field.Bitfield.LevelRange>()));
 		edgesLevelsCacheStartingSampleNumber = -1;
 		edgesLevelsCacheEndingSampleNumber = -1;
-		
-		// update the connection
-		connection = !normalDatasets.isEmpty() ? normalDatasets.get(0).connection :
-		             !edgeStates.isEmpty()     ? edgeStates.get(0).connection :
-		             !levelStates.isEmpty()    ? levelStates.get(0).connection :
-		                                         null;
-		
-		// update timestamps cache
-		timestampsCache = (connection == null) ? null : connection.createTimestampsCache();
-		
-	}
-	
-	/**
-	 * Sets the bitfield edge states that can be subsequently accessed, replacing any existing ones.
-	 * 
-	 * @param newEdges    Bitfield edge states to use.
-	 */
-	public void setEdges(List<Field.Bitfield.State> newEdges) {
-		
-		// update edge datasets
-		edgeStates.clear();
-		edgeStates.addAll(newEdges);
-		
-		// update caches
-		sampleCaches.clear();
-		normalDatasets.forEach(dataset -> sampleCaches.put(dataset, dataset.createCache()));
-		edgeStates.forEach(state -> sampleCaches.put(state.dataset, state.dataset.createCache()));
-		levelStates.forEach(state -> sampleCaches.put(state.dataset, state.dataset.createCache()));
-		edgesCache.clear();
-		levelsCache.clear();
-		levelStates.forEach(level -> levelsCache.put(level, new ArrayList<Field.Bitfield.LevelRange>()));
-		edgesLevelsCacheStartingSampleNumber = -1;
-		edgesLevelsCacheEndingSampleNumber = -1;
-		
-		// update the connection
-		connection = !normalDatasets.isEmpty() ? normalDatasets.get(0).connection :
-		             !edgeStates.isEmpty()     ? edgeStates.get(0).connection :
-		             !levelStates.isEmpty()    ? levelStates.get(0).connection :
-		                                         null;
-		
-		// update timestamps cache
-		timestampsCache = (connection == null) ? null : connection.createTimestampsCache();
-		
-	}
-	
-	/**
-	 * Sets the bitfield level states that can be subsequently accessed, replacing any existing ones.
-	 * 
-	 * @param newLevels    Bitfield level states to use.
-	 */
-	public void setLevels(List<Field.Bitfield.State> newLevels) {
-		
-		// update level datasets
-		levelStates.clear();
-		levelStates.addAll(newLevels);
-		
-		// update caches
-		sampleCaches.clear();
-		normalDatasets.forEach(dataset -> sampleCaches.put(dataset, dataset.createCache()));
-		edgeStates.forEach(state -> sampleCaches.put(state.dataset, state.dataset.createCache()));
-		levelStates.forEach(state -> sampleCaches.put(state.dataset, state.dataset.createCache()));
-		edgesCache.clear();
-		levelsCache.clear();
-		levelStates.forEach(level -> levelsCache.put(level, new ArrayList<Field.Bitfield.LevelRange>()));
-		edgesLevelsCacheStartingSampleNumber = -1;
-		edgesLevelsCacheEndingSampleNumber = -1;
-		
-		// update the connection
-		connection = !normalDatasets.isEmpty() ? normalDatasets.get(0).connection :
-		             !edgeStates.isEmpty()     ? edgeStates.get(0).connection :
-		             !levelStates.isEmpty()    ? levelStates.get(0).connection :
-		                                         null;
-		
-		// update timestamps cache
-		timestampsCache = (connection == null) ? null : connection.createTimestampsCache();
 		
 	}
 	
@@ -153,7 +81,7 @@ public class DatasetsInterface {
 	 *                           If false, the Tooltips will show their sample number and time.
 	 * @returns                  A Map where the keys are sample numbers, and the values are the corresponding Tooltips to draw on screen.
 	 */
-	public Map<Integer, PositionedChart.Tooltip> getEdgesBetween(int minSampleNumber, int maxSampleNumber, boolean sampleCountMode) {
+	private Map<Integer, PositionedChart.Tooltip> getEdgesBetween(int minSampleNumber, int maxSampleNumber, boolean sampleCountMode) {
 		
 		// sanity checks
 		if(minSampleNumber < 0)
@@ -198,7 +126,7 @@ public class DatasetsInterface {
 	 * @param sampleCountMode    Not actually used by the level events, but this code also checks for edge events because both tasks can be done efficiently at the same time.
 	 * @returns                  A Map where the keys are Bitfield States, and the values are the corresponding details for any level events to draw on screen.
 	 */
-	public Map<Field.Bitfield.State, List<Field.Bitfield.LevelRange>> getLevelsBetween(int minSampleNumber, int maxSampleNumber, boolean sampleCountMode) {
+	private Map<Field.Bitfield.State, List<Field.Bitfield.LevelRange>> getLevelsBetween(int minSampleNumber, int maxSampleNumber, boolean sampleCountMode) {
 		
 		// sanity checks
 		if(minSampleNumber < 0)
@@ -342,19 +270,19 @@ public class DatasetsInterface {
 	
 	public int getClosestSampleNumberAtOrBefore(long timestamp, int maxSampleNumber) {
 		
-		return connection.getClosestSampleNumberAtOrBefore(timestamp, maxSampleNumber, timestampsCache);
+		return connection.getClosestSampleNumberAtOrBefore(timestamp, maxSampleNumber);
 		
 	}
 	
 	public int getClosestSampleNumberAfter(long timestamp) {
 		
-		return connection.getClosestSampleNumberAfter(timestamp, timestampsCache);
+		return connection.getClosestSampleNumberAfter(timestamp);
 		
 	}
 	
 	public long getTimestamp(int sampleNumber) {
 		
-		return connection.getTimestamp(sampleNumber, timestampsCache);
+		return connection.getTimestamp(sampleNumber);
 		
 	}
 	
@@ -691,6 +619,371 @@ public class DatasetsInterface {
 		
 		return sampleCaches.get(dataset);
 		
+	}
+	
+	enum DurationUnit {
+		SAMPLES      { @Override public String toString() { return "Samples"; } },
+		MILLISECONDS { @Override public String toString() { return "Seconds"; } } // shown to user as seconds, given to charts as milliseconds
+	};
+	
+	/**
+	 * A widget that allows the user select zero or more normal datasets (but not bitfields.)
+	 */
+	public WidgetDatasets getCheckboxesWidget(Consumer<List<Field>> datasetsHandler) {
+		WidgetDatasets w = new WidgetDatasets();
+		w.datasetsHandler = datasetsHandler;
+		w.createAndUpdateWidgets();
+		return w;
+	}
+	
+	/**
+	 * A widget that allows the user to select zero or more bitfield edges or levels (but not normal datasets.)
+	 */
+	public WidgetDatasets getButtonsWidget(Consumer<List<Field.Bitfield.State>> edgesHandler, Consumer<List<Field.Bitfield.State>> levelsHandler) {
+		WidgetDatasets w = new WidgetDatasets();
+		w.edgesHandler = edgesHandler;
+		w.levelsHandler = levelsHandler;
+		w.createAndUpdateWidgets();
+		return w;
+	}
+	
+	
+	/**
+	 * A widget that allows the user to select zero or more normal datasets, zero or more bitfield edges or levels, and specify the chart duration.
+	 */
+	public WidgetDatasets getCheckboxesAndButtonsWidget(Consumer<List<Field>> datasetsHandler, Consumer<List<Field.Bitfield.State>> edgesHandler, Consumer<List<Field.Bitfield.State>> levelsHandler, BiConsumer<DurationUnit, Long> durationHandler, boolean allowTime) {
+		WidgetDatasets w = new WidgetDatasets();
+		w.datasetsHandler = datasetsHandler;
+		w.edgesHandler    = edgesHandler;
+		w.levelsHandler   = levelsHandler;
+		
+		long defaultSampleCount = ConnectionsController.telemetryConnections.isEmpty() ? 10_000 :
+		                          Long.min(ConnectionsController.telemetryConnections.get(0).getSampleRate() * 10L, Integer.MAX_VALUE / 16);
+		
+		w.duration = WidgetTextfield.ofText(Long.toString(defaultSampleCount))
+		                            .setExportLabel("duration")
+		                            .setSuffix(allowTime ? "" : "Samples")
+		                            .onChange((newText, oldText) -> {
+		                                 try {
+		                                     if(w.durationUnit.is(DurationUnit.SAMPLES)) {
+		                                         long sampleCount = Long.parseLong(newText);
+		                                         if(sampleCount < 2 || sampleCount > Integer.MAX_VALUE / 16)
+		                                             return false;
+		                                     } else {
+		                                         double seconds = Double.parseDouble(newText);
+		                                         long milliseconds = Math.round(seconds * 1000.0);
+		                                         if(milliseconds < 1 || milliseconds > Integer.MAX_VALUE / 16)
+		                                             return false;
+		                                     }
+		                                 } catch(Exception e) {
+		                                     return false;
+		                                 }
+		                                 durationHandler.accept(w.durationUnit.get(),
+		                                                        w.durationUnit.is(DurationUnit.SAMPLES) ?
+		                                                        Long.parseLong(w.duration.get()) :
+		                                                        Math.round(Double.parseDouble(w.duration.get()) * 1000.0));
+		                                 return true;
+		                             });
+		
+		w.durationUnit = new WidgetToggleButton<DurationUnit>(null, DurationUnit.values(), DurationUnit.SAMPLES)
+		                     .setExportLabel("duration unit")
+		                     .setVisible(allowTime ? true : false)
+		                     .onChange((newUnit, oldUnit) -> {
+		                         if(oldUnit == DurationUnit.SAMPLES && newUnit == DurationUnit.MILLISECONDS) {
+		                             // convert from sample count to seconds
+		                             int sampleRateHz = (connection != null) ? connection.getSampleRate() : ConnectionsController.telemetryConnections.get(0).getSampleRate();
+		                             double seconds = Long.parseLong(w.duration.get()) / (double) sampleRateHz;
+		                             w.duration.set(Double.toString(seconds));
+		                         } else if(oldUnit == DurationUnit.MILLISECONDS && newUnit == DurationUnit.SAMPLES) {
+		                             // convert from seconds to sample count
+		                             int sampleRateHz = (connection != null) ? connection.getSampleRate() : ConnectionsController.telemetryConnections.get(0).getSampleRate();
+		                             long sampleCount = Math.round(Double.parseDouble(w.duration.get()) * (double) sampleRateHz);
+		                             w.duration.set(Long.toString(sampleCount));
+		                         }
+		                         return true;
+		                     });
+
+		w.createAndUpdateWidgets();
+		return w;
+			
+	}
+	
+	/**
+	 * A widget that allows the user to select a fixed number of normal datasets (but not bitfields.)
+	 * 
+	 * @return
+	 */
+	public WidgetDatasets getComboboxesWidget(List<String> labels, Consumer<List<Field>> eventHandler) {
+		List<Field> fields = ConnectionsController.telemetryConnections.stream()
+		                                                               .flatMap(connection -> connection.getDatasetsList().stream())
+		                                                               .filter(field -> !field.isBitfield)
+		                                                               .toList();
+		if(normalDatasets.isEmpty() && !fields.isEmpty()) {
+			for(int i = 0; i < labels.size(); i++)
+				normalDatasets.add(fields.getFirst());
+			flushCaches();
+		}
+		
+		WidgetDatasets w = new WidgetDatasets();
+		w.datasetsHandler = eventHandler;
+		for(int i = 0; i < labels.size(); i++) {
+			int num = i; // constant for lambda below
+			w.comboboxes.add(new WidgetCombobox<Field>(labels.get(i), fields, fields.isEmpty() ? null : fields.getFirst())
+			                     .setExportLabel(labels.get(i).toLowerCase())
+			                     .onChange((newValue, oldValue) -> {
+			                          // force all selected datasets to be from the same connection
+			                          w.comboboxes.forEach(combobox -> {
+			                              Field f = combobox.get();
+			                              if(f != null && f.connection != newValue.connection)
+			                                  combobox.set(newValue);
+			                          });
+			                          
+			                          if(newValue != null)
+			                              normalDatasets.set(num, newValue);
+			                          flushCaches();
+			                          
+			                          if(w.datasetsHandler != null)
+			                              w.datasetsHandler.accept(normalDatasets);
+			                          
+			                          return true;
+			                      }));
+		}
+		return w;
+	}
+	
+	class WidgetDatasets implements Widget {
+		
+		public  Map<Field, WidgetCheckbox>                     datasets = new TreeMap<Field, WidgetCheckbox>();
+		private Consumer<List<Field>>                          datasetsHandler;
+		public  List<WidgetToggleButton<Field.Bitfield.State>> edges = new ArrayList<WidgetToggleButton<Field.Bitfield.State>>();
+		private Consumer<List<Field.Bitfield.State>>           edgesHandler;
+		public  List<WidgetToggleButton<Field.Bitfield.State>> levels = new ArrayList<WidgetToggleButton<Field.Bitfield.State>>();
+		private Consumer<List<Field.Bitfield.State>>           levelsHandler;
+		public  WidgetTextfield<String>                        duration;
+		public  WidgetToggleButton<DurationUnit>               durationUnit;
+
+		public List<WidgetCombobox<Field>> comboboxes = new ArrayList<WidgetCombobox<Field>>();
+		private boolean isEnabled = true;
+		private boolean isVisible = true;
+		
+		/**
+		 * Ensures the widgets reflect the currently present datasets.
+		 * This function must be called any time a connection or dataset may have been added or removed.
+		 */
+		private void createAndUpdateWidgets() {
+			
+			List<Field>                existingDatasets  = ConnectionsController.telemetryConnections.stream().flatMap(connection -> connection.getDatasetsList().stream()).filter(field -> !field.isBitfield).toList();
+			List<Field>                existingBitfields = ConnectionsController.telemetryConnections.stream().flatMap(connection -> connection.getDatasetsList().stream()).filter(field -> field.isBitfield).toList();
+			List<Field.Bitfield.State> existingStates    = ConnectionsController.telemetryConnections.stream().flatMap(connection -> connection.getDatasetsList().stream()).filter(field -> field.isBitfield).flatMap(field -> field.bitfields.stream()).flatMap(bitfield -> Stream.of(bitfield.states)).toList();
+			
+			if(!comboboxes.isEmpty()) {
+				// dataset comboboxes
+				comboboxes.forEach(combobox -> {
+					Field selectedField = combobox.get();
+					combobox.resetValues(existingDatasets, selectedField);
+					combobox.setEnabled(existingDatasets.isEmpty() ? false : isEnabled);
+				});
+			} else if(datasetsHandler != null) {
+				// dataset checkboxes
+				datasets.entrySet().removeIf(entry -> !existingDatasets.contains(entry.getKey()));
+				existingDatasets.forEach(field -> {
+				    if(datasets.containsKey(field))
+				        datasets.get(field).setText(field.toString());
+				    else
+				        datasets.put(field, new WidgetCheckbox(field.toString(), false)
+				                                .onChange(isSelected -> {
+				                                     if(isSelected)
+				                                         normalDatasets.add(field);
+				                                     else
+				                                         normalDatasets.remove(field);
+				                                     flushCaches();
+				                                     disableWidgetsForOtherConnections();
+				                                     if(datasetsHandler != null)
+				                                         datasetsHandler.accept(normalDatasets);
+				                                }));
+				});
+			}
+			
+			// bitfield edges and levels
+			if(edgesHandler != null && levelsHandler != null) {
+				edges.removeIf(button -> !existingBitfields.contains(button.get().dataset));
+				levels.removeIf(button -> !existingBitfields.contains(button.get().dataset));
+				existingStates.forEach(state -> {
+				    if(edges.stream().noneMatch(button -> button.get() == state))
+				        edges.add(new WidgetToggleButton<Field.Bitfield.State>(false, "Show as tooltip", null, state, isSelected -> {
+				                          if(isSelected)
+				                              edgeStates.add(state);
+				                          else
+				                              edgeStates.remove(state);
+				                          flushCaches();
+				                          disableWidgetsForOtherConnections();
+				                          if(edgesHandler != null)
+				                              edgesHandler.accept(edgeStates);
+				                      }));
+				    if(levels.stream().noneMatch(button -> button.get() == state))
+				        levels.add(new WidgetToggleButton<Field.Bitfield.State>(false, "Show as level", state.name, state, isSelected -> {
+				                           if(isSelected)
+				                               levelStates.add(state);
+				                           else
+				                               levelStates.remove(state);
+				                           flushCaches();
+				                           disableWidgetsForOtherConnections();
+				                           if(levelsHandler != null)
+				                               levelsHandler.accept(levelStates);
+				                       }));
+				});
+			}
+			
+			 edges.sort((a, b) -> a.get().compareTo(b.get()));
+			levels.sort((a, b) -> a.get().compareTo(b.get()));
+			disableWidgetsForOtherConnections();
+			
+		}
+		
+		@Override public void appendTo(JPanel panel, String constraints) {
+			
+			if(!isVisible)
+				return;
+			
+			createAndUpdateWidgets();
+			
+			comboboxes.forEach(combobox -> combobox.appendTo(panel, ""));
+			datasets.values().forEach(checkbox -> checkbox.appendTo(panel, ""));
+			for(int i = 0; i < edges.size(); i++) {
+				edges.get(i).appendTo(panel, "split 3");
+				levels.get(i).appendTo(panel, "");
+			}
+			if(duration != null) {
+				duration.appendTo(panel, "split 3, grow");
+				durationUnit.appendTo(panel, "shrink");
+			}
+			
+		}
+		
+		@Override public WidgetDatasets setVisible(boolean isVisible) {
+			
+			this.isVisible = isVisible;
+			
+			comboboxes.forEach(combobox -> combobox.setVisible(isVisible));
+			datasets.values().forEach(checkbox -> checkbox.setVisible(isVisible));
+			edges.forEach(button -> button.setVisible(isVisible));
+			levels.forEach(button -> button.setVisible(isVisible));
+			if(duration != null) {
+				duration.setVisible(isVisible);
+				durationUnit.setVisible(isVisible);
+			}
+			
+			// also resize the ConfigureView if it's on screen
+			if(!ConfigureView.instance.getPreferredSize().equals(new Dimension(0, 0))) {
+				ConfigureView.instance.setPreferredSize(null);
+				ConfigureView.instance.revalidate();
+				ConfigureView.instance.repaint();
+			}
+			
+			return this;
+			
+		}
+		
+		public void setEnabled(boolean isEnabled) {
+			this.isEnabled = isEnabled;
+			comboboxes.forEach(combobox -> combobox.setEnabled(isEnabled));
+		}
+
+		private void disableWidgetsForOtherConnections() {
+			
+			if(connection == null) {
+				// nothing selected, so re-enable all widgets
+				datasets.values().forEach(checkbox -> checkbox.setEnabled(true));
+				edges.forEach(button -> button.setEnabled(true));
+				levels.forEach(button -> button.setEnabled(true));
+			} else {
+				// only enable widgets for the selected connection
+				datasets.entrySet().forEach(entry -> entry.getValue().setEnabled( entry.getKey().connection == connection ));
+				edges.forEach(button -> button.setEnabled( button.get().connection == connection ));
+				levels.forEach(button -> button.setEnabled( button.get().connection == connection ));
+			}
+			
+		}
+		
+		@Override public void importFrom(ConnectionsController.QueueOfLines lines) throws AssertionError {
+			
+			List<Field> fields = ConnectionsController.telemetryConnections.stream().flatMap(connection -> connection.getDatasetsList().stream()).toList();
+			
+			if(!comboboxes.isEmpty()) {
+				List<String> list = List.of(lines.parseString("datasets = %s").split(","));
+				if(list.size() != comboboxes.size())
+					throw new AssertionError("Invalid datasets list.");
+				for(int i = 0; i < list.size(); i++) {
+					String text = list.get(i);
+					comboboxes.get(i).set(fields.stream()
+					                            .filter(field -> field.toString().equals(text))
+					                            .findFirst().orElseThrow(() -> new AssertionError("Invalid datasets list.")));
+				}
+				return;
+			}
+			
+			Stream.of(lines.parseString("datasets = %s").split(","))
+			      .filter(text -> !text.isEmpty())
+			      .forEach(text -> datasets.entrySet().stream()
+			                                          .filter(entry -> entry.getKey().toString().equals(text))
+			                                          .findFirst().orElseThrow(() -> new AssertionError("Invalid datasets list."))
+			                                          .getValue().set(true));
+			
+			Stream.of(lines.parseString("bitfield edge states = %s").split(","))
+			      .filter(text -> !text.isEmpty())
+			      .forEach(text -> edges.stream()
+			                            .filter(button -> button.get().toString().equals(text))
+			                            .findFirst().orElseThrow(() -> new AssertionError("Invalid bitfield edge states list."))
+			                            .setSelected(true));
+			
+			Stream.of(lines.parseString("bitfield level states = %s").split(","))
+			      .filter(text -> !text.isEmpty())
+			      .forEach(text -> levels.stream()
+			                             .filter(button -> button.get().toString().equals(text))
+			                             .findFirst().orElseThrow(() -> new AssertionError("Invalid bitfield level states list."))
+			                             .setSelected(true));
+			
+			if(duration != null) {
+				duration.importFrom(lines);
+				durationUnit.importFrom(lines);
+			}
+			
+		}
+		
+		@Override public void exportTo(PrintWriter file) {
+			
+			if(!comboboxes.isEmpty()) {
+				file.println("\t" + "datasets = " + comboboxes.stream()
+				                                              .map(combobox -> combobox.get())
+				                                              .filter(field -> field != null)
+				                                              .map(field -> field.toString())
+				                                              .collect(Collectors.joining(",")));
+				return;
+			}
+			
+			file.println("\t" + "datasets = " + datasets.entrySet().stream()
+			                                                       .filter(entry -> entry.getValue().isTrue())
+			                                                       .map(entry -> entry.getKey())
+			                                                       .map(field -> field.toString())
+			                                                       .collect(Collectors.joining(",")));
+			
+			file.println("\t" + "bitfield edge states = " + edges.stream()
+			                                                     .filter(button -> button.isSelected())
+			                                                     .map(button -> button.get().toString())
+			                                                     .collect(Collectors.joining(",")));
+			
+			file.println("\t" + "bitfield level states = " + levels.stream()
+			                                                       .filter(button -> button.isSelected())
+			                                                       .map(button -> button.get().toString())
+			                                                       .collect(Collectors.joining(",")));
+			
+			if(duration != null) {
+				duration.exportTo(file);
+				durationUnit.exportTo(file);
+			}
+			
+		}
+
 	}
 	
 }

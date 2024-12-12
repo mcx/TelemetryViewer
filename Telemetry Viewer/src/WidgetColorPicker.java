@@ -132,9 +132,10 @@ public class WidgetColorPicker implements Widget {
 		
 	}
 
-	@Override public void setVisible(boolean isVisible) {
+	@Override public WidgetColorPicker setVisible(boolean isVisible) {
 
 		button.setVisible(isVisible);
+		return this;
 		
 	}
 	

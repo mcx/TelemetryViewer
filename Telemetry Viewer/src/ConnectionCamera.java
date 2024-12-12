@@ -52,7 +52,7 @@ public class ConnectionCamera extends Connection {
 	}
 	static final String mjpegOverHttp = "Cam: MJPEG over HTTP";
 	
-	private WidgetComboboxString resolution;
+	private WidgetCombobox<String> resolution;
 	private WidgetTextfield<String> url;
 	
 	// threading
@@ -90,11 +90,13 @@ public class ConnectionCamera extends Connection {
 			name.set(firstAvailableName);
 		}
 		
-		resolution = new WidgetComboboxString(List.of("640 x 480",
-		                                               "1280 x 720",
-		                                               "1920 x 1080",
-		                                               "3840 x 2160"), "640 x 480")
-		                          .setExportLabel("requested resolution");
+		resolution = new WidgetCombobox<String>(null,
+		                                        List.of("640 x 480",
+		                                                "1280 x 720",
+		                                                "1920 x 1080",
+		                                                "3840 x 2160"),
+		                                        "640 x 480")
+		                 .setExportLabel("requested resolution");
 		
 		url = WidgetTextfield.ofText("http://example.com:8080/video")
 		                     .setExportLabel("url");
@@ -554,7 +556,7 @@ public class ConnectionCamera extends Connection {
 		
 	}
 
-	@Override public long getTimestamp(int sampleNumber, StorageTimestamps.Cache cache) {
+	@Override public long getTimestamp(int sampleNumber) {
 
 		return framesIndex.get(sampleNumber).timestamp;
 		

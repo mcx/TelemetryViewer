@@ -29,7 +29,6 @@ public class ConnectionsController {
 	public static List<Connection>                        allConnections = new ArrayList<Connection>();
 	public static List<ConnectionTelemetry>         telemetryConnections = new ArrayList<ConnectionTelemetry>();
 	public static List<ConnectionCamera>               cameraConnections = new ArrayList<ConnectionCamera>();
-	public static Map<ConnectionTelemetry, DatasetsInterface> interfaces = new HashMap<ConnectionTelemetry, DatasetsInterface>();
 	static {
 		addConnection(null);
 	}
@@ -37,26 +36,26 @@ public class ConnectionsController {
 	private static final String filenameSanitizer = "[^a-zA-Z0-9_\\.\\- ]"; // only allow letters, numbers, underscores, periods, hyphens and spaces.
 	
 	public record Device(String name, boolean isAvailable, Supplier<Connection> connection) {}
-	public static Stream<Device> getDevicesStream() {
+	public static Stream<Device> getDevicesStream(Connection parent) {
 		
 		List<Device> list = new ArrayList<Device>();
 		ConnectionTelemetryUART.getNames().forEach(name -> {
-			boolean isAvailable = telemetryConnections.stream().noneMatch(con -> con.name.get().equals(name));
+			boolean isAvailable = telemetryConnections.stream().noneMatch(con -> con != parent && con.name.get().equals(name));
 			list.add(new Device(name, isAvailable, isAvailable ? () -> new ConnectionTelemetryUART(name) :
 			                                                     () -> null));
 		});
 		list.add(new Device("TCP", true, () -> new ConnectionTelemetryTCP()));
 		list.add(new Device("UDP", true, () -> new ConnectionTelemetryUDP()));
-		boolean isDemoAvailable = telemetryConnections.stream().noneMatch(con -> con.name.get().equals("Demo Mode"));
+		boolean isDemoAvailable = telemetryConnections.stream().noneMatch(con -> con != parent && con.name.get().equals("Demo Mode"));
 		list.add(new Device("Demo Mode", isDemoAvailable, isDemoAvailable ? () -> new ConnectionTelemetryDemo() :
 		                                                                    () -> null));
-		boolean isStressAvailable = telemetryConnections.stream().noneMatch(con -> con.name.get().equals("Stress Test Mode"));
+		boolean isStressAvailable = telemetryConnections.stream().noneMatch(con -> con != parent && con.name.get().equals("Stress Test Mode"));
 		list.add(new Device("Stress Test Mode", isStressAvailable, isStressAvailable ? () -> new ConnectionTelemetryStressTest() :
 		                                                                               () -> null));
 		// don't support webcams on AArch64 Linux (Pi4, etc.) because the webcam library crashes
 		if(!(System.getProperty("os.name").toLowerCase().equals("linux") && System.getProperty("os.arch").toLowerCase().equals("aarch64"))) {
 			ConnectionCamera.getNames().forEach(name -> {
-				boolean isAvailable = cameraConnections.stream().noneMatch(con -> con.name.get().equals(name));
+				boolean isAvailable = cameraConnections.stream().noneMatch(con -> con != parent && con.name.get().equals(name));
 				list.add(new Device(name, isAvailable, isAvailable ? () -> new ConnectionCamera(name) :
 				                                                     () -> null));
 			});
@@ -69,18 +68,15 @@ public class ConnectionsController {
 	public static void addConnection(Connection newConnection) {
 		
 		if(newConnection == null)
-			newConnection = getDevicesStream().filter(Device::isAvailable)
-			                                  .map(device -> device.connection().get())
-			                                  .findFirst().orElse(null);
+			newConnection = getDevicesStream(null).filter(Device::isAvailable)
+			                                      .map(device -> device.connection().get())
+			                                      .findFirst().orElse(null);
 		
 		allConnections.add(newConnection);
 		if(newConnection instanceof ConnectionTelemetry newConn)
 			telemetryConnections.add(newConn);
 		else if(newConnection instanceof ConnectionCamera newConn)
 			cameraConnections.add(newConn);
-		
-		interfaces.clear();
-		telemetryConnections.forEach(connection -> interfaces.put(connection, new DatasetsInterface(connection)));
 		
 		// CommunicationView.instance will be null when static { addConnection(null); } from above gets run,
 		// because the CommunicationView constructor will still be in progress at that time!
@@ -99,9 +95,6 @@ public class ConnectionsController {
 			telemetryConnections.remove(oldConn);
 		else if(oldConnection instanceof ConnectionCamera oldConn)
 			cameraConnections.remove(oldConn);
-		
-		interfaces.clear();
-		telemetryConnections.forEach(connection -> interfaces.put(connection, new DatasetsInterface(connection)));
 		
 		CommunicationView.instance.redraw(); // redraw bottom panel so it doesn't show the old connection's widgets
 		SettingsView.instance.redraw();      // redraw the left panel so it doesn't show the old connection's TX GUI
@@ -127,9 +120,6 @@ public class ConnectionsController {
 			cameraConnections.remove(oldConnection);
 			telemetryConnections.add((ConnectionTelemetry) newConnection);
 		}
-		
-		interfaces.clear();
-		telemetryConnections.forEach(connection -> interfaces.put(connection, new DatasetsInterface(connection)));
 		
 		CommunicationView.instance.redraw(); // redraw bottom panel so it shows the connection widgets
 		SettingsView.instance.redraw();      // redraw the left panel so it shows the TX GUI if appropriate
@@ -175,25 +165,22 @@ public class ConnectionsController {
 		int closestSampleNumber = 0;
 		long closestTimestamp = 0;
 		
-		for(Map.Entry<ConnectionTelemetry, DatasetsInterface> entry : interfaces.entrySet()) {
-			
-			ConnectionTelemetry connection = entry.getKey();
-			DatasetsInterface datasets = entry.getValue();
+		for(ConnectionTelemetry connection : telemetryConnections) {
 			
 			int trueLastSampleNumber = connection.getSampleCount() - 1;
-			int closestSampleNumberBefore = datasets.getClosestSampleNumberAtOrBefore(timestamp, trueLastSampleNumber);
+			int closestSampleNumberBefore = connection.getClosestSampleNumberAtOrBefore(timestamp, trueLastSampleNumber);
 			int closestSampleNumberAfter = closestSampleNumberBefore + 1;
 			if(closestSampleNumberAfter > trueLastSampleNumber)
 				closestSampleNumberAfter = trueLastSampleNumber;
 			
-			long beforeError = timestamp - datasets.getTimestamp(closestSampleNumberBefore);
-			long afterError  = datasets.getTimestamp(closestSampleNumberAfter) - timestamp;
+			long beforeError = timestamp - connection.getTimestamp(closestSampleNumberBefore);
+			long afterError  = connection.getTimestamp(closestSampleNumberAfter) - timestamp;
 			long error = Long.min(Math.abs(beforeError), Math.abs(afterError));
 			
 			if(error < smallestError) {
 				closestConnection = connection;
 				closestSampleNumber = beforeError < afterError ? closestSampleNumberBefore : closestSampleNumberAfter;
-				closestTimestamp = datasets.getTimestamp(closestSampleNumber);
+				closestTimestamp = connection.getTimestamp(closestSampleNumber);
 			}
 			
 		}
@@ -250,24 +237,22 @@ public class ConnectionsController {
 		
 	}
 	
-	public static WidgetComboboxString getNamesCombobox(Connection connection) {
+	public static WidgetCombobox<String> getNamesCombobox(Connection connection) {
 		
-		return new WidgetComboboxString(getDevicesStream().map(Device::name).toList(), null)
+		return new WidgetCombobox<String>(null, getDevicesStream(connection).map(Device::name).toList(), null)
 		           .setExportLabel("type")
-		           .onChange(newName -> {
+		           .onChange((newName, oldName) -> {
 		               // ignore this event if the connection is still be constructed
 		               if(connection.name == null || connection.name.get() == null)
 		                   return true;
 		               
 		               // accept and ignore if no change
-		               String oldName = connection.name.get();
-		               if(newName.equals(oldName))
+		               if(newName.equals(oldName) || oldName == null)
 		                   return true;
 		               
 		               // reject change if the device is not available
-		               Device dev = getDevicesStream().filter(device -> device.name.equals(newName) &&
-		                                                                device.isAvailable)
-		                                              .findFirst().orElse(null);
+		               Device dev = getDevicesStream(connection).filter(device -> device.name.equals(newName) && device.isAvailable)
+		                                                        .findFirst().orElse(null);
 		               if(dev == null)
 		                   return false;
 		               
