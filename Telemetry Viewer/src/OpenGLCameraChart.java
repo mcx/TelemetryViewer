@@ -25,16 +25,17 @@ public class OpenGLCameraChart extends PositionedChart {
 	
 	public OpenGLCameraChart() {
 		
-		List<String> cameraNames = ConnectionsController.cameraConnections.stream().filter(connection -> connection.isConnected() || connection.getSampleCount() > 0)
-			                                                                       .map(connection -> connection.name.get())
-			                                                                       .toList();
+		// important: this constructor allows *any* camera to be selected, even if not it's connected and has no images
+		// this is required so a settings file can be imported even if it references a camera that does not exist on this computer
+		List<String> cameraNames = ConnectionsController.cameraConnections.stream().map(connection -> connection.getName()).toList();
+		
 		if(cameraNames.isEmpty())
 			cameraNames = List.of("[No cameras available]");
 		
 		cameraName = new WidgetCombobox<String>(null, cameraNames, cameraNames.get(0))
 		                 .setExportLabel("camera name")
 		                 .onChange((newName, oldName) -> {
-		                               connection = ConnectionsController.cameraConnections.stream().filter(connection -> connection.name.get().equals(newName)).findFirst().orElse(null);
+		                               connection = ConnectionsController.cameraConnections.stream().filter(connection -> connection.getName().equals(newName)).findFirst().orElse(null);
 		                               return true;
 		                           });
 		mirrorX = new WidgetCheckbox("Mirror X-Axis \u2194", false);
@@ -53,19 +54,21 @@ public class OpenGLCameraChart extends PositionedChart {
 	@Override public void getConfigurationGui(JPanel gui) {
 		
 		// regenerate the camera list because the available cameras may have changed
-		List<String> cameraNames = ConnectionsController.cameraConnections.stream().filter(connection -> connection.isConnected() || connection.getSampleCount() > 0)
-		                                                                           .map(connection -> connection.name.get())
-		                                                                           .toList();
+		// and only allow the user to select a camera that is actually connected or has images
+		List<String> cameraNames = ConnectionsController.cameraConnections.stream()
+		                                                .filter(connection -> connection.isConnected() || connection.getSampleCount() > 0)
+		                                                .map(connection -> connection.getName())
+		                                                .toList();
 		boolean noCameras = false;
 		if(cameraNames.isEmpty()) {
 			cameraNames = List.of("[No cameras available]");
 			noCameras = true;
 		}
 		
-		cameraName = new WidgetCombobox<String>(null, cameraNames, (connection == null) ? cameraNames.get(0) : connection.name.get())
+		cameraName = new WidgetCombobox<String>(null, cameraNames, (connection == null) ? cameraNames.get(0) : connection.getName())
 		             .setExportLabel("camera name")
 		             .onChange((newName, oldName) -> {
-		                           connection = ConnectionsController.cameraConnections.stream().filter(connection -> connection.name.get().equals(newName)).findFirst().orElse(null);
+		                           connection = ConnectionsController.cameraConnections.stream().filter(connection -> connection.getName().equals(newName)).findFirst().orElse(null);
 		                           return true;
 		                       });
 		cameraName.setEnabled(!noCameras);

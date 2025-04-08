@@ -127,26 +127,6 @@ public abstract class Connection {
 	public abstract void importDataFile(String path, long firstTimestamp, long beginImportingTimestamp, AtomicLong completedByteCount);
 	
 	/**
-	 * Causes the file import thread to finish importing the file as fast as possible (instead of using a real-time playback speed.)
-	 * If it is already importing as fast as possible, this will instead cancel the process.
-	 */
-	public final void finishImporting() {
-		
-		if(ConnectionsController.realtimeImporting) {
-			// currently importing real-time, switch to importing ASAP
-			ConnectionsController.realtimeImporting = false;
-			CommunicationView.instance.redraw();
-		} else {
-			// currently importing ASAP, so cancel importing
-			setConnected(false);
-			if(receiverThread != null)
-				while(receiverThread.isAlive()); // wait
-			NotificationsController.printDebugMessage("Importing... Canceled");
-		}
-		
-	}
-	
-	/**
 	 * Writes data (samples or images or ...) to a file, so it can be replayed later on.
 	 * 
 	 * @param path                  Path to the file.

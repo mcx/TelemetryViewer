@@ -1859,7 +1859,7 @@ public abstract class ConnectionTelemetry extends Connection {
 	
 	final public JPanel getUpdatedTransmitGUI() {
 		
-		if(!supportsTransmitting())
+		if(!supportsTransmitting() || ConnectionsController.importing)
 			return null;
 		
 		if(protocol.is(Protocol.TC66)) {

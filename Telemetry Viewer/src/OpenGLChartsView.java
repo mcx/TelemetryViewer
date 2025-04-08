@@ -409,9 +409,8 @@ public class OpenGLChartsView extends JPanel {
 					top.addAndGet((int) (animationPosition * (notificationHeight + Theme.tilePadding)));
 					
 					// draw the background
-					int backgroundWidth = canvasWidth - (int) (Theme.tilePadding * 2f);
-					if(notification.isProgressBar)
-						backgroundWidth *= progressBarPercentage;
+					int notificationWidth = canvasWidth - (int) (Theme.tilePadding * 2f);
+					int backgroundWidth = notification.isProgressBar ? (int) (notificationWidth * progressBarPercentage) : notificationWidth;
 					int xBackgroundLeft = (int) Theme.tilePadding;
 					int yBackgroundBottom = top.get() - notificationHeight;
 					double opacity = notification.isProgressBar || age >= 3.0 * Theme.animationMillisecondsDouble ? 0.2 :
@@ -425,7 +424,7 @@ public class OpenGLChartsView extends JPanel {
 					if(xTextLeft < (int) (2.5 * Theme.tilePadding))
 						xTextLeft = (int) (2.5 * Theme.tilePadding);
 					gl.glEnable(GL3.GL_SCISSOR_TEST);
-					gl.glScissor(xBackgroundLeft, yBackgroundBottom, backgroundWidth, notificationHeight);
+					gl.glScissor(xBackgroundLeft, yBackgroundBottom, notificationWidth, notificationHeight);
 					for(int i = 0; i < lineCount; i++) {
 						OpenGL.drawLargeText(gl, notification.isProgressBar ? notification.lines[i] + progressBarPercentageText : notification.lines[i], xTextLeft, yTextBastline, 0);
 						yTextBastline -= lineSpacing + lineHeight;

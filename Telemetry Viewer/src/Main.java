@@ -130,11 +130,8 @@ public class Main {
 				@Override public void windowClosing(java.awt.event.WindowEvent windowEvent) {
 					
 					// cancel importing
-					if(ConnectionsController.importing) {
-						if(ConnectionsController.realtimeImporting)
-							ConnectionsController.allConnections.forEach(connection -> connection.finishImporting()); // exit real-time
-						ConnectionsController.allConnections.forEach(connection -> connection.finishImporting()); // abort
-					}
+					if(ConnectionsController.importing)
+						ConnectionsController.cancelImporting();
 					
 					// cancel exporting if the user confirms it
 					if(ConnectionsController.exporting) {

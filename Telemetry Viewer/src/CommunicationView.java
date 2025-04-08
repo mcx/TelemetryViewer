@@ -286,11 +286,16 @@ public class CommunicationView extends JPanel {
 				exportButton.setEnabled(ConnectionsController.telemetryExists());
 				connectionButton.setText("New Connection");
 				connectionButton.addActionListener(event -> ConnectionsController.addConnection(null));
-			} else if(ConnectionsController.importing) {
+			} else if(ConnectionsController.importing && ConnectionsController.realtimeImporting) {
 				importButton.setEnabled(false);
 				exportButton.setEnabled(false);
-				connectionButton.setText(ConnectionsController.realtimeImporting ? "Finish Importing" : "Cancel Importing");
+				connectionButton.setText("Finish Importing");
 				connectionButton.addActionListener(event -> ConnectionsController.finishImporting());
+			} else if(ConnectionsController.importing && !ConnectionsController.realtimeImporting) {
+				importButton.setEnabled(false);
+				exportButton.setEnabled(false);
+				connectionButton.setText("Cancel Importing");
+				connectionButton.addActionListener(event -> ConnectionsController.cancelImporting());
 			} else if(ConnectionsController.exporting) {
 				importButton.setEnabled(false);
 				exportButton.setEnabled(false);

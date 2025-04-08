@@ -98,6 +98,13 @@ public class SettingsView extends JPanel {
 	private static SimpleDateFormat timestampFormatterMilliseconds = new SimpleDateFormat("hh:mm:ss.SSS a");
 	private static SimpleDateFormat timestampFormatterSeconds      = new SimpleDateFormat("hh:mm:ss a");
 	private static SimpleDateFormat timestampFormatterMinutes      = new SimpleDateFormat("hh:mm a");
+	private static SimpleDateFormat timestampFormatterCamera       = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss.SSS a");
+	
+	/**
+	 * @param timestamp    The timestamp (milliseconds since 1970-01-01.)
+	 * @return             String representation with milliseconds resolution, always showing the date.
+	 */
+	public static String formatCameraTimestamp(long timestamp) { return timestampFormatterCamera.format(timestamp); }
 	
 	/**
 	 * @param timestamp    The timestamp (milliseconds since 1970-01-01.)
@@ -234,21 +241,25 @@ public class SettingsView extends JPanel {
 		                             boolean is24hourMode = timeFormat24hoursCheckbox.get();
 		                             switch(newFormat) {
 		                                 case TIME_AND_YYYY_MM_DD -> {
+		                                     timestampFormatterCamera       = new SimpleDateFormat(is24hourMode ? "yyyy-MM-dd kk:mm:ss.SSS"  : "yyyy-MM-dd hh:mm:ss.SSS a");
 		                                     timestampFormatterMilliseconds = new SimpleDateFormat(is24hourMode ? "kk:mm:ss.SSS\nyyyy-MM-dd" : "hh:mm:ss.SSS a\nyyyy-MM-dd");
 		                                     timestampFormatterSeconds      = new SimpleDateFormat(is24hourMode ? "kk:mm:ss\nyyyy-MM-dd"     : "hh:mm:ss a\nyyyy-MM-dd");
 		                                     timestampFormatterMinutes      = new SimpleDateFormat(is24hourMode ? "kk:mm\nyyyy-MM-dd"        : "hh:mm a\nyyyy-MM-dd");
 		                                 }
 		                                 case TIME_AND_MM_DD_YYYY -> {
+		                                     timestampFormatterCamera       = new SimpleDateFormat(is24hourMode ? "MM-dd-yyyy kk:mm:ss.SSS"  : "MM-dd-yyyy hh:mm:ss.SSS a");
 		                                     timestampFormatterMilliseconds = new SimpleDateFormat(is24hourMode ? "kk:mm:ss.SSS\nMM-dd-yyyy" : "hh:mm:ss.SSS a\nMM-dd-yyyy");
 		                                     timestampFormatterSeconds      = new SimpleDateFormat(is24hourMode ? "kk:mm:ss\nMM-dd-yyyy"     : "hh:mm:ss a\nMM-dd-yyyy");
 		                                     timestampFormatterMinutes      = new SimpleDateFormat(is24hourMode ? "kk:mm\nMM-dd-yyyy"        : "hh:mm a\nMM-dd-yyyy");
 		                                 }
 		                                 case TIME_AND_DD_MM_YYYY -> {
+		                                     timestampFormatterCamera       = new SimpleDateFormat(is24hourMode ? "dd-MM-yyyy kk:mm:ss.SSS"  : "dd-MM-yyyy hh:mm:ss.SSS a");
 		                                     timestampFormatterMilliseconds = new SimpleDateFormat(is24hourMode ? "kk:mm:ss.SSS\ndd-MM-yyyy" : "hh:mm:ss.SSS a\ndd-MM-yyyy");
 		                                     timestampFormatterSeconds      = new SimpleDateFormat(is24hourMode ? "kk:mm:ss\ndd-MM-yyyy"     : "hh:mm:ss a\ndd-MM-yyyy");
 		                                     timestampFormatterMinutes      = new SimpleDateFormat(is24hourMode ? "kk:mm\ndd-MM-yyyy"        : "hh:mm a\ndd-MM-yyyy");
 		                                 }
 		                                 case ONLY_TIME -> {
+		                                     timestampFormatterCamera       = new SimpleDateFormat(is24hourMode ? "yyyy-MM-dd kk:mm:ss.SSS"  : "yyyy-MM-dd hh:mm:ss.SSS a");
 		                                     timestampFormatterMilliseconds = new SimpleDateFormat(is24hourMode ? "kk:mm:ss.SSS" : "hh:mm:ss.SSS a");
 		                                     timestampFormatterSeconds      = new SimpleDateFormat(is24hourMode ? "kk:mm:ss"     : "hh:mm:ss a");
 		                                     timestampFormatterMinutes      = new SimpleDateFormat(is24hourMode ? "kk:mm"        : "hh:mm a");
@@ -264,21 +275,25 @@ public class SettingsView extends JPanel {
 		                                    TimeFormat format = timeFormatCombobox.get();
 		                                    switch(format) {
 		                                        case TIME_AND_YYYY_MM_DD -> {
+		                                            timestampFormatterCamera       = new SimpleDateFormat(is24hourMode ? "yyyy-MM-dd kk:mm:ss.SSS"  : "yyyy-MM-dd hh:mm:ss.SSS a");
 		                                            timestampFormatterMilliseconds = new SimpleDateFormat(is24hourMode ? "kk:mm:ss.SSS\nyyyy-MM-dd" : "hh:mm:ss.SSS a\nyyyy-MM-dd");
 		                                            timestampFormatterSeconds      = new SimpleDateFormat(is24hourMode ? "kk:mm:ss\nyyyy-MM-dd"     : "hh:mm:ss a\nyyyy-MM-dd");
 		                                            timestampFormatterMinutes      = new SimpleDateFormat(is24hourMode ? "kk:mm\nyyyy-MM-dd"        : "hh:mm a\nyyyy-MM-dd");
 		                                        }
 		                                        case TIME_AND_MM_DD_YYYY -> {
+		                                            timestampFormatterCamera       = new SimpleDateFormat(is24hourMode ? "MM-dd-yyyy kk:mm:ss.SSS"  : "MM-dd-yyyy hh:mm:ss.SSS a ");
 		                                            timestampFormatterMilliseconds = new SimpleDateFormat(is24hourMode ? "kk:mm:ss.SSS\nMM-dd-yyyy" : "hh:mm:ss.SSS a\nMM-dd-yyyy");
 		                                            timestampFormatterSeconds      = new SimpleDateFormat(is24hourMode ? "kk:mm:ss\nMM-dd-yyyy"     : "hh:mm:ss a\nMM-dd-yyyy");
 		                                            timestampFormatterMinutes      = new SimpleDateFormat(is24hourMode ? "kk:mm\nMM-dd-yyyy"        : "hh:mm a\nMM-dd-yyyy");
 		                                        }
 		                                        case TIME_AND_DD_MM_YYYY -> {
+		                                            timestampFormatterCamera       = new SimpleDateFormat(is24hourMode ? "dd-MM-yyyy kk:mm:ss.SSS"  : "dd-MM-yyyy hh:mm:ss.SSS a");
 		                                            timestampFormatterMilliseconds = new SimpleDateFormat(is24hourMode ? "kk:mm:ss.SSS\ndd-MM-yyyy" : "hh:mm:ss.SSS a\ndd-MM-yyyy");
 		                                            timestampFormatterSeconds      = new SimpleDateFormat(is24hourMode ? "kk:mm:ss\ndd-MM-yyyy"     : "hh:mm:ss a\ndd-MM-yyyy");
 		                                            timestampFormatterMinutes      = new SimpleDateFormat(is24hourMode ? "kk:mm\ndd-MM-yyyy"        : "hh:mm a\ndd-MM-yyyy");
 		                                        }
 		                                        case ONLY_TIME -> {
+		                                            timestampFormatterCamera       = new SimpleDateFormat(is24hourMode ? "yyyy-MM-dd kk:mm:ss.SSS"  : "yyyy-MM-dd hh:mm:ss.SSS a");
 		                                            timestampFormatterMilliseconds = new SimpleDateFormat(is24hourMode ? "kk:mm:ss.SSS" : "hh:mm:ss.SSS a");
 		                                            timestampFormatterSeconds      = new SimpleDateFormat(is24hourMode ? "kk:mm:ss"     : "hh:mm:ss a");
 		                                            timestampFormatterMinutes      = new SimpleDateFormat(is24hourMode ? "kk:mm"        : "hh:mm a");

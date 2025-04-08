@@ -351,18 +351,22 @@ public class ConnectionsController {
 			
 			SettingsView.instance.tileColumnsTextfield.set(6);
 			SettingsView.instance.tileRowsTextfield.set(6);
-			if(SettingsView.instance.timeFormatCombobox.is(SettingsView.TimeFormat.ONLY_TIME)) {
+			if(SettingsView.instance.timeFormatCombobox.is(SettingsView.TimeFormat.ONLY_TIME))
 				SettingsView.instance.timeFormatCombobox.set(SettingsView.TimeFormat.TIME_AND_YYYY_MM_DD);
-				SettingsView.instance.timeFormat24hoursCheckbox.set(true);
-			}
 			SettingsView.instance.antialiasingSlider.set(8);
 			
-			ConnectionCamera connection = new ConnectionCamera(cameraName);
-			addConnection(connection);
-			imports.put(connection, filepaths.get(0));
+			if(cameraName.startsWith("http")) {
+				ConnectionCamera connection = new ConnectionCamera(ConnectionCamera.mjpegOverHttp);
+				connection.url.set(cameraName);
+				addConnection(connection);
+				imports.put(connection, filepaths.get(0));
+			} else {
+				ConnectionCamera connection = new ConnectionCamera("Cam: " + cameraName);
+				addConnection(connection);
+				imports.put(connection, filepaths.get(0));
+			}
 			
-			OpenGLCameraChart cameraChart = (OpenGLCameraChart) ChartsController.createAndAddChart("Camera").setPosition(0, 0, 5, 4);
-			cameraChart.cameraName.set(cameraName);
+			ChartsController.createAndAddChart("Camera").setPosition(0, 0, 5, 4);
 			ChartsController.createAndAddChart("Timeline").setPosition(0, 5, 5, 5);
 		}
 		
@@ -397,7 +401,7 @@ public class ConnectionsController {
 			
 			// when importing an MKV file by itself, "finish" importing it, then rewind, then play (so the timeline shows the entire amount of time)
 			if(moviePlayerMode) {
-				cameraConnections.get(0).finishImporting();
+				finishImporting();
 				OpenGLChartsView.instance.setPaused(firstTimestamp, null, 0);
 				OpenGLChartsView.instance.setPlayForwards();
 			}
@@ -482,7 +486,15 @@ public class ConnectionsController {
 	
 	static void finishImporting() {
 		
-		allConnections.forEach(Connection::finishImporting);
+		ConnectionsController.realtimeImporting = false; // now importing ASAP
+		CommunicationView.instance.redraw();
+		
+	}
+	
+	static void cancelImporting() {
+		
+		allConnections.forEach(connection -> connection.disconnect(null));
+		NotificationsController.printDebugMessage("Importing... Canceled");
 		CommunicationView.instance.redraw();
 		
 	}
