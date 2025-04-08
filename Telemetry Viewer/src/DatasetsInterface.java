@@ -228,19 +228,6 @@ public class DatasetsInterface {
 	}
 	
 	/**
-	 * Gets a sample as a String.
-	 * 
-	 * @param dataset         Dataset.
-	 * @param sampleNumber    Sample number.
-	 * @return                The sample, as a String.
-	 */
-	public String getSampleAsString(Field dataset, int sampleNumber) {
-		
-		return dataset.getSampleAsString(sampleNumber, cacheFor(dataset));
-		
-	}
-	
-	/**
 	 * Gets a sequence of samples as a float[].
 	 * 
 	 * @param dataset            Dataset.
@@ -298,6 +285,8 @@ public class DatasetsInterface {
 		
 	}
 	
+	public record Range(float min, float max) {}
+	
 	/**
 	 * Gets the range (y-axis region) occupied by all of the normal datasets.
 	 *  
@@ -307,28 +296,29 @@ public class DatasetsInterface {
 	 *                           If there are no normal datasets, [-1, 1] will be returned.
 	 *                           If the range is a single value, [value +/- 0.001] will be returned.
 	 */
-	public float[] getRange(int minSampleNumber, int maxSampleNumber) {
+	public Range getRange(int minSampleNumber, int maxSampleNumber) {
 		
-		float[] minMax = new float[] {Float.MAX_VALUE, -Float.MAX_VALUE};
+		float min = Float.MAX_VALUE;
+		float max = -Float.MAX_VALUE;
 
-		normalDatasets.forEach(dataset -> {
+		for(Field dataset : normalDatasets) {
 			if(!dataset.isBitfield) {
 				StorageFloats.MinMax range = dataset.getRange(minSampleNumber, maxSampleNumber, cacheFor(dataset));
-				minMax[0] = Math.min(minMax[0], range.min);
-				minMax[1] = Math.max(minMax[1], range.max);
+				min = Math.min(min, range.min);
+				max = Math.max(max, range.max);
 			}
-		});
-		
-		if(minMax[0] == Float.MAX_VALUE && minMax[1] == -Float.MAX_VALUE) {
-			minMax[0] = -1;
-			minMax[1] = 1;
-		} else if(minMax[0] == minMax[1]) {
-			float value = minMax[0];
-			minMax[0] = value - 0.001f;
-			minMax[1] = value + 0.001f;
 		}
 		
-		return minMax;
+		if(min == Float.MAX_VALUE && max == -Float.MAX_VALUE) {
+			min = -1;
+			max =  1;
+		} else if(min == max) {
+			float value = min;
+			min = value - 0.001f;
+			max = value + 0.001f;
+		}
+		
+		return new Range(min, max);
 		
 	}
 	

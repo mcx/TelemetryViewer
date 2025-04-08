@@ -3,6 +3,8 @@ import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Font;
 import java.awt.Insets;
+import java.text.DecimalFormat;
+
 import javax.swing.Box;
 import javax.swing.JPanel;
 import javax.swing.JToggleButton;
@@ -82,6 +84,174 @@ public class Theme {
 	public static Font smallFont  = new Font("Geneva", Font.PLAIN, 12);
 	public static Font mediumFont = new Font("Geneva", Font.BOLD,  14);
 	public static Font largeFont  = new Font("Geneva", Font.BOLD,  18);
+	
+	// number formatting
+	final private static int maxDecimalPlaces = 3;
+	final private static String formatString = "%." + maxDecimalPlaces + "f";
+
+	/**
+	 * @return    Example: 123, "Volts" -> "123V"
+	 */
+	public static String getInteger(int number, String unit) {
+		
+		return Integer.toString(number) + abbreviatedExponent(0, unit);
+		
+	}
+	
+	/**
+	 * @return    Examples: 1.23456, "Watts", false -> "1.235W"
+	 *                      5.00007, "Volts", true  -> "5.0V"
+	 */
+	public static String getFloat(float number, String unit, boolean trimTrailingZeros) {
+		
+		String text = String.format(formatString, number);
+		if(trimTrailingZeros) {
+			int trim = 0;
+			for(int i = text.length() - 1; i >= 0; i--)
+				if(text.charAt(i) == '0' && Character.isDigit(text.charAt(i-1)))
+					trim++;
+				else
+					break;
+			text = text.substring(0, text.length() - trim);
+		}
+		return text + abbreviatedExponent(0, unit);
+		
+	}
+	
+	/**
+	 * @return    Examples: 1.23456, 1, "Watts" -> "1.2W"
+	 *                      5.00007, 3, "Volts" -> "5.000V"
+	 */
+	public static String getFloat(float number, int decimalPlaces, String unit) {
+		
+		String format = "%." + decimalPlaces + "f";
+		String text = String.format(format, number);
+		return text + abbreviatedExponent(0, unit);
+		
+	}
+	
+	/**
+	 * @return    Examples: 1.23456, "Watts", false -> "1.235W"
+	 *                      5.00007, "Volts", false -> "5V"
+	 */
+	public static String getFloatOrInteger(float number, String unit, boolean trimTrailingZeros) {
+		
+		// check if an integer is close enough
+		int numberAsInt = (int) Math.round(number);
+		double error = Math.abs(number - numberAsInt);
+		double maxAllowedError = Math.pow(10, -1 * maxDecimalPlaces - 1); // example: 3 decimal places -> max allowed error is 0.0001
+		if(error <= maxAllowedError)
+			return getInteger(numberAsInt, unit);
+		else
+			return getFloat(number, unit, trimTrailingZeros);
+		
+	}
+	
+	/**
+	 * @return    Examples: 0.0, "Watts" -> "1W"
+	 *                      1.0, "Watts" -> "10W"
+	 *                      2.0, "Watts" -> "100W"
+	 *                      2.1, "Watts" -> "125.893W"
+	 */
+	public static String getLog10float(float number, String unit) {
+		
+		int exponent = (int) Math.floor(number);
+		double significand = Math.pow(10, number - exponent);
+		return getScientificNotation(significand, exponent, unit);
+		
+	}
+	
+	/**
+	 * @return    Example: 100, 1000 -> "100 (10.0%)"
+	 */
+	public static String getAmountAndPercentage(int amount, int total) {
+		
+		float percentage = (float) amount / (float) (total == 0 ? 1 : total) * 100f;
+		String percentageText = getFloat(percentage, "%", true);
+		return Integer.toString(amount) + " (" + percentageText + ")";
+		
+	}
+	
+	/**
+	 * @return    Examples: 1.0, -3, "Watts" -> "1mW"
+	 *                      1.0, -6, "Volts" -> "1uV"
+	 *                      1.0, -7, "Amps"  -> "100nA"
+	 */
+	public static String getScientificNotation(double significand, int exponent, String unit) {
+		
+		// adjust so the exponent is a multiple of 3
+		if(exponent % 3 != 0) {
+			if(exponent > 0) { // example: 1e4 -> 10e3
+				significand *= Math.pow(10, exponent % 3);
+				exponent    -= (exponent % 3);
+			} else { // example: 1e-4 -> 100e-6
+				significand *= Math.pow(10, 3 + (exponent % 3));
+				exponent    -= 3 + (exponent % 3);
+			}
+		}
+		
+		// clamp exponent to +/- 30 (the SI prefixes)
+		if(exponent > 30) {
+			significand *= Math.pow(10, exponent - 30);
+			exponent = 30;
+		} else if(exponent < -30) {
+			significand /= Math.pow(10, -1*exponent - 30);
+			exponent = -30;
+		}
+		
+		String number = (significand == Math.floor(significand)) ? Integer.toString((int) significand)            : // example: 1nW
+		                (significand < 1)                        ? new DecimalFormat("0.0E0").format(significand) : // example: 1.0E-6qW (useful when numbers are too extreme to have SI prefixes)
+		                                                           String.format(formatString, significand);        // example: 1.234mW (typical use case)
+		
+		return number + abbreviatedExponent(exponent, unit);
+		
+	};
+	
+	private static String abbreviatedExponent(int exponent, String unit) {
+		
+		String abbreviatedUnit = switch(unit.toLowerCase()) {
+			case "volt", "volts", "voltage"          -> "V";
+			case "amp", "amps", "ampere", "amperes"  -> "A";
+			case "watt", "watts", "power"            -> "W";
+			case "hertz", "frequency"                -> "Hz";
+			case "percentage", "percent"             -> "%";
+			case "seconds", "time"                   -> "s";
+			case "sample count"                      -> "";
+			default                                  -> unit;    // don't know how to abbreviate it
+		};
+		
+		String gap = (abbreviatedUnit.length() > 3) ? " "      : // regular space if not abbreviated
+		             (abbreviatedUnit.length() > 0) ? "\u200A" : // Unicode "hair space" if abbreviated
+		                                              "";        // no space if no unit
+		
+		String siPrefix = switch(exponent) {
+			case  30 -> "Q";      // quetta
+			case  27 -> "R";      // ronna
+			case  24 -> "Y";      // yotta
+			case  21 -> "Z";      // zetta
+			case  18 -> "E";      // exa
+			case  15 -> "P";      // peta
+			case  12 -> "T";      // tera
+			case   9 -> "G";      // giga
+			case   6 -> "M";      // mega
+			case   3 -> "k";      // kilo
+			case   0 -> "";     
+			case  -3 -> "m";      // milli
+			case  -6 -> "\u00B5"; // micro
+			case  -9 -> "n";      // nano
+			case -12 -> "p";      // pico
+			case -15 -> "f";      // femto
+			case -18 -> "a";      // atto
+			case -21 -> "z";      // zepto
+			case -24 -> "y";      // yocto
+			case -27 -> "r";      // ronto
+			case -30 -> "q";      // quecto
+			default  -> "?";      // should never get here
+		};
+		
+		return gap + siPrefix + abbreviatedUnit;
+		
+	}
 	
 	/**
 	 * This method must be called when the OpenGL context is initialized,

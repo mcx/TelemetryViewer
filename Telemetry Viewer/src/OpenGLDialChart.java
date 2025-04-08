@@ -96,6 +96,7 @@ public class OpenGLDialChart extends PositionedChart {
 			lastSampleNumber = trueLastSampleNumber;
 		Field dataset = datasets.getNormal(0);
 		float sample = lastSampleNumber > 0 ? datasets.getSample(dataset, lastSampleNumber) : 0;
+		String unit = dataset.unit.get();
 		
 		// calculate x and y positions of everything
 		float xPlotLeft = Theme.tilePadding;
@@ -107,8 +108,8 @@ public class OpenGLDialChart extends PositionedChart {
 		
 		float yMinMaxLabelsBaseline = Theme.tilePadding;
 		float yMinMaxLabelsTop = yMinMaxLabelsBaseline + OpenGL.smallTextHeight;
-		String minLabel = ChartUtils.formattedNumber(dialMinimum.get(), 6);
-		String maxLabel = ChartUtils.formattedNumber(dialMaximum.get(), 6);
+		String minLabel = Theme.getFloat(dialMinimum.get(), unit, false);
+		String maxLabel = Theme.getFloat(dialMaximum.get(), unit, false);
 		float minLabelWidth = OpenGL.smallTextWidth(gl, minLabel);
 		float maxLabelWidth = OpenGL.smallTextWidth(gl, maxLabel);
 		if(minMaxLabelsVisibility.get()) {
@@ -127,7 +128,7 @@ public class OpenGLDialChart extends PositionedChart {
 		if(circleOuterRadius < 0)
 			return handler;
 		
-		String readingLabel = ChartUtils.formattedNumber(sample, 6) + " " + dataset.unit.get();
+		String readingLabel = Theme.getFloat(sample, unit, false);
 		float readingLabelWidth = OpenGL.largeTextWidth(gl, readingLabel);
 		float xReadingLabelLeft = xCircleCenter - (readingLabelWidth / 2);
 		float yReadingLabelBaseline = yPlotBottom;

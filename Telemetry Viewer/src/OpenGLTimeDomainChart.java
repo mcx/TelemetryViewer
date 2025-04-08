@@ -1,36 +1,44 @@
-import java.util.ArrayList;
+import java.nio.FloatBuffer;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
-
 import javax.swing.JPanel;
 import com.jogamp.opengl.GL2ES3;
 import com.jogamp.opengl.GL3;
 
 public class OpenGLTimeDomainChart extends PositionedChart {
 	
-	boolean isTimestampsMode;
 	AutoScale autoscale;
 	
-	Plot plot = new PlotSampleCount();
-	List<Field> allDatasets = new ArrayList<Field>(); // normal and bitfields
-	
-	// trigger
-	boolean triggerEnabled = false;
-	float earlierPlotMaxY = 1;
+	// for the trigger
+	float earlierPlotMaxY =  1;
 	float earlierPlotMinY = -1;
+	boolean mouseOverTriggerMarkers = false;
+	
+	// for cached mode
+	int[] fbHandle;
+	int[] texHandle;
+	List<Field>                cachedNormalDatasets;
+	List<Field.Bitfield.State> cachedEdgeStates;
+	List<Field.Bitfield.State> cachedLevelStates;
+	long  cachedPlotMinX;
+	long  cachedPlotMaxX;
+	float cachedPlotMinY;
+	float cachedPlotMaxY;
+	long  cachedPlotDomain;
+	int   cachedPlotWidth;
+	int   cachedPlotHeight;
+	float cachedLineWidth;
+	long  cachedMaxX;
 	
 	public DatasetsInterface.WidgetDatasets datasetsAndDurationWidget;
 	private WidgetCheckbox legendVisibility;
 	public WidgetCheckbox cacheEnabled;
-	private WidgetCheckbox xAxisTicksVisibility;
-	private WidgetCheckbox xAxisTitleVisibility;
+	private WidgetToggleButton<OpenGLPlot.AxisStyle> xAxisStyle;
+	private WidgetToggleButton<OpenGLPlot.AxisStyle> yAxisStyle;
 	private WidgetTextfield<Float> yAxisMinimum;
 	private WidgetCheckbox yAxisMinimumAutomatic;
 	private WidgetTextfield<Float> yAxisMaximum;
 	private WidgetCheckbox yAxisMaximumAutomatic;
-	private WidgetCheckbox yAxisTicksVisibility;
-	private WidgetCheckbox yAxisTitleVisibility;
 	
 	@Override public String toString() {
 		
@@ -38,29 +46,10 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		
 	}
 	
-	/**
-	 * Updates the List of all datasets.
-	 */
-	private void updateAllDatasetsList() {
-		
-		allDatasets = new ArrayList<Field>(datasets.normalDatasets);
-		
-		datasets.edgeStates.forEach(state -> {
-			if(!allDatasets.contains(state.dataset))
-				allDatasets.add(state.dataset);
-		});
-		datasets.levelStates.forEach(state -> {
-			if(!allDatasets.contains(state.dataset))
-				allDatasets.add(state.dataset);
-		});
-		
-	}
-	
 	public OpenGLTimeDomainChart() {
 		
 		autoscale = new AutoScale(AutoScale.MODE_EXPONENTIAL, 30, 0.10f);
 		
-		// create the control widgets and event handlers
 		legendVisibility = new WidgetCheckbox("Show Legend", true);
 		
 		cacheEnabled = new WidgetCheckbox("Cached Mode", false)
@@ -69,11 +58,11 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		                                                       new AutoScale(AutoScale.MODE_EXPONENTIAL, 30, 0.10f);
 		                            });
 		
-		xAxisTicksVisibility = new WidgetCheckbox("Show Ticks", true)
-		                           .setExportLabel("x-axis show ticks");
+		xAxisStyle = new WidgetToggleButton<OpenGLPlot.AxisStyle>("", OpenGLPlot.AxisStyle.values(), OpenGLPlot.AxisStyle.OUTER)
+		                 .setExportLabel("x-axis style");
 		
-		xAxisTitleVisibility = new WidgetCheckbox("Show Title", true)
-		                           .setExportLabel("x-axis show title");
+		yAxisStyle = new WidgetToggleButton<OpenGLPlot.AxisStyle>("", OpenGLPlot.AxisStyle.values(), OpenGLPlot.AxisStyle.OUTER)
+		                 .setExportLabel("y-axis style");
 		
 		yAxisMinimum = WidgetTextfield.ofFloat(-Float.MAX_VALUE, Float.MAX_VALUE, -1)
 		                              .setPrefix("Minimum")
@@ -111,53 +100,37 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		                                             yAxisMaximum.setEnabled(true);
 		                                     });
 		
-		yAxisTicksVisibility = new WidgetCheckbox("Show Ticks", true)
-		                           .setExportLabel("y-axis show ticks");
-		
-		yAxisTitleVisibility = new WidgetCheckbox("Show Title", true)
-		                           .setExportLabel("y-axis show title");
-		
 		datasetsAndDurationWidget = datasets.getCheckboxesAndButtonsWidget(newDatasets -> {
-		                                               updateAllDatasetsList();
-		                                               if(datasets.normalsCount() == 1) {
-		                                                   yAxisMinimum.setSuffix(datasets.getNormal(0).unit.get());
-		                                                   yAxisMaximum.setSuffix(datasets.getNormal(0).unit.get());
-		                                                   trigger.setDefaultChannel(datasets.getNormal(0));
-		                                               } else if(datasets.normalsCount() == 0) {
-		                                                   yAxisMinimum.setSuffix("");
-		                                                   yAxisMaximum.setSuffix("");
-		                                               }
-		                                           },
-		                                           newBitfieldEdges -> {
-		                                               updateAllDatasetsList();
-		                                           },
-		                                           newBitfieldLevels -> {
-		                                               updateAllDatasetsList();
-		                                           },
-		                                           (newDurationType, newDuration) -> {
-		                                               sampleCountMode  = newDurationType == DatasetsInterface.DurationUnit.SAMPLES;
-		                                               isTimestampsMode = newDurationType == DatasetsInterface.DurationUnit.MILLISECONDS;
-		                                               duration = (int) (long) newDuration;
-		                                               plot = sampleCountMode ? new PlotSampleCount() : new PlotMilliseconds();
-		                                               if(trigger != null)
-		                                                   trigger.resetTrigger();
-		                                           },
-		                                           true);
+		                                         if(datasets.normalsCount() > 0) {
+		                                             yAxisMinimum.setSuffix(datasets.getNormal(0).unit.get());
+		                                             yAxisMaximum.setSuffix(datasets.getNormal(0).unit.get());
+		                                             trigger.setDefaultChannel(datasets.getNormal(0));
+		                                         } else {
+		                                             yAxisMinimum.setSuffix("");
+		                                             yAxisMaximum.setSuffix("");
+		                                         }
+		                                     },
+		                                     newEdges  -> {},
+		                                     newLevels -> {},
+		                                     (newDurationType, newDuration) -> {
+		                                         sampleCountMode  = newDurationType == DatasetsInterface.DurationUnit.SAMPLES;
+		                                         duration = (int) (long) newDuration;
+		                                         if(trigger != null)
+		                                             trigger.resetTrigger();
+		                                     },
+		                                     true);
 		
-		trigger = new WidgetTrigger(this,
-		                            isEnabled -> triggerEnabled = isEnabled);
+		trigger = new WidgetTrigger(this, null);
 		
 		widgets.add(datasetsAndDurationWidget);
 		widgets.add(legendVisibility);
 		widgets.add(cacheEnabled);
-		widgets.add(xAxisTicksVisibility);
-		widgets.add(xAxisTitleVisibility);
+		widgets.add(xAxisStyle);
+		widgets.add(yAxisStyle);
 		widgets.add(yAxisMinimum);
 		widgets.add(yAxisMinimumAutomatic);
 		widgets.add(yAxisMaximum);
 		widgets.add(yAxisMaximumAutomatic);
-		widgets.add(yAxisTicksVisibility);
-		widgets.add(yAxisTitleVisibility);
 		widgets.add(trigger);
 		
 	}
@@ -171,18 +144,15 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		             .getPanel());
 		
 		gui.add(Theme.newWidgetsPanel("X-Axis")
-		             .with(xAxisTicksVisibility, "split 2")
-		             .with(xAxisTitleVisibility)
+		             .with(xAxisStyle)
 		             .getPanel());
 		
 		gui.add(Theme.newWidgetsPanel("Y-Axis")
+		             .with(yAxisStyle)
 		             .with(yAxisMinimum, "split 2, grow")
 		             .with(yAxisMinimumAutomatic, "sizegroup 1")
 		             .with(yAxisMaximum, "split 2, grow")
 		             .with(yAxisMaximumAutomatic, "sizegroup 1")
-		             .withGap(Theme.padding)
-		             .with(yAxisTicksVisibility, "split 2")
-		             .with(yAxisTitleVisibility)
 		             .getPanel());
 		
 		boolean triggerDisabled = OpenGLChartsView.globalTrigger != null && OpenGLChartsView.globalTrigger != trigger;
@@ -194,366 +164,552 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 	
 	@Override public EventHandler drawChart(GL2ES3 gl, float[] chartMatrix, int width, int height, long endTimestamp, int endSampleNumber, double zoomLevel, int mouseX, int mouseY) {
 		
-		EventHandler handler = null;
-		
 		// check for a trigger
 		WidgetTrigger.Result point = trigger.checkForTrigger(endSampleNumber, endTimestamp, zoomLevel);
 		endSampleNumber = point.chartEndSampleNumber();
 		endTimestamp    = point.chartEndTimestamp();
 		
-		int datasetsCount = allDatasets.size();
+		// determine the x-axis range
+		long plotDomain = Math.max(1, Math.round(duration * zoomLevel));                 // enforce at least 2 samples or 1 millisecond
+		long plotMaxX   = Math.max(0, sampleCountMode ? endSampleNumber : endTimestamp); // enforce no rewinding before 0
+		long plotMinX   = plotMaxX - plotDomain;
 		
-		plot.initialize(sampleCountMode ? endSampleNumber : endTimestamp, datasets, Math.round(duration * zoomLevel), cacheEnabled.get(), isTimestampsMode);
+		// determine which samples to draw
+		int sampleCount = datasets.hasAnyType() ? datasets.connection.getSampleCount() : 0;
+		long maxSampleNumber = (sampleCount > 0 &&  sampleCountMode) ? Long.min(plotMaxX, sampleCount - 1) :
+		                       (sampleCount > 0 && !sampleCountMode) ? datasets.getClosestSampleNumberAfter(plotMaxX) :
+		                                                               -1;
+		long minSampleNumber = (sampleCount > 0 &&  sampleCountMode) ? Long.max(plotMinX, 0) :
+		                       (sampleCount > 0 && !sampleCountMode) ? Long.max(datasets.getClosestSampleNumberAtOrBefore(plotMinX, sampleCount - 1), 0) :
+		                                                               -1;
+		long plotSampleCount = (sampleCount > 0) ? maxSampleNumber - minSampleNumber + 1 : 0;
 		
-		// calculate the plot range
-		StorageFloats.MinMax requiredRange = plot.getRange();
-		autoscale.update(requiredRange.min, requiredRange.max);
-		float plotMinY = yAxisMinimumAutomatic.get() ? autoscale.getMin() : yAxisMinimum.get();
-		float plotMaxY = yAxisMaximumAutomatic.get() ? autoscale.getMax() : yAxisMaximum.get();
-		if(triggerEnabled) {
-			if(trigger.isPaused()) {
-				plotMaxY = earlierPlotMaxY;
-				plotMinY = earlierPlotMinY;
-			} else {
-				earlierPlotMaxY = plotMaxY;
-				earlierPlotMinY = plotMinY;
-			}
+		// determine the y-axis range
+		var range = datasets.getRange((int) minSampleNumber, (int) maxSampleNumber);
+		autoscale.update(range.min(), range.max());
+		float plotMinY = (trigger.isEnabled() && trigger.isPaused()) ? earlierPlotMinY :
+		                 yAxisMinimumAutomatic.get()                 ? autoscale.getMin() :
+		                	                                           yAxisMinimum.get();
+		float plotMaxY = (trigger.isEnabled() && trigger.isPaused()) ? earlierPlotMaxY :
+			             yAxisMaximumAutomatic.get()                 ? autoscale.getMax() :
+			            	                                           yAxisMaximum.get();
+		if(trigger.isEnabled() && !trigger.isPaused()) {
+			earlierPlotMaxY = plotMaxY;
+			earlierPlotMinY = plotMinY;
 		}
 		float plotRange = plotMaxY - plotMinY;
 		
-		// calculate x and y positions of everything
-		float xPlotLeft = Theme.tilePadding;
-		float xPlotRight = width - Theme.tilePadding;
-		float plotWidth = xPlotRight - xPlotLeft;
-		float yPlotTop = height - Theme.tilePadding;
-		float yPlotBottom = Theme.tilePadding;
-		float plotHeight = yPlotTop - yPlotBottom;
-		
-		float yXaxisTitleTextBasline = Theme.tilePadding;
-		float yXaxisTitleTextTop = yXaxisTitleTextBasline + OpenGL.largeTextHeight;
-		String xAxisTitle = plot.getTitle();
-		float xXaxisTitleTextLeft = xPlotLeft + (plotWidth  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-		if(xAxisTitleVisibility.get()) {
-			float temp = yXaxisTitleTextTop + Theme.tickTextPadding;
-			if(yPlotBottom < temp) {
-				yPlotBottom = temp;
-				plotHeight = yPlotTop - yPlotBottom;
-			}
-		}
-		
-		float xLegendBorderLeft = Theme.tilePadding;
-		float yLegendBorderBottom = Theme.tilePadding;
-		float yLegendTextBaseline = yLegendBorderBottom + Theme.legendTextPadding;
-		float yLegendTextTop = yLegendTextBaseline + OpenGL.mediumTextHeight;
-		float yLegendBorderTop = yLegendTextTop + Theme.legendTextPadding;
-		float[][] legendMouseoverCoordinates = new float[datasetsCount][4];
-		float[][] legendBoxCoordinates = new float[datasetsCount][4];
-		float[] xLegendNameLeft = new float[datasetsCount];
-		float xLegendBorderRight = 0;
-		if(legendVisibility.get() && datasetsCount > 0) {
-			
-			float xOffset = xLegendBorderLeft + (Theme.lineWidth / 2) + Theme.legendTextPadding;
-			
-			for(int i = 0; i < datasetsCount; i++) {
-				legendMouseoverCoordinates[i][0] = xOffset - Theme.legendTextPadding;
-				legendMouseoverCoordinates[i][1] = yLegendBorderBottom;
-				
-				legendBoxCoordinates[i][0] = xOffset;
-				legendBoxCoordinates[i][1] = yLegendTextBaseline;
-				legendBoxCoordinates[i][2] = xOffset + OpenGL.mediumTextHeight;
-				legendBoxCoordinates[i][3] = yLegendTextTop;
-				
-				xOffset += OpenGL.mediumTextHeight + Theme.legendTextPadding;
-				xLegendNameLeft[i] = xOffset;
-				xOffset += OpenGL.mediumTextWidth(gl, allDatasets.get(i).name.get()) + Theme.legendNamesPadding;
-				
-				legendMouseoverCoordinates[i][2] = xOffset - Theme.legendNamesPadding + Theme.legendTextPadding;
-				legendMouseoverCoordinates[i][3] = yLegendBorderTop;
-			}
-			
-			xLegendBorderRight = xOffset - Theme.legendNamesPadding + Theme.legendTextPadding + (Theme.lineWidth / 2);
-			if(xAxisTitleVisibility.get())
-				xXaxisTitleTextLeft = xLegendBorderRight + ((xPlotRight - xLegendBorderRight) / 2) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			
-			float temp = yLegendBorderTop + Theme.legendTextPadding;
-			if(yPlotBottom < temp) {
-				yPlotBottom = temp;
-				plotHeight = yPlotTop - yPlotBottom;
-			}
-		}
-	
-		float yXaxisTickTextBaseline = yPlotBottom;
-		float yXaxisTickTextTop = yXaxisTickTextBaseline + OpenGL.smallTextHeight;
-		if(isTimestampsMode && SettingsView.isTimeFormatTwoLines())
-			yXaxisTickTextTop += 1.3 * OpenGL.smallTextHeight;
-		float yXaxisTickBottom = yXaxisTickTextTop + Theme.tickTextPadding;
-		float yXaxisTickTop = yXaxisTickBottom + Theme.tickLength;
-		if(xAxisTicksVisibility.get()) {
-			yPlotBottom = yXaxisTickTop;
-			plotHeight = yPlotTop - yPlotBottom;
-		}
-	
-		float xYaxisTitleTextTop = xPlotLeft;
-		float xYaxisTitleTextBaseline = xYaxisTitleTextTop + OpenGL.largeTextHeight;
-		String yAxisTitle = (datasetsCount > 0) ? allDatasets.get(0).unit.get() : "";
-		float yYaxisTitleTextLeft = yPlotBottom + (plotHeight / 2.0f) - (OpenGL.largeTextWidth(gl, yAxisTitle) / 2.0f);
-		if(yAxisTitleVisibility.get()) {
-			xPlotLeft = xYaxisTitleTextBaseline + Theme.tickTextPadding;
-			plotWidth = xPlotRight - xPlotLeft;
-			if(xAxisTitleVisibility.get() && !legendVisibility.get())
-				xXaxisTitleTextLeft = xPlotLeft + (plotWidth  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-		}
-		
-		Map<Float, String> yDivisions = null;
-		float xYaxisTickTextRight = 0;
-		float xYaxisTickLeft = 0;
-		float xYaxisTickRight = 0;
-		if(yAxisTicksVisibility.get()) {
-			yDivisions = ChartUtils.getYdivisions125(plotHeight, plotMinY, plotMaxY);
-			float maxTextWidth = 0;
-			for(String text : yDivisions.values()) {
-				float textWidth = OpenGL.smallTextWidth(gl, text);
-				if(textWidth > maxTextWidth)
-					maxTextWidth = textWidth;
-					
-			}
-			
-			xYaxisTickTextRight = xPlotLeft + maxTextWidth;
-			xYaxisTickLeft = xYaxisTickTextRight + Theme.tickTextPadding;
-			xYaxisTickRight = xYaxisTickLeft + Theme.tickLength;
-			
-			xPlotLeft = xYaxisTickRight;
-			plotWidth = xPlotRight - xPlotLeft;
-			
-			if(xAxisTitleVisibility.get() && !legendVisibility.get())
-				xXaxisTitleTextLeft = xPlotLeft + (plotWidth  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-		}
-		
-		// stop if the plot is too small
-		if(plotWidth < 1 || plotHeight < 1)
-			return handler;
-		
-		// force the plot to be an integer number of pixels
-		xPlotLeft = (int) xPlotLeft;
-		xPlotRight = (int) xPlotRight;
-		yPlotBottom = (int) yPlotBottom;
-		yPlotTop = (int) yPlotTop;
-		plotWidth = xPlotRight - xPlotLeft;
-		plotHeight = yPlotTop - yPlotBottom;
-		
-		// draw plot background
-		OpenGL.drawQuad2D(gl, Theme.plotBackgroundColor, xPlotLeft, yPlotBottom, xPlotRight, yPlotTop);
-		
-		// draw the x-axis scale
-		if(xAxisTicksVisibility.get()) {
-			Map<Float, String> divisions = plot.getXdivisions(gl, (int) plotWidth);
-			
-			OpenGL.buffer.rewind();
-			for(Float divisionLocation : divisions.keySet()) {
-				float x = divisionLocation + xPlotLeft;
-				OpenGL.buffer.put(x); OpenGL.buffer.put(yPlotTop);    OpenGL.buffer.put(Theme.divisionLinesColor);
-				OpenGL.buffer.put(x); OpenGL.buffer.put(yPlotBottom); OpenGL.buffer.put(Theme.divisionLinesColor);
-				
-				OpenGL.buffer.put(x); OpenGL.buffer.put(yXaxisTickTop);    OpenGL.buffer.put(Theme.tickLinesColor);
-				OpenGL.buffer.put(x); OpenGL.buffer.put(yXaxisTickBottom); OpenGL.buffer.put(Theme.tickLinesColor);
-			}
-			OpenGL.buffer.rewind();
-			int vertexCount = divisions.keySet().size() * 4;
-			OpenGL.drawLinesXyrgba(gl, GL3.GL_LINES, OpenGL.buffer, vertexCount);
-			
-			for(Map.Entry<Float,String> entry : divisions.entrySet()) {
-				String[] lines = entry.getValue().split("\n");
-				float x = 0;
-				float y = yXaxisTickTextBaseline + ((lines.length - 1) * 1.3f * OpenGL.smallTextHeight);
-				for(String line : lines) {
-					x = entry.getKey() + xPlotLeft - (OpenGL.smallTextWidth(gl, line) / 2.0f);
-					OpenGL.drawSmallText(gl, line, (int) x, (int) y, 0);
-					y -= 1.3f * OpenGL.smallTextHeight;
-				}
-			}
-		}
-		
-		// draw the y-axis scale
-		if(yAxisTicksVisibility.get()) {
-			OpenGL.buffer.rewind();
-			for(Float entry : yDivisions.keySet()) {
-				float y = (entry - plotMinY) / plotRange * plotHeight + yPlotBottom;
-				OpenGL.buffer.put(xPlotLeft);  OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.divisionLinesColor);
-				OpenGL.buffer.put(xPlotRight); OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.divisionLinesColor);
-				
-				OpenGL.buffer.put(xYaxisTickLeft);  OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.tickLinesColor);
-				OpenGL.buffer.put(xYaxisTickRight); OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.tickLinesColor);
-			}
-			OpenGL.buffer.rewind();
-			int vertexCount = yDivisions.keySet().size() * 4;
-			OpenGL.drawLinesXyrgba(gl, GL3.GL_LINES, OpenGL.buffer, vertexCount);
-			
-			for(Map.Entry<Float,String> entry : yDivisions.entrySet()) {
-				float x = xYaxisTickTextRight - OpenGL.smallTextWidth(gl, entry.getValue());
-				float y = (entry.getKey() - plotMinY) / plotRange * plotHeight + yPlotBottom - (OpenGL.smallTextHeight / 2.0f);
-				OpenGL.drawSmallText(gl, entry.getValue(), (int) x, (int) y, 0);
-			}
-		}
-		
-		// draw the legend, if space is available
-		if(legendVisibility.get() && datasetsCount > 0 && xLegendBorderRight < width - Theme.tilePadding) {
-			OpenGL.drawQuad2D(gl, Theme.legendBackgroundColor, xLegendBorderLeft, yLegendBorderBottom, xLegendBorderRight, yLegendBorderTop);
-			
-			for(int i = 0; i < datasetsCount; i++) {
-				if(mouseX >= legendMouseoverCoordinates[i][0] && mouseX <= legendMouseoverCoordinates[i][2] && mouseY >= legendMouseoverCoordinates[i][1] && mouseY <= legendMouseoverCoordinates[i][3]) {
-					OpenGL.drawQuadOutline2D(gl, Theme.tickLinesColor, legendMouseoverCoordinates[i][0], legendMouseoverCoordinates[i][1], legendMouseoverCoordinates[i][2], legendMouseoverCoordinates[i][3]);
-					Field d = allDatasets.get(i);
-					handler = EventHandler.onPress(event -> ConfigureView.instance.forDataset(d));
-				}
-				OpenGL.drawQuad2D(gl, allDatasets.get(i).color.getGl(), legendBoxCoordinates[i][0], legendBoxCoordinates[i][1], legendBoxCoordinates[i][2], legendBoxCoordinates[i][3]);
-				OpenGL.drawMediumText(gl, allDatasets.get(i).name.get(), (int) xLegendNameLeft[i], (int) yLegendTextBaseline, 0);
-			}
-		}
-		
-		// draw the x-axis title, if space is available
-		if(xAxisTitleVisibility.get())
-			if((!legendVisibility.get() && xXaxisTitleTextLeft > xPlotLeft) || (legendVisibility.get() && xXaxisTitleTextLeft > xLegendBorderRight + Theme.legendTextPadding))
-				OpenGL.drawLargeText(gl, xAxisTitle, (int) xXaxisTitleTextLeft, (int) yXaxisTitleTextBasline, 0);
-		
-		// draw the y-axis title, if space is available
-		if(yAxisTitleVisibility.get() && yYaxisTitleTextLeft > yPlotBottom)
-			OpenGL.drawLargeText(gl, yAxisTitle, (int) xYaxisTitleTextBaseline, (int) yYaxisTitleTextLeft, 90);
-		
-		// acquire the samples
-		plot.acquireSamples(plotMinY, plotMaxY, (int) plotWidth, (int) plotHeight);
-		
-		// clip to the plot region
-		int[] chartScissorArgs = new int[4];
-		gl.glGetIntegerv(GL3.GL_SCISSOR_BOX, chartScissorArgs, 0);
-		gl.glScissor(chartScissorArgs[0] + (int) xPlotLeft, chartScissorArgs[1] + (int) yPlotBottom, (int) plotWidth, (int) plotHeight);
-		
-		// update the matrix and mouse so the plot region starts at (0,0)
-		// x = x + xPlotLeft;
-		// y = y + yPlotBottom;
-		float[] plotMatrix = Arrays.copyOf(chartMatrix, 16);
-		OpenGL.translateMatrix(plotMatrix, xPlotLeft, yPlotBottom, 0);
-		OpenGL.useMatrix(gl, plotMatrix);
-		mouseX -= xPlotLeft;
-		mouseY -= yPlotBottom;
+		// determine the axis titles
+		int datasetsCount = datasets.normalsCount();
+		String xAxisTitle = sampleCountMode ? "Sample Number" : "Time";
+		String yAxisTitle = (datasetsCount > 0) ? datasets.getNormal(0).unit.get() : "";
 		
 		// draw the plot
-		plot.draw(gl, mouseX, mouseY, plotMatrix, (int) plotWidth, (int) plotHeight, plotMinY, plotMaxY);
+		return new OpenGLPlot(chartMatrix, width, height, mouseX, mouseY)
+		           .withLegend(legendVisibility.get(), datasets)
+		           .withXaxis(xAxisStyle.get(), OpenGLPlot.AxisScale.LINEAR, plotMinX, plotMaxX, xAxisTitle)
+		           .withYaxis(yAxisStyle.get(), OpenGLPlot.AxisScale.LINEAR, plotMinY, plotMaxY, yAxisTitle)
+		           .withPlotDrawer(plot -> {
+		                if(plotSampleCount < 2)
+		                    return null;
+		                
+		                if(!cacheEnabled.get()) {
+		                    
+		                    // cache disabled, so acquire all samples
+		                    FloatBuffer   bufferX = sampleCountMode ? null : datasets.getTimestampsBuffer((int) minSampleNumber, (int) maxSampleNumber, plotMinX);
+		                    FloatBuffer[] bufferY = new FloatBuffer[datasetsCount];
+		                    for(int i = 0; i < datasetsCount; i++)
+		                        bufferY[i] = datasets.getSamplesBuffer(datasets.getNormal(i), (int) minSampleNumber, (int) maxSampleNumber);
+		                    
+		                    // adjust so: x = (x - plotMinX) /    domain * plotWidth;
+		                    // adjust so: y = (y - plotMinY) / plotRange * plotHeight;
+		                    // edit: now doing the "x - plotMinX" part before putting data into the buffers, to improve float32 precision when x is very large
+		                    float[] plotMatrix2 = Arrays.copyOf(plot.matrix(), 16);
+		                    OpenGL.scaleMatrix    (plotMatrix2, (float) plot.width()/plotDomain, (float) plot.height()/plotRange, 1);
+		                    OpenGL.translateMatrix(plotMatrix2,                               0,                       -plotMinY, 0);
+		                    OpenGL.useMatrix(gl, plotMatrix2);
+		                    
+		                    // draw the line plot
+		                    for(int i = 0; i < datasetsCount; i++) {
+		                        float[] glColor = datasets.getNormal(i).color.getGl();
+		                        boolean fewSamplesOnScreen = (plot.width() / (float) plotDomain) > (2 * Theme.pointWidth);
+		                        if(sampleCountMode) {
+		                            OpenGL.drawLinesY(gl, GL3.GL_LINE_STRIP, glColor, bufferY[i], (int) plotSampleCount, (int) (plotMinX >= 0 ? 0 : plotMinX * -1));
+		                            if(fewSamplesOnScreen)
+		                                OpenGL.drawPointsY(gl, glColor, bufferY[i], (int) plotSampleCount, (int) (plotMinX >= 0 ? 0 : plotMinX * -1));
+		                        } else {
+		                            OpenGL.drawLinesX_Y(gl, GL3.GL_LINE_STRIP, glColor, bufferX, bufferY[i], (int) plotSampleCount);
+		                            if(fewSamplesOnScreen)
+		                                OpenGL.drawPointsX_Y(gl, glColor, bufferX, bufferY[i], (int) plotSampleCount);
+		                        }
+		                    }
+		                    
+		                    // switch back to the original matrix
+		                    OpenGL.useMatrix(gl, plot.matrix());
+		                    
+		                } else {
+		                    
+		                    // cache enabled, so start off assuming we need to draw the entire x-axis range
+		                    long firstX = plotMinX;
+		                    long lastX  = plotMaxX;
+		                    
+		                    // if the cache can be used, reduce the x-axis draw range accordingly
+		                    boolean cacheIsValid = datasets.normalDatasets.equals(cachedNormalDatasets) && // flush if datasets changed
+		                                           datasets.edgeStates.equals(cachedEdgeStates) &&         // flush if datasets changed
+		                                           datasets.levelStates.equals(cachedLevelStates) &&       // flush if datasets changed
+		                                           (Theme.lineWidth == cachedLineWidth) &&                 // flush if display scaling changed
+		                                           (plot.width() == cachedPlotWidth) &&                    // flush if plot size changed
+		                                           (plot.height() == cachedPlotHeight) &&                  // flush if plot size changed
+		                                           (plotMinX < cachedPlotMaxX) &&                          // flush if rewound to before cached data
+		                                           (plotMaxX > cachedPlotMinX) &&                          // flush if advanced to after cached data
+		                                           (plotMinY == cachedPlotMinY) &&                         // flush if y-axis range changed
+		                                           (plotMaxY == cachedPlotMaxY) &&                         // flush if y-axis range changed
+		                                           (plotDomain == cachedPlotDomain) &&                     // flush if zoom changed
+		                                           (fbHandle != null) &&                                   // flush if cache doesn't even exist
+		                                           (texHandle != null);                                    // flush if cache doesn't even exist
+		                    
+		                    if(cacheIsValid) {
+		                        if(firstX == cachedPlotMinX && lastX <= cachedPlotMaxX) {
+		                            // no change, nothing to draw
+		                            firstX = lastX;
+		                        } else if(firstX > cachedPlotMinX) {
+		                            // moving forward in time
+		                            firstX = cachedPlotMaxX;
+		                        } else if(firstX < cachedPlotMinX) {
+		                            // moving backwards in time
+		                            lastX = cachedPlotMinX;
+		                        } else if(firstX == cachedPlotMinX && lastX > cachedPlotMaxX) {
+		                            // moving forward in time while x=0 is still on screen
+		                            firstX = cachedPlotMaxX;
+		                        } else {
+		                            // moving backwards in time while x=0 is still on screen, nothing to draw
+		                            firstX = lastX;
+		                        }
+		                    }
+		                    
+		                    // further reduce the x-axis draw range to sample numbers or timestamps that actually exist
+		                    long firstValidX = sampleCountMode ? 0               : datasets.connection.getFirstTimestamp();
+		                    long  lastValidX = sampleCountMode ? maxSampleNumber : datasets.getTimestamp((int) maxSampleNumber);
+		                    firstX = Math.clamp(firstX, firstValidX, lastValidX);
+		                    lastX  = Math.clamp(lastX,  firstValidX, lastValidX);
+		                    
+		                    // it's possible for plotMaxX to be in the future (when triggering or >1 connection)
+		                    // so we may need to grow the x-axis draw range to start where the *previous* draw ended
+		                    if(cacheIsValid && firstX > cachedMaxX)
+		                    	firstX = cachedMaxX;
+		                    
+		                    // the texture is used as a ring buffer. since the pixels wrap around from the right edge back to the left edge,
+		                    // we may need to split the rendering into 2 draw calls (splitting it at the right edge of the texture)
+		                    long xAmountElapsed = plotMaxX - firstValidX;
+		                    long xSplittingValue = xAmountElapsed - (xAmountElapsed % plotDomain) + firstValidX;
+		                    
+		                    // get the samples
+		                    int[]         draw1scissor  = null;
+		                    int[]         draw2scissor  = null;
+		                    long          draw1xOffset  = 0;
+		                    long          draw2xOffset  = 0;
+		                    FloatBuffer   draw1bufferX  = null;
+		                    FloatBuffer   draw2bufferX  = null;
+		                    FloatBuffer[] draw1buffersY = new FloatBuffer[datasetsCount];
+		                    FloatBuffer[] draw2buffersY = new FloatBuffer[datasetsCount];
+		                    
+		                    if(firstX == lastX) {
+		                        
+		                        // nothing to draw
+		                        
+		                    } else if(lastX <= xSplittingValue || firstX >= xSplittingValue) {
+		                        
+		                        // only 1 draw call required (no need to wrap around the ring buffer)
+		                        // determine the pixels corresponding to the draw call
+		                        draw1scissor = calculateScissorArgs(firstX, lastX, plotDomain, (int) plot.width(), (int) plot.height());
+		                        
+		                        // we'll need to draw extra samples before and after, because adjacent samples affect the edges of this region
+		                        double unitsPerPixel = (double) (plotDomain + 1) / (double) plot.width();  // samples or milliseconds
+		                        long extraUnitsNeeded = (long) Math.ceil(unitsPerPixel * Theme.lineWidth); // samples or milliseconds
+		                        
+		                        // when drawing, the x values will be auto-generated, starting at 0.
+		                        // but we're drawing a ring buffer, so we need to apply an offset instead of starting at 0.
+		                        draw1xOffset = sampleCountMode ? (firstX % plotDomain) - extraUnitsNeeded :
+		                                                         firstValidX + ((firstX - firstValidX) / plotDomain * plotDomain);
+		                        
+		                        // expand the range based on the extra amount needed
+		                        // and clip the range to ensure valid values (0 to maxSampleNumber)
+		                        firstX = Guava.saturatedSubtract(firstX, extraUnitsNeeded);
+		                        lastX  = Math.min(lastValidX, Guava.saturatedAdd(lastX, extraUnitsNeeded));
+		                        if(firstX < firstValidX) {
+		                            firstX = firstValidX;
+		                            draw1xOffset = firstValidX;
+		                        }
+		                        
+		                        // acquire the samples
+		                        int firstSampleNumber = sampleCountMode ? (int) firstX : datasets.getClosestSampleNumberAtOrBefore(firstX, (int) maxSampleNumber);
+		                        int  lastSampleNumber = sampleCountMode ? (int)  lastX : datasets.getClosestSampleNumberAfter(lastX);
+		                        if(!sampleCountMode)
+		                            draw1bufferX = datasets.getTimestampsBuffer(firstSampleNumber, lastSampleNumber, draw1xOffset);
+		                        for(int i = 0; i < datasetsCount; i++)
+		                            draw1buffersY[i] = datasets.getSamplesBuffer(datasets.getNormal(i), firstSampleNumber, lastSampleNumber);
+		                        cachedMaxX = sampleCountMode ? lastSampleNumber : datasets.getTimestamp(lastSampleNumber);
+		                        
+		                    } else {
+		                        
+		                        // 2 draw calls required because we need to wrap around the ring buffer
+		                        // determine the pixels corresponding to each draw call
+		                        draw1scissor = calculateScissorArgs(firstX, xSplittingValue, plotDomain, (int) plot.width(), (int) plot.height());
+		                        draw2scissor = calculateScissorArgs(xSplittingValue,  lastX, plotDomain, (int) plot.width(), (int) plot.height());
+		                        
+		                        // we'll need to draw extra samples before and after, because adjacent samples affect the edges of each region
+		                        double unitsPerPixel = (double) (plotDomain + 1) / (double) plot.width();  // samples or milliseconds
+		                        long extraUnitsNeeded = (long) Math.ceil(unitsPerPixel * Theme.lineWidth); // samples or milliseconds
+		                        
+		                        // when drawing, the x values will be auto-generated, starting at 0.
+		                        // but we're drawing a ring buffer, so we need to apply an offset instead of starting at 0.
+		                        draw1xOffset = sampleCountMode ? (firstX % plotDomain) - extraUnitsNeeded :
+		                                                         firstValidX + ((firstX - firstValidX) / plotDomain * plotDomain);
+		                        draw2xOffset = sampleCountMode ? (xSplittingValue % plotDomain) - extraUnitsNeeded :
+		                                                         firstValidX + ((xSplittingValue - firstValidX) / plotDomain * plotDomain);
+		                        
+		                        
+		                        // expand the range based on the extra amount needed
+		                        // and clip the range to ensure valid values (0 to maxSampleNumber)
+		                        long draw1firstX = Guava.saturatedSubtract(firstX, extraUnitsNeeded);
+		                        long draw1lastX  = Math.min(lastValidX, Guava.saturatedAdd(xSplittingValue, extraUnitsNeeded));
+		                        long draw2firstX = Guava.saturatedSubtract(xSplittingValue, extraUnitsNeeded);
+		                        long draw2lastX  = Math.min(lastValidX, Guava.saturatedAdd(lastX, extraUnitsNeeded));
+		                        if(draw1firstX < firstValidX) {
+		                            draw1firstX = firstValidX;
+		                            draw1xOffset = firstValidX;
+		                        }
+		                        if(draw2firstX < firstValidX) {
+		                            draw2firstX = firstValidX;
+		                            draw2xOffset = firstValidX;
+		                        }
+		                        
+		                        // acquire the samples
+		                        int firstSampleNumber1 = sampleCountMode ? (int) draw1firstX : datasets.getClosestSampleNumberAtOrBefore(draw1firstX, (int) maxSampleNumber);
+		                        int  lastSampleNumber1 = sampleCountMode ? (int)  draw1lastX : datasets.getClosestSampleNumberAfter(draw1lastX);
+		                        int firstSampleNumber2 = sampleCountMode ? (int) draw2firstX : datasets.getClosestSampleNumberAtOrBefore(draw2firstX, (int) maxSampleNumber);
+		                        int  lastSampleNumber2 = sampleCountMode ? (int)  draw2lastX : datasets.getClosestSampleNumberAfter(draw2lastX);
+		                        if(!sampleCountMode) {
+		                            draw1bufferX = datasets.getTimestampsBuffer(firstSampleNumber1, lastSampleNumber1, draw1xOffset);
+		                            draw2bufferX = datasets.getTimestampsBuffer(firstSampleNumber2, lastSampleNumber2, draw2xOffset);
+		                        }
+		                        // important: getSamplesBuffer() returns a *view* (not a copy) of the cache
+		                        // but we will call that function twice (for draw1 and draw2) before "using" the samples it returns
+		                        // so we must first ask for the full range of samples, to prevent a possible cache flush *between* the first and second calls!
+		                        for(int i = 0; i < datasetsCount; i++) {
+		                            datasets.getSamplesBuffer(datasets.getNormal(i), firstSampleNumber1, lastSampleNumber2);
+		                            draw1buffersY[i] = datasets.getSamplesBuffer(datasets.getNormal(i), firstSampleNumber1, lastSampleNumber1);
+		                            draw2buffersY[i] = datasets.getSamplesBuffer(datasets.getNormal(i), firstSampleNumber2, lastSampleNumber2);
+		                        }
+		                        cachedMaxX = sampleCountMode ? lastSampleNumber2 : datasets.getTimestamp(lastSampleNumber2);
+		                        
+		                    }
+		                    
+		                    // update the cache state
+		                    cachedNormalDatasets = List.copyOf(datasets.normalDatasets);
+		                    cachedEdgeStates     = List.copyOf(datasets.edgeStates);
+		                    cachedLevelStates    = List.copyOf(datasets.levelStates);
+		                    cachedLineWidth      = Theme.lineWidth;
+		                    cachedPlotWidth      = (int) plot.width();
+		                    cachedPlotHeight     = (int) plot.height();
+		                    cachedPlotMinX       = plotMinX;
+		                    cachedPlotMaxX       = plotMaxX;
+		                    cachedPlotMinY       = plotMinY;
+		                    cachedPlotMaxY       = plotMaxY;
+		                    cachedPlotDomain     = plotDomain;
+		                    
+		                    // create the off-screen framebuffer if this is the first draw call
+		                    if(fbHandle == null) {
+		                        fbHandle = new int[1];
+		                        texHandle = new int[1];
+		                        OpenGL.createOffscreenFramebuffer(gl, fbHandle, texHandle);
+		                    }
+		                    
+		                    // draw on the off-screen framebuffer
+		                    float[] offscreenMatrix = new float[16];
+		                    OpenGL.makeOrthoMatrix(offscreenMatrix, 0, plot.width(), 0, plot.height(), -1, 1);
+		                    OpenGL.startDrawingOffscreen(gl, offscreenMatrix, fbHandle, texHandle, (int) plot.width(), (int) plot.height(), !cacheIsValid);
+		                    
+		                    // erase the invalid parts of the framebuffer
+		                    gl.glClearColor(0, 0, 0, 0);
+		                    if(plotMinX < firstValidX) {
+		                        // if x<firstSample is on screen, erase the x<firstSample region because it may have old data on it
+		                        int[] args = calculateScissorArgs(plotMaxX, plotMaxX + plotDomain, plotDomain, (int) plot.width(), (int) plot.height());
+		                        gl.glScissor(args[0], args[1], args[2], args[3]);
+		                        gl.glClear(GL3.GL_COLOR_BUFFER_BIT);
+		                    }
+		                    if(plotMaxX > lastValidX) {
+		                        // if x>lastSample is on screen, erase the x>lastSample region because it may have old data on it
+		                        int[] args = calculateScissorArgs(lastValidX, plotMaxX, plotDomain, (int) plot.width(), (int) plot.height());
+		                        gl.glScissor(args[0], args[1], args[2], args[3]);
+		                        gl.glClear(GL3.GL_COLOR_BUFFER_BIT);
+		                        if((plotMaxX - firstValidX) % plotDomain < (lastValidX - firstValidX) % plotDomain) {
+		                            args = calculateScissorArgs(plotMaxX - ((plotMaxX - firstValidX) % plotDomain), plotMaxX, plotDomain, (int) plot.width(), (int) plot.height());
+		                            gl.glScissor(args[0], args[1], args[2], args[3]);
+		                            gl.glClear(GL3.GL_COLOR_BUFFER_BIT);
+		                        }
+		                    }
+		                    if(draw1scissor != null) {
+                                gl.glScissor(draw1scissor[0], draw1scissor[1], draw1scissor[2], draw1scissor[3]);
+                                gl.glClear(GL3.GL_COLOR_BUFFER_BIT);
+		                    }
+		                    if(draw2scissor != null) {
+                                gl.glScissor(draw2scissor[0], draw2scissor[1], draw2scissor[2], draw2scissor[3]);
+                                gl.glClear(GL3.GL_COLOR_BUFFER_BIT);
+		                    }
+		                    
+		                    // adjust so: x = (x - plotMinX) / domain    * plotWidth;
+		                    // adjust so: y = (y - plotMinY) / plotRange * plotHeight;
+		                    // edit: now doing the "x - plotMinX" part before putting data into the buffers, to improve float32 precision when x is very large
+		                    OpenGL.scaleMatrix    (offscreenMatrix, (float) plot.width()/plotDomain, (float) plot.height()/plotRange, 1);
+		                    OpenGL.translateMatrix(offscreenMatrix,                               0,                       -plotMinY, 0);
+		                    OpenGL.useMatrix(gl, offscreenMatrix);
+		                    
+		                    // draw each dataset
+		                    if(draw1scissor != null || draw2scissor != null) {
+		                        boolean fewSamplesOnScreen = (plot.width() / (float) plotDomain) > (2 * Theme.pointWidth);
+		                        for(int i = 0; i < datasetsCount; i++) {
+		                            float[] glColor = datasets.getNormal(i).color.getGl();
+		                            if(draw1scissor != null) {
+		                                gl.glScissor(draw1scissor[0], draw1scissor[1], draw1scissor[2], draw1scissor[3]);
+		                                if(sampleCountMode) {
+		                                    OpenGL.drawLinesY(gl, GL3.GL_LINE_STRIP, glColor, draw1buffersY[i], draw1buffersY[i].capacity(), (int) draw1xOffset);
+		                                    if(fewSamplesOnScreen)
+		                                        OpenGL.drawPointsY(gl, glColor, draw1buffersY[i], draw1buffersY[i].capacity(), (int) draw1xOffset);
+		                                } else {
+		                                    OpenGL.drawLinesX_Y(gl, GL3.GL_LINE_STRIP, glColor, draw1bufferX, draw1buffersY[i], draw1buffersY[i].capacity());
+		                                    if(fewSamplesOnScreen)
+		                                        OpenGL.drawPointsX_Y(gl, glColor, draw1bufferX, draw1buffersY[i], draw1buffersY[i].capacity());
+		                                }
+		                            }
+		                            if(draw2scissor != null) {
+		                                gl.glScissor(draw2scissor[0], draw2scissor[1], draw2scissor[2], draw2scissor[3]);
+		                                if(sampleCountMode) {
+		                                    OpenGL.drawLinesY(gl, GL3.GL_LINE_STRIP, glColor, draw2buffersY[i], draw2buffersY[i].capacity(), (int) draw2xOffset);
+		                                    if(fewSamplesOnScreen)
+		                                        OpenGL.drawPointsY(gl, glColor, draw2buffersY[i], draw2buffersY[i].capacity(), (int) draw2xOffset);
+		                                } else {
+		                                    OpenGL.drawLinesX_Y(gl, GL3.GL_LINE_STRIP, glColor, draw2bufferX, draw2buffersY[i], draw2buffersY[i].capacity());
+		                                    if(fewSamplesOnScreen)
+		                                        OpenGL.drawPointsX_Y(gl, glColor, draw2bufferX, draw2buffersY[i], draw2buffersY[i].capacity());
+		                                }
+		                            }
+		                        }
+		                    }
+		                    
+//		                    // draw color bars at the bottom edge of the plot to indicate draw call regions
+//		                    OpenGL.makeOrthoMatrix(offscreenMatrix, 0, plot.width(), 0, plot.height(), -1, 1);
+//		                    OpenGL.useMatrix(gl, offscreenMatrix);
+//		                    float[] randomColor1 = new float[] {(float) Math.random(), (float) Math.random(), (float) Math.random(), 0.5f};
+//		                    float[] randomColor2 = new float[] {(float) Math.random(), (float) Math.random(), (float) Math.random(), 0.5f};
+//		                    if(draw1scissor != null)
+//		                        OpenGL.drawBox(gl, randomColor1, draw1scissor[0] + 0.5f, 0, draw1scissor[2], 10);
+//		                    if(draw2scissor != null)
+//		                        OpenGL.drawBox(gl, randomColor2, draw2scissor[0] + 0.5f, 0, draw2scissor[2], 10);
+		                    
+		                    // switch back to the screen framebuffer and draw the texture on screen
+		                    OpenGL.stopDrawingOffscreen(gl, plot.matrix());
+		                    float startX = (float) ((plotMaxX - firstValidX) % plotDomain) / plotDomain;
+		                    OpenGL.drawRingbufferTexturedBox(gl, texHandle, 0, 0, plot.width(), plot.height(), startX);
+		                    
+//		                    //draw the framebuffer without ringbuffer wrapping, 10 pixels above the plot
+//		                    gl.glDisable(GL3.GL_SCISSOR_TEST);
+//		                    OpenGL.drawTexturedBox(gl, texHandle, true, 0, plot.height() + 10, plot.width(), plot.height(), 0, false);
+//		                    gl.glEnable(GL3.GL_SCISSOR_TEST);
+		                    
+		                }
+		                
+		                // draw any bitfield events
+		                datasets.drawBitfields(gl, plot.mouseX(), plot.mouseY(), plot.width(), plot.height(), sampleCountMode, plotMinX, plotDomain, minSampleNumber, maxSampleNumber, false);
+		                
+		                // draw the trigger level and trigger point markers
+		                EventHandler handler = null;
+		                mouseOverTriggerMarkers = false;
+		                if(trigger.isEnabled()) {
+		                    
+		                    float scalar = ChartsController.getDisplayScalingFactor();
+		                    float markerThickness = 3*scalar;
+		                    float markerLength = 5*scalar;
+		                    float yTriggerLevel = (trigger.level.get() - plotMinY) / (plotMaxY - plotMinY) * plot.height();
+		                    int triggeredSampleNumber = point.triggeredSampleNumber();
+		                    float xTriggerPoint = triggeredSampleNumber >= 0 ? getPixelXforSampleNumber(triggeredSampleNumber, plot.width(), plotMinX, plotDomain) : 0;
+		                    
+		                    // trigger level marker
+		                    if(yTriggerLevel >= 0 && yTriggerLevel <= plot.height()) {
+		                        if(plot.mouseX() >= 0 && plot.mouseX() <= markerLength*1.5 && plot.mouseY() >= yTriggerLevel - markerThickness*1.5 && plot.mouseY() <= yTriggerLevel + markerThickness*1.5) {
+		                            mouseOverTriggerMarkers = true;
+		                            handler = EventHandler.onPressOrDrag(dragStarted -> trigger.setPaused(true),
+		                                                                 newLocation -> {
+		                                                                     float newTriggerLevel = Math.clamp((newLocation.y - plot.yBottom()) / plot.height() * plotRange + plotMinY, plotMinY, plotMaxY);
+		                                                                     trigger.level.set(newTriggerLevel);
+		                                                                 },
+		                                                                 dragEnded -> trigger.setPaused(false),
+		                                                                 this,
+		                                                                 Theme.upDownCursor);
+		                            OpenGL.drawTriangle2D(gl, Theme.plotOutlineColor, 0, yTriggerLevel + markerThickness*1.5f,
+		                                                                              markerLength*1.5f, yTriggerLevel,
+		                                                                              0, yTriggerLevel - markerThickness*1.5f);
+		                        } else {
+		                            OpenGL.drawTriangle2D(gl, Theme.plotOutlineColor, 0, yTriggerLevel + markerThickness,
+		                                                                              markerLength, yTriggerLevel,
+		                                                                              0, yTriggerLevel - markerThickness);
+		                        }
+		                    }
+		                    
+		                    // trigger point marker
+		                    if(triggeredSampleNumber >= 0) {
+		                        if(xTriggerPoint >= 0 && xTriggerPoint <= plot.width()) {
+		                            if(plot.mouseX() >= xTriggerPoint - 1.5*markerThickness && plot.mouseX() <= xTriggerPoint + 1.5*markerThickness && plot.mouseY() >= plot.height() - 1.5*markerLength && plot.mouseY() <= plot.height()) {
+		                                mouseOverTriggerMarkers = true;
+		                                handler = EventHandler.onPressOrDrag(dragStarted -> trigger.setPaused(true),
+		                                                                     newLocation -> {
+		                                                                         float newPrePostRatio = Math.clamp((newLocation.x - plot.xLeft()) / plot.width(), 0, 1);
+		                                                                         trigger.prePostRatio.set(Math.round(newPrePostRatio * 100));
+		                                                                     },
+		                                                                     dragEnded -> trigger.setPaused(false),
+		                                                                     this,
+		                                                                     Theme.leftRigthCursor);
+		                                OpenGL.drawTriangle2D(gl, Theme.plotOutlineColor, xTriggerPoint - markerThickness*1.5f, plot.height(),
+		                                                                                  xTriggerPoint + markerThickness*1.5f, plot.height(),
+		                                                                                  xTriggerPoint, plot.height() - markerLength*1.5f);
+		                            } else {
+		                                OpenGL.drawTriangle2D(gl, Theme.plotOutlineColor, xTriggerPoint - markerThickness, plot.height(),
+		                                                                                  xTriggerPoint + markerThickness, plot.height(),
+		                                                                                  xTriggerPoint, plot.height() - markerLength);
+		                            }
+		                        }
+		                    }
+		                    
+		                    // draw lines to the trigger level and trigger point when the user is interacting with the markers
+		                    if(mouseOverTriggerMarkers || trigger.isPaused()) {
+		                        OpenGL.buffer.rewind();
+		                        OpenGL.buffer.put(0);              OpenGL.buffer.put(yTriggerLevel);  OpenGL.buffer.put(Theme.tickLinesColor);
+		                        OpenGL.buffer.put(xTriggerPoint);  OpenGL.buffer.put(yTriggerLevel);  OpenGL.buffer.put(Theme.tickLinesColor, 0, 3);  OpenGL.buffer.put(0.2f);
+		                        OpenGL.buffer.put(xTriggerPoint);  OpenGL.buffer.put(plot.height());  OpenGL.buffer.put(Theme.tickLinesColor);
+		                        OpenGL.buffer.put(xTriggerPoint);  OpenGL.buffer.put(yTriggerLevel);  OpenGL.buffer.put(Theme.tickLinesColor, 0, 3);  OpenGL.buffer.put(0.2f);
+		                        OpenGL.buffer.rewind();
+		                        OpenGL.drawLinesXyrgba(gl, GL3.GL_LINES, OpenGL.buffer, 4);
+		                    }
+		                    
+		                }
+		                
+		                // done
+		                return handler;
+		           })
+		           .withTooltipDrawer(plot -> {
+		                // determine the x-axis value corresponding to mouseX
+		                long mousePlotX = (long) Math.round((float) plot.mouseX() / plot.width() * plotDomain) + plotMinX;
+		                
+		                // sanity checks
+		                if(!datasets.hasNormals() && !datasets.hasLevels())
+		                    return null;
+		                if(plotSampleCount < 2)
+		                    return null;
+		                if(mousePlotX < (sampleCountMode ? 0 : datasets.connection.getFirstTimestamp()))
+		                    return null;
+		                if(mouseOverTriggerMarkers)
+		                    return null;
+		                
+		                // determine the sample number closest to the mouse
+		                int sampleNumber;
+		                if(sampleCountMode) {
+		                    sampleNumber = (int) Math.min(maxSampleNumber, mousePlotX);
+		                } else {
+		                    long closestSampleNumberBefore = datasets.getClosestSampleNumberAtOrBefore(mousePlotX, (int) maxSampleNumber - 1);
+		                    long closestSampleNumberAfter = Math.min(maxSampleNumber, closestSampleNumberBefore + 1);
+		                    double beforeError = (double) (((float) plot.mouseX() / plot.width()) * plotDomain) - (double) (datasets.getTimestamp((int) closestSampleNumberBefore) - plotMinX);
+		                    double afterError = (double) (datasets.getTimestamp((int) closestSampleNumberAfter) - plotMinX) - (double) (((float) plot.mouseX() / plot.width()) * plotDomain);
+		                    sampleNumber = (beforeError < afterError) ? (int) closestSampleNumberBefore : (int) closestSampleNumberAfter;
+		                }
+		                
+		                // create the tooltip
+		                float xAnchor = getPixelXforSampleNumber(sampleNumber, plot.width(), plotMinX, plotDomain);
+		                Tooltip tooltip = new Tooltip(sampleNumber, datasets.getTimestamp(sampleNumber), xAnchor, -1);
+		                datasets.normalDatasets.forEach(field -> tooltip.addRow(field.color.getGl(),
+		                                                                        Theme.getFloat(datasets.getSample(field, sampleNumber), field.unit.get(), false),
+		                                                                        (datasets.getSample(field, sampleNumber) - plotMinY) / plotRange * plot.height()));
+		                
+		                var activeLevels = datasets.levelStates.stream()
+		                                                       .filter(level -> {
+		                                                            int activeState = level.bitfield.getStateAt(sampleNumber, datasets.cacheFor(level.dataset));
+		                                                            return level == level.bitfield.states[activeState];
+		                                                        })
+		                                                       .toList();
+		                for(int i = 0; i < activeLevels.size(); i++) {
+		                    // following 3 lines from ChartUtils.drawMarkers()
+		                    float padding = 6f * ChartsController.getDisplayScalingFactor();
+		                    float yBottom = padding + ((activeLevels.size() - 1 - i) * (padding + OpenGL.smallTextHeight + padding));
+		                    float yTop    = yBottom + OpenGL.smallTextHeight + padding;
+		                    
+		                	Field.Bitfield.State state = activeLevels.get(i);
+		                	tooltip.addRow(state.glColor, state.name, yTop);
+		                }
+		                
+		                // draw the tooltip
+		                tooltip.draw(gl, mouseX, mouseY, plot.width(), plot.height());
+		                return null;
+		           })
+		           .draw(gl);
 		
-		// draw the trigger level and trigger point markers
-		if(triggerEnabled) {
-			
-			float scalar = ChartsController.getDisplayScalingFactor();
-			float markerThickness = 3*scalar;
-			float markerLength = 5*scalar;
-			float triggerLevel = trigger.level.get();
-			float yTriggerLevel = (triggerLevel - plotMinY) / plotRange * plotHeight;
-			
-			int triggeredSampleNumber = point.triggeredSampleNumber();
-			float xTriggerPoint = triggeredSampleNumber >= 0 ? plot.getPixelXforSampleNumber(triggeredSampleNumber, plotWidth) : 0;
-			
-			boolean mouseOver = false;
-			
-			// trigger level marker
-			float plotWidthCopy = plotWidth;
-			float plotHeightCopy = plotHeight;
-			float plotMinYcopy = plotMinY;
-			float plotMaxYcopy = plotMaxY;
-			int   xPlotLeftCopy = (int) xPlotLeft;
-			int   yPlotBottomCopy = (int) yPlotBottom;
-			if(yTriggerLevel >= 0 && yTriggerLevel <= plotHeight) {
-				if(mouseX >= 0 && mouseX <= markerLength*1.5 && mouseY >= yTriggerLevel - markerThickness*1.5 && mouseY <= yTriggerLevel + markerThickness*1.5) {
-					mouseOver = true;
-					handler = EventHandler.onPressOrDrag(dragStarted -> trigger.setPaused(true),
-					                                     newLocation -> {
-					                                         newLocation.x -= xPlotLeftCopy;
-					                                         newLocation.y -= yPlotBottomCopy;
-					                                         float newTriggerLevel = newLocation.y / plotHeightCopy * plotRange + plotMinYcopy;
-					                                         if(newTriggerLevel < plotMinYcopy)
-					                                             newTriggerLevel = plotMinYcopy;
-					                                         if(newTriggerLevel > plotMaxYcopy)
-					                                             newTriggerLevel = plotMaxYcopy;
-					                                         trigger.level.set(newTriggerLevel);
-					                                     },
-					                                     dragEnded -> trigger.setPaused(false),
-					                                     this,
-					                                     Theme.upDownCursor);
-					OpenGL.drawTriangle2D(gl, Theme.plotOutlineColor, 0, yTriggerLevel + markerThickness*1.5f,
-					                                                  markerLength*1.5f, yTriggerLevel,
-					                                                  0, yTriggerLevel - markerThickness*1.5f);
-				} else {
-					OpenGL.drawTriangle2D(gl, Theme.plotOutlineColor, 0, yTriggerLevel + markerThickness,
-					                                                  markerLength, yTriggerLevel,
-					                                                  0, yTriggerLevel - markerThickness);
-				}
-			}
-			
-			// trigger point marker
-			if(triggeredSampleNumber >= 0) {
-				if(xTriggerPoint >= 0 && xTriggerPoint <= plotWidth) {
-					if(mouseX >= xTriggerPoint - 1.5*markerThickness && mouseX <= xTriggerPoint + 1.5*markerThickness && mouseY >= plotHeight - 1.5*markerLength && mouseY <= plotHeight) {
-						mouseOver = true;
-						handler = EventHandler.onPressOrDrag(dragStarted -> trigger.setPaused(true),
-						                                     newLocation -> {
-						                                         newLocation.x -= xPlotLeftCopy;
-						                                         newLocation.y -= yPlotBottomCopy;
-						                                         float newPrePostRatio = newLocation.x / plotWidthCopy;
-						                                         if(newPrePostRatio < 0)
-						                                             newPrePostRatio = 0;
-						                                         if(newPrePostRatio > 1)
-						                                             newPrePostRatio = 1;
-						                                         trigger.prePostRatio.set(Math.round(newPrePostRatio * 100));
-						                                     },
-						                                     dragEnded -> trigger.setPaused(false),
-						                                     this,
-						                                     Theme.leftRigthCursor);
-						OpenGL.drawTriangle2D(gl, Theme.plotOutlineColor, xTriggerPoint - markerThickness*1.5f, plotHeight,
-						                                                  xTriggerPoint + markerThickness*1.5f, plotHeight,
-						                                                  xTriggerPoint, plotHeight - markerLength*1.5f);
-					} else {
-						OpenGL.drawTriangle2D(gl, Theme.plotOutlineColor, xTriggerPoint - markerThickness, plotHeight,
-						                                                  xTriggerPoint + markerThickness, plotHeight,
-						                                                  xTriggerPoint, plotHeight - markerLength);
-					}
-				}
-			}
-			
-			// draw lines to the trigger level and trigger point when the user is interacting with the markers
-			if(mouseOver || trigger.isPaused()) {
-				float xLeft = 0;
-				float xRight = xTriggerPoint;
-				float yTop = plotHeight;
-				float yBottom = yTriggerLevel;
-				OpenGL.buffer.rewind();
-				OpenGL.buffer.put(xLeft);   OpenGL.buffer.put(yBottom);  OpenGL.buffer.put(Theme.tickLinesColor);
-				OpenGL.buffer.put(xRight);  OpenGL.buffer.put(yBottom);  OpenGL.buffer.put(Theme.tickLinesColor, 0, 3);  OpenGL.buffer.put(0.2f);
-				OpenGL.buffer.put(xRight);  OpenGL.buffer.put(yTop);     OpenGL.buffer.put(Theme.tickLinesColor);
-				OpenGL.buffer.put(xRight);  OpenGL.buffer.put(yBottom);  OpenGL.buffer.put(Theme.tickLinesColor, 0, 3);  OpenGL.buffer.put(0.2f);
-				OpenGL.buffer.rewind();
-				OpenGL.drawLinesXyrgba(gl, GL3.GL_LINES, OpenGL.buffer, 4);
-			}
-			
+	}
+	
+	/**
+	 * Calculates the (x,y,w,h) arguments for glScissor() based on what region the samples will occupy in the framebuffer.
+	 * 
+	 * @param minX          The first x-axis value (sample number or timestamp.)
+	 * @param maxX          The last  x-axis value (sample number or timestamp.)
+	 * @param plotWidth     Width of the plot region, in pixels.
+	 * @param plotHeight    Height of the plot region, in pixels.
+	 * @return              An int[4] of {x,y,w,h}
+	 */
+	private int[] calculateScissorArgs(long minX, long maxX, long plotDomain, int plotWidth, int plotHeight) {
+		
+		// convert timestamps into milliseconds elapsed
+		if(!sampleCountMode) {
+			minX -= datasets.connection.getFirstTimestamp();
+			maxX -= datasets.connection.getFirstTimestamp();
 		}
 		
-		// draw the tooltip if the mouse is in the plot region and not over something clickable
-		if(datasetsCount > 0 && SettingsView.instance.tooltipsVisibility.get() && mouseX >= 0 && mouseX <= plotWidth && mouseY >= 0 && mouseY <= plotHeight && handler == null)
-			plot.drawTooltip(gl, mouseX, mouseY, plotWidth, plotHeight, plotMinY, plotMaxY);
+		// important: adding a 1px margin to the left and right edges, to prevent occasional 1px glitches when rewinding
 		
-		// stop clipping to the plot region
-		gl.glScissor(chartScissorArgs[0], chartScissorArgs[1], chartScissorArgs[2], chartScissorArgs[3]);
+		// convert the minX (sample number or milliseconds elapsed) into a pixel number on the framebuffer, keeping in mind that it's a ring buffer
+		long rbSampleNumber = minX % plotDomain;
+		int rbPixelX = (int) (rbSampleNumber * plotWidth / plotDomain) - 1; // -1 for some margin
 		
-		// switch back to the chart matrix
-		OpenGL.useMatrix(gl, chartMatrix);
+		// convert the range (sample count or milliseconds) into a pixel count
+		int pixelWidth = (int) Math.ceil((double) (maxX - minX) * (double) plotWidth / (double) plotDomain) + 2; // +2 for some margin
 		
-		// draw the plot border
-		OpenGL.drawQuadOutline2D(gl, Theme.plotOutlineColor, xPlotLeft, yPlotBottom, xPlotRight, yPlotTop);
+		int[] args = new int[4];
+		args[0] = rbPixelX;
+		args[1] = 0;
+		args[2] = pixelWidth;
+		args[3] = plotHeight;
+		return args;
 		
-		return handler;
+	}
+	
+	/**
+	 * Gets the horizontal location, relative to the plot, for a sample number.
+	 * 
+	 * @param sampleNumber    The sample number.
+	 * @param plotWidth       Width of the plot region, in pixels.
+	 * @return                Corresponding horizontal location on the plot, in pixels, with 0 = left edge of the plot.
+	 */
+	private float getPixelXforSampleNumber(long sampleNumber, float plotWidth, long plotMinX, long plotDomain) {
+		
+		return sampleCountMode ? (float) (sampleNumber - plotMinX)                              / (float) plotDomain * plotWidth :
+		                         (float) (datasets.getTimestamp((int) sampleNumber) - plotMinX) / (float) plotDomain * plotWidth;
 		
 	}
 	
 	@Override public void disposeGpu(GL2ES3 gl) {
 		super.disposeGpu(gl);
-		plot.freeResources(gl);
+		if(texHandle != null && fbHandle != null) {
+			gl.glDeleteTextures(1, texHandle, 0);
+			texHandle = null;
+			gl.glDeleteFramebuffers(1, fbHandle, 0);
+			fbHandle = null;
+		}
 	}
 
 }

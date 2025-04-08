@@ -158,13 +158,14 @@ public class OpenGLStatisticsChart extends PositionedChart {
 				int column = datasetN + 1;
 				line = 0;
 				text[column][line++] = dataset.name.get();
-				if(currentValuesVisibility.get())     text[column][line++] = ChartUtils.formattedNumber(samples[samples.length - 1], 5) + " " + dataset.unit.get();
-				if(minimumsVisibility.get())          text[column][line++] = ChartUtils.formattedNumber(stats.getMin(), 5) + " " + dataset.unit.get();
-				if(maximumsVisibility.get())          text[column][line++] = ChartUtils.formattedNumber(stats.getMax(), 5) + " " + dataset.unit.get();
-				if(meansVisibility.get())             text[column][line++] = ChartUtils.formattedNumber(stats.getMean(), 5) + " " + dataset.unit.get();
-				if(mediansVisibility.get())           text[column][line++] = ChartUtils.formattedNumber(stats.getPercentile(50), 5) + " " + dataset.unit.get();
-				if(standardDeviationVisibility.get()) text[column][line++] = ChartUtils.formattedNumber(stats.getStandardDeviation(), 5) + " " + dataset.unit.get();
-				if(percentileVisibility.get())        text[column][line++] = ChartUtils.formattedNumber(stats.getPercentile(90), 5) + " " + dataset.unit.get();
+				String unit = dataset.unit.get();
+				if(currentValuesVisibility.get())     text[column][line++] = Theme.getFloat(samples[samples.length - 1],          unit, false);
+				if(minimumsVisibility.get())          text[column][line++] = Theme.getFloat((float) stats.getMin(),               unit, false);
+				if(maximumsVisibility.get())          text[column][line++] = Theme.getFloat((float) stats.getMax(),               unit, false);
+				if(meansVisibility.get())             text[column][line++] = Theme.getFloat((float) stats.getMean(),              unit, false);
+				if(mediansVisibility.get())           text[column][line++] = Theme.getFloat((float) stats.getPercentile(50),      unit, false);
+				if(standardDeviationVisibility.get()) text[column][line++] = Theme.getFloat((float) stats.getStandardDeviation(), unit, false);
+				if(percentileVisibility.get())        text[column][line++] = Theme.getFloat((float) stats.getPercentile(90),      unit, false);
 			}
 		
 		// determine the width of each piece of text, and track the max for each column

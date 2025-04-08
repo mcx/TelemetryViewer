@@ -4,8 +4,6 @@ import java.nio.IntBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
-
 import javax.swing.JPanel;
 import org.jtransforms.fft.DoubleFFT_1D;
 
@@ -62,10 +60,11 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 	private WidgetTextfield<Float> maximumPower;
 	private WidgetCheckbox maximumPowerAutomatic;
 	private WidgetCheckbox fftInfoVisibility;
-	private WidgetCheckbox xAxisTicksVisibility;
-	private WidgetCheckbox xAxisTitleVisibility;
-	private WidgetCheckbox yAxisTicksVisibility;
-	private WidgetCheckbox yAxisTitleVisibility;
+	private WidgetToggleButton<OpenGLPlot.AxisStyle> xAxisStyle;
+	private WidgetToggleButton<OpenGLPlot.AxisStyle> yAxisStyle;
+	
+	private int[][][] histogram = null; // only populated in Histogram mode
+	private int actualYaxisBins = 0;
 	
 	@Override public String toString() {
 		
@@ -151,29 +150,11 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		                  yAxisBinsTextfield.setVisible(newStyle == ChartStyle.HISTOGRAM);
 		                  yAxisBinsAutomatic.setVisible(newStyle == ChartStyle.HISTOGRAM);
 		                  gamma.setVisible(newStyle == ChartStyle.HISTOGRAM);
+		                  ConfigureView.instance.redrawIfUsedFor(this); // important: may need to revalidate/redraw the parent!
 		                  return true;
 		              });
 		
-		maximumPower = WidgetTextfield.ofFloat(Float.MIN_VALUE, Float.MAX_VALUE, 1e9f)
-		                              .setPrefix("Max Power")
-		                              .setSuffix("Watts")
-		                              .setExportLabel("fft maximum power")
-		                              .onChange((newMaximum, oldMaximum) -> {
-		                                            if(newMaximum < minimumPower.get())
-		                                                minimumPower.set(newMaximum);
-		                                            return true;
-		                                        });
-		
-		maximumPowerAutomatic = new WidgetCheckbox("Auto", true)
-		                            .setExportLabel("fft maximum power automatic")
-		                            .onChange(isAutomatic -> {
-		                                         if(isAutomatic)
-		                                             maximumPower.disableWithMessage("Automatic");
-		                                         else
-		                                             maximumPower.setEnabled(true);
-		                                     });
-		
-		minimumPower = WidgetTextfield.ofFloat(Float.MIN_VALUE, Float.MAX_VALUE, 1e-9f)
+		minimumPower = WidgetTextfield.ofFloat(Float.MIN_VALUE, Float.MAX_VALUE, 1e-15f)
 		                              .setPrefix("Min Power")
 		                              .setSuffix("Watts")
 		                              .setExportLabel("fft minimum power")
@@ -192,40 +173,51 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		                                             minimumPower.setEnabled(true);
 		                                     });
 		
+		maximumPower = WidgetTextfield.ofFloat(Float.MIN_VALUE, Float.MAX_VALUE, 10f)
+		                              .setPrefix("Max Power")
+		                              .setSuffix("Watts")
+		                              .setExportLabel("fft maximum power")
+		                              .onChange((newMaximum, oldMaximum) -> {
+		                                            if(newMaximum < minimumPower.get())
+		                                                minimumPower.set(newMaximum);
+		                                            return true;
+		                                        });
+		
+		maximumPowerAutomatic = new WidgetCheckbox("Auto", true)
+		                            .setExportLabel("fft maximum power automatic")
+		                            .onChange(isAutomatic -> {
+		                                         if(isAutomatic)
+		                                             maximumPower.disableWithMessage("Automatic");
+		                                         else
+		                                             maximumPower.setEnabled(true);
+		                                     });
+		
 		fftInfoVisibility = new WidgetCheckbox("Show FFT Info", true)
 		                        .setExportLabel("fft show info");
 		
-		xAxisTicksVisibility = new WidgetCheckbox("Show Ticks", true)
-		                           .setExportLabel("x-axis show ticks");
+		xAxisStyle = new WidgetToggleButton<OpenGLPlot.AxisStyle>("", OpenGLPlot.AxisStyle.values(), OpenGLPlot.AxisStyle.OUTER)
+		                 .setExportLabel("x-axis style");
 		
-		xAxisTitleVisibility = new WidgetCheckbox("Show Title", true)
-		                           .setExportLabel("x-axis show title");
-		
-		yAxisTicksVisibility = new WidgetCheckbox("Show Ticks", true)
-		                           .setExportLabel("y-axis show ticks");
-		
-		yAxisTitleVisibility = new WidgetCheckbox("Show Title", true)
-		                           .setExportLabel("y-axis show title");
+		yAxisStyle = new WidgetToggleButton<OpenGLPlot.AxisStyle>("", OpenGLPlot.AxisStyle.values(), OpenGLPlot.AxisStyle.OUTER)
+		                 .setExportLabel("y-axis style");
 		
 		widgets.add(datasetsWidget);
 		widgets.add(sampleCountTextfield);
 		widgets.add(legendVisibility);
 		widgets.add(chartStyle);
-		widgets.add(maximumPower);
-		widgets.add(maximumPowerAutomatic);
 		widgets.add(minimumPower);
 		widgets.add(minimumPowerAutomatic);
+		widgets.add(maximumPower);
+		widgets.add(maximumPowerAutomatic);
 		widgets.add(fftCount);
-		widgets.add(gamma);
 		widgets.add(xAxisBinsTextfield);
 		widgets.add(xAxisBinsAutomatic);
 		widgets.add(yAxisBinsTextfield);
 		widgets.add(yAxisBinsAutomatic);
+		widgets.add(gamma);
 		widgets.add(fftInfoVisibility);
-		widgets.add(xAxisTicksVisibility);
-		widgets.add(xAxisTitleVisibility);
-		widgets.add(yAxisTicksVisibility);
-		widgets.add(yAxisTitleVisibility);
+		widgets.add(xAxisStyle);
+		widgets.add(yAxisStyle);
 		
 	}
 	
@@ -239,10 +231,10 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		
 		gui.add(Theme.newWidgetsPanel("FFTs")
 		             .with(chartStyle)
-		             .with(maximumPower,          "split 2, grow x, grow y")
-		             .with(maximumPowerAutomatic, "sizegroup 1")
 		             .with(minimumPower,          "split 2, grow x, grow y")
 		             .with(minimumPowerAutomatic, "sizegroup 1")
+		             .with(maximumPower,          "split 2, grow x, grow y")
+		             .with(maximumPowerAutomatic, "sizegroup 1")
 		             .withGap(Theme.padding)
 		             .with(fftCount,              "grow x, grow y")
 		             .with(xAxisBinsTextfield,    "split 2, grow x, grow y")
@@ -255,685 +247,289 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		             .getPanel());
 		
 		gui.add(Theme.newWidgetsPanel("X-Axis")
-		             .with(xAxisTicksVisibility,  "split 2")
-		             .with(xAxisTitleVisibility)
+		             .with(xAxisStyle)
 		             .getPanel());
 		
 		gui.add(Theme.newWidgetsPanel("Y-Axis")
-		             .with(yAxisTicksVisibility,  "split 2")
-		             .with(yAxisTitleVisibility)
+		             .with(yAxisStyle)
 		             .getPanel());
 		
 	}
 	
 	@Override public EventHandler drawChart(GL2ES3 gl, float[] chartMatrix, int width, int height, long endTimestamp, int endSampleNumber, double zoomLevel, int mouseX, int mouseY) {
 		
-		EventHandler handler = null;
-		
-		boolean haveDatasets = datasets.hasNormals();
 		int datasetsCount = datasets.normalsCount();
 		
 		// calculate the FFTs
 		FFTs fft = cache.getFFT(endSampleNumber, duration, fftCount.get(), datasets, chartStyle.get());
 		
-		// calculate the domain
+		// determine the x-axis range
 		float plotMinX = fft.minHz;
 		float plotMaxX = fft.maxHz;
 		float domain = plotMaxX - plotMinX;
 		
-		// calculate the range and ensure it's >0
+		// determine the y-axis range and ensure it's >0
 		// the y-axis is power (single/histogram modes) or time (waterfall mode)
-		float sampleRate = haveDatasets ? datasets.connection.getSampleRate() : 1;
+		float sampleRate = datasets.hasNormals() ? datasets.connection.getSampleRate() : 1;
 		float plotMinTime = 0;
 		float plotMaxTime = (float) (duration * fftCount.get()) / sampleRate;
 
-		float plotMinPower = fft.minPower;
-		float plotMaxPower = fft.maxPower;
-		if(plotMinPower == plotMaxPower) {
-			float value = plotMinPower;
-			plotMinPower = value - 0.001f;
-			plotMaxPower = value + 0.001f;
+		float minPower = fft.minPower;
+		float maxPower = fft.maxPower;
+		if(minPower == maxPower) {
+			float value = minPower;
+			minPower = value - 0.001f;
+			maxPower = value + 0.001f;
 		}
-		autoscalePower.update(plotMinPower, plotMaxPower);
+		autoscalePower.update(minPower, maxPower);
 		
-		if(!minimumPowerAutomatic.get())
-			plotMinPower = (float) Math.log10(minimumPower.get());
-		else if(minimumPowerAutomatic.get() && !chartStyle.is(ChartStyle.WATERFALL))
-			plotMinPower = autoscalePower.getMin();
-		
-		if(!maximumPowerAutomatic.get())
-			plotMaxPower = (float) Math.log10(maximumPower.get());
-		else if(maximumPowerAutomatic.get() && !chartStyle.is(ChartStyle.WATERFALL))
-			plotMaxPower = autoscalePower.getMax();
-
+		float plotMinPower = (minimumPowerAutomatic.get() && !chartStyle.is(ChartStyle.WATERFALL)) ? autoscalePower.getMin() :
+		                     (minimumPowerAutomatic.get() &&  chartStyle.is(ChartStyle.WATERFALL)) ? minPower :
+		                                                                                             (float) Math.log10(minimumPower.get());
+		float plotMaxPower = (maximumPowerAutomatic.get() && !chartStyle.is(ChartStyle.WATERFALL)) ? autoscalePower.getMax() :
+		                     (maximumPowerAutomatic.get() &&  chartStyle.is(ChartStyle.WATERFALL)) ? maxPower :
+		                                                                                             (float) Math.log10(maximumPower.get());
 		float plotMinY = chartStyle.is(ChartStyle.WATERFALL) ? plotMinTime : plotMinPower;
 		float plotMaxY = chartStyle.is(ChartStyle.WATERFALL) ? plotMaxTime : plotMaxPower;
 		float plotRange = plotMaxY - plotMinY;
 		
-		// calculate x and y positions of everything
-		float xPlotLeft = Theme.tilePadding;
-		float xPlotRight = width - Theme.tilePadding;
-		float plotWidth = xPlotRight - xPlotLeft;
-		float yPlotTop = height - Theme.tilePadding;
-		float yPlotBottom = Theme.tilePadding;
-		float plotHeight = yPlotTop - yPlotBottom;
+		// determine the axis titles
+		String xAxisTitle = "Frequency";
+		String yAxisTitle = chartStyle.is(ChartStyle.WATERFALL) ? "Time" : "Power";
 		
-		float xLegendBorderLeft = Theme.tilePadding;
-		float yLegendBorderBottom = Theme.tilePadding;
-		float yLegendTextBaseline = yLegendBorderBottom + Theme.legendTextPadding;
-		float yLegendTextTop = yLegendTextBaseline + OpenGL.mediumTextHeight;
-		float yLegendBorderTop = yLegendTextTop + Theme.legendTextPadding;
-		float[][] legendMouseoverCoordinates = new float[datasetsCount][4];
-		float[][] legendBoxCoordinates = new float[datasetsCount][4];
-		float[] xLegendNameLeft = new float[datasetsCount];
-		float xLegendBorderRight = 0;
-		if(legendVisibility.get() && haveDatasets) {
-			float xOffset = xLegendBorderLeft + (Theme.lineWidth / 2) + Theme.legendTextPadding;
-			for(int i = 0; i < datasetsCount; i++) {
-				legendMouseoverCoordinates[i][0] = xOffset - Theme.legendTextPadding;
-				legendMouseoverCoordinates[i][1] = yLegendBorderBottom;
-				
-				legendBoxCoordinates[i][0] = xOffset;
-				legendBoxCoordinates[i][1] = yLegendTextBaseline;
-				legendBoxCoordinates[i][2] = xOffset + OpenGL.mediumTextHeight;
-				legendBoxCoordinates[i][3] = yLegendTextTop;
-				
-				xOffset += OpenGL.mediumTextHeight + Theme.legendTextPadding;
-				xLegendNameLeft[i] = xOffset;
-				xOffset += OpenGL.mediumTextWidth(gl, datasets.getNormal(i).name.get()) + Theme.legendNamesPadding;
-				
-				legendMouseoverCoordinates[i][2] = xOffset - Theme.legendNamesPadding + Theme.legendTextPadding;
-				legendMouseoverCoordinates[i][3] = yLegendBorderTop;
-			}
-			
-			xLegendBorderRight = xOffset - Theme.legendNamesPadding + Theme.legendTextPadding + (Theme.lineWidth / 2);
-
-			float temp = yLegendBorderTop + Theme.legendTextPadding;
-			if(yPlotBottom < temp) {
-				yPlotBottom = temp;
-				plotHeight = yPlotTop - yPlotBottom;
-			}
-		}
-		
-		String fftWindowLengthText = null;
-		float yFftWindowLengthTextBaseline = 0;
-		float xFftWindowLenghtTextLeft = 0;
-		String fftWindowCountText = null;
-		float yFftWindowCountTextBaseline = 0;
-		float xFftWindowCountTextLeft = 0;
-		String minPowerText = null;
-		String maxPowerText = null;
-		float yPowerTextBaseline = 0;
-		float yPowerTextTop = 0;
-		float xMaxPowerTextLeft = 0;
-		float xPowerScaleRight = 0;
-		float xPowerScaleLeft = 0;
-		float xMinPowerTextLeft = 0;
-		float xFftInfoTextLeft = 0;
-		if(fftInfoVisibility.get()) {
-			switch(chartStyle.get()) {
-				case SINGLE -> {
-					fftWindowLengthText = fft.windowLength + " sample rectangular window";
-					yFftWindowLengthTextBaseline = Theme.tilePadding;
-					xFftWindowLenghtTextLeft = width - Theme.tilePadding - OpenGL.smallTextWidth(gl, fftWindowLengthText);
-					
-					xFftInfoTextLeft = xFftWindowLenghtTextLeft;
-					
-					float temp = yFftWindowLengthTextBaseline + OpenGL.smallTextHeight + Theme.tickTextPadding;
-					if(yPlotBottom < temp) {
-						yPlotBottom = temp;
-						plotHeight = yPlotTop - yPlotBottom;
-					}
-				}
-				case HISTOGRAM -> {
-					int windowCount = fft.windows.size();
-					int windowLength = fft.windowLength;
-					int trueTotalSampleCount = windowCount * windowLength;
-					fftWindowCountText = windowCount + " windows (total of " + trueTotalSampleCount + " samples)";
-					yFftWindowCountTextBaseline = Theme.tilePadding;
-					xFftWindowCountTextLeft = width - Theme.tilePadding - OpenGL.smallTextWidth(gl, fftWindowCountText);
-					
-					fftWindowLengthText = windowLength + " sample rectangular window";
-					yFftWindowLengthTextBaseline = yFftWindowCountTextBaseline + OpenGL.smallTextHeight + Theme.tickTextPadding;
-					xFftWindowLenghtTextLeft = width - Theme.tilePadding - OpenGL.smallTextWidth(gl, fftWindowLengthText);
-					
-					xFftInfoTextLeft = Float.min(xFftWindowCountTextLeft, xFftWindowLenghtTextLeft);
-					
-					float temp = yFftWindowLengthTextBaseline + OpenGL.smallTextHeight + Theme.tickTextPadding;
-					if(yPlotBottom < temp) {
-						yPlotBottom = temp;
-						plotHeight = yPlotTop - yPlotBottom;
-					}
-				}
-				case WATERFALL -> {
-					minPowerText = "Power Range: 1e" + Math.round(plotMinPower);
-					maxPowerText = "1e" + Math.round(plotMaxPower);
-					yPowerTextBaseline = Theme.tilePadding;
-					yPowerTextTop = yPowerTextBaseline + OpenGL.smallTextHeight;
-					xMaxPowerTextLeft = width - Theme.tilePadding - OpenGL.smallTextWidth(gl, maxPowerText);
-					xPowerScaleRight = xMaxPowerTextLeft - Theme.tickTextPadding;
-					xPowerScaleLeft = xPowerScaleRight - (100 * ChartsController.getDisplayScalingFactor());
-					xMinPowerTextLeft = xPowerScaleLeft - Theme.tickTextPadding - OpenGL.smallTextWidth(gl, minPowerText);
-					
-					int windowCount = fft.windows.size();
-					int windowLength = fft.windowLength;
-					int trueTotalSampleCount = windowCount * windowLength;
-					fftWindowCountText = windowCount + " windows (total of " + trueTotalSampleCount + " samples)";
-					yFftWindowCountTextBaseline = yPowerTextTop + Theme.tickTextPadding;
-					xFftWindowCountTextLeft = width - Theme.tilePadding - OpenGL.smallTextWidth(gl, fftWindowCountText);
-					
-					fftWindowLengthText = windowLength + " sample rectangular window";
-					yFftWindowLengthTextBaseline = yFftWindowCountTextBaseline + OpenGL.smallTextHeight + Theme.tickTextPadding;
-					xFftWindowLenghtTextLeft = width - Theme.tilePadding - OpenGL.smallTextWidth(gl, fftWindowLengthText);
-					
-					xFftInfoTextLeft = Float.min(xFftWindowCountTextLeft, xFftWindowLenghtTextLeft);
-					xFftInfoTextLeft = Float.min(xMinPowerTextLeft, xFftInfoTextLeft);
-					
-					float temp = yFftWindowLengthTextBaseline + OpenGL.smallTextHeight + Theme.tickTextPadding;
-					if(yPlotBottom < temp) {
-						yPlotBottom = temp;
-						plotHeight = yPlotTop - yPlotBottom;
-					}
-				}
-			};
-		}
-		
-		float xYaxisTitleTextTop = xPlotLeft;
-		float xYaxisTitleTextBaseline = xYaxisTitleTextTop + OpenGL.largeTextHeight;
-		String yAxisTitle = chartStyle.is(ChartStyle.WATERFALL) ? "Time (Seconds)" : "Power (Watts)";
-		float yYaxisTitleTextLeft = yPlotBottom + (plotHeight / 2.0f) - (OpenGL.largeTextWidth(gl, yAxisTitle) / 2.0f);
-		if(yAxisTitleVisibility.get()) {
-			xPlotLeft = xYaxisTitleTextBaseline + Theme.tickTextPadding;
-			plotWidth = xPlotRight - xPlotLeft;
-		}
-		
-		float yXaxisTitleTextBasline = Theme.tilePadding;
-		float yXaxisTitleTextTop = yXaxisTitleTextBasline + OpenGL.largeTextHeight;
-		String xAxisTitle = "Frequency (Hertz)";
-		float xXaxisTitleTextLeft = 0;
-		if(xAxisTitleVisibility.get()) {
-			if(!legendVisibility.get() && !fftInfoVisibility.get())
-				xXaxisTitleTextLeft = xPlotLeft + (plotWidth / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			else if(legendVisibility.get() && fftInfoVisibility.get())
-				xXaxisTitleTextLeft = xLegendBorderRight + ((xFftInfoTextLeft - xLegendBorderRight) / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			else if(legendVisibility.get())
-				xXaxisTitleTextLeft = xLegendBorderRight + ((width - Theme.tilePadding - xLegendBorderRight)  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			else if(fftInfoVisibility.get())
-				xXaxisTitleTextLeft = xPlotLeft + ((xFftInfoTextLeft - xPlotLeft) / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			
-			float temp = yXaxisTitleTextTop + Theme.tickTextPadding;
-			if(yPlotBottom < temp) {
-				yPlotBottom = temp;
-				plotHeight = yPlotTop - yPlotBottom;
-				if(yAxisTitleVisibility.get())
-					yYaxisTitleTextLeft = yPlotBottom + (plotHeight / 2.0f) - (OpenGL.largeTextWidth(gl, yAxisTitle) / 2.0f);
-			}
-		}
-		
-		float yXaxisTickTextBaseline = yPlotBottom;
-		float yXaxisTickTextTop = yXaxisTickTextBaseline + OpenGL.smallTextHeight;
-		float yXaxisTickBottom = yXaxisTickTextTop + Theme.tickTextPadding;
-		float yXaxisTickTop = yXaxisTickBottom + Theme.tickLength;
-		if(xAxisTicksVisibility.get()) {
-			yPlotBottom = yXaxisTickTop;
-			plotHeight = yPlotTop - yPlotBottom;
-			if(yAxisTitleVisibility.get())
-				yYaxisTitleTextLeft = yPlotBottom + (plotHeight / 2.0f) - (OpenGL.largeTextWidth(gl, yAxisTitle) / 2.0f);
-		}
-		
-		Map<Float, String> yDivisions = null;
-		float xYaxisTickTextRight = 0;
-		float xYaxisTickLeft = 0;
-		float xYaxisTickRight = 0;
-		if(yAxisTicksVisibility.get()) {
-			yDivisions = chartStyle.is(ChartStyle.WATERFALL) ? ChartUtils.getYdivisions125(plotHeight, plotMinY, plotMaxY) :
-			                                                   ChartUtils.getLogYdivisions(plotHeight, plotMinY, plotMaxY);
-			float maxTextWidth = 0;
-			for(String text : yDivisions.values()) {
-				float textWidth = OpenGL.smallTextWidth(gl, text);
-				if(textWidth > maxTextWidth)
-					maxTextWidth = textWidth;
-			}
-			
-			xYaxisTickTextRight = xPlotLeft + maxTextWidth;
-			xYaxisTickLeft = xYaxisTickTextRight + Theme.tickTextPadding;
-			xYaxisTickRight = xYaxisTickLeft + Theme.tickLength;
-			
-			xPlotLeft = xYaxisTickRight;
-			plotWidth = xPlotRight - xPlotLeft;
-			
-			if(xAxisTitleVisibility.get() && !legendVisibility.get() && !fftInfoVisibility.get())
-				xXaxisTitleTextLeft = xPlotLeft + (plotWidth / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			else if(xAxisTitleVisibility.get() && legendVisibility.get() && fftInfoVisibility.get())
-				xXaxisTitleTextLeft = xLegendBorderRight + ((xFftInfoTextLeft - xLegendBorderRight) / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			else if(xAxisTitleVisibility.get() && legendVisibility.get())
-				xXaxisTitleTextLeft = xLegendBorderRight + ((width - Theme.tilePadding - xLegendBorderRight)  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			else if(xAxisTitleVisibility.get() && fftInfoVisibility.get())
-				xXaxisTitleTextLeft = xPlotLeft + ((xFftInfoTextLeft - xPlotLeft) / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-		}
-		
-		// get the x divisions now that we know the final plot width
-		Map<Float, String> xDivisions = ChartUtils.getFloatXdivisions125(gl, plotWidth, plotMinX, plotMaxX);
-		
-		// stop if the plot is too small
-		if(plotWidth < 1 || plotHeight < 1)
-			return handler;
-		
-		// draw plot background
-		OpenGL.drawQuad2D(gl, Theme.plotBackgroundColor, xPlotLeft, yPlotBottom, xPlotRight, yPlotTop);
-		
-		// draw the x-axis scale
-		if(xAxisTicksVisibility.get()) {
-			OpenGL.buffer.rewind();
-			for(Float xValue : xDivisions.keySet()) {
-				float x = (xValue - plotMinX) / domain * plotWidth + xPlotLeft;
-				OpenGL.buffer.put(x); OpenGL.buffer.put(yPlotTop);    OpenGL.buffer.put(Theme.divisionLinesColor);
-				OpenGL.buffer.put(x); OpenGL.buffer.put(yPlotBottom); OpenGL.buffer.put(Theme.divisionLinesColor);
-				
-				OpenGL.buffer.put(x); OpenGL.buffer.put(yXaxisTickTop);    OpenGL.buffer.put(Theme.tickLinesColor);
-				OpenGL.buffer.put(x); OpenGL.buffer.put(yXaxisTickBottom); OpenGL.buffer.put(Theme.tickLinesColor);
-			}
-			OpenGL.buffer.rewind();
-			int vertexCount = xDivisions.keySet().size() * 4;
-			OpenGL.drawLinesXyrgba(gl, GL3.GL_LINES, OpenGL.buffer, vertexCount);
-			
-			for(Map.Entry<Float,String> entry : xDivisions.entrySet()) {
-				float x = (entry.getKey() - plotMinX) / domain * plotWidth + xPlotLeft - (OpenGL.smallTextWidth(gl, entry.getValue()) / 2.0f);
-				float y = yXaxisTickTextBaseline;
-				OpenGL.drawSmallText(gl, entry.getValue(), (int) x, (int) y, 0);
-			}
-		}
-		
-		// draw the y-axis scale
-		if(yAxisTicksVisibility.get()) {
-			OpenGL.buffer.rewind();
-			for(Float entry : yDivisions.keySet()) {
-				float y = (entry - plotMinY) / plotRange * plotHeight + yPlotBottom;
-				OpenGL.buffer.put(xPlotLeft);  OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.divisionLinesColor);
-				OpenGL.buffer.put(xPlotRight); OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.divisionLinesColor);
-				
-				OpenGL.buffer.put(xYaxisTickLeft);  OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.tickLinesColor);
-				OpenGL.buffer.put(xYaxisTickRight); OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.tickLinesColor);
-			}
-			OpenGL.buffer.rewind();
-			int vertexCount = yDivisions.keySet().size() * 4;
-			OpenGL.drawLinesXyrgba(gl, GL3.GL_LINES, OpenGL.buffer, vertexCount);
-			
-			for(Map.Entry<Float,String> entry : yDivisions.entrySet()) {
-				float x = xYaxisTickTextRight - OpenGL.smallTextWidth(gl, entry.getValue());
-				float y = (entry.getKey() - plotMinY) / plotRange * plotHeight + yPlotBottom - (OpenGL.smallTextHeight / 2.0f);
-				OpenGL.drawSmallText(gl, entry.getValue(), (int) x, (int) y, 0);
-			}
-		}
-		
-		// draw the legend, if space is available
-		if(legendVisibility.get() && haveDatasets && xLegendBorderRight < width - Theme.tilePadding) {
-			OpenGL.drawQuad2D(gl, Theme.legendBackgroundColor, xLegendBorderLeft, yLegendBorderBottom, xLegendBorderRight, yLegendBorderTop);
-			
-			for(int i = 0; i < datasetsCount; i++) {
-				Field dataset = datasets.getNormal(i);
-				if(mouseX >= legendMouseoverCoordinates[i][0] && mouseX <= legendMouseoverCoordinates[i][2] && mouseY >= legendMouseoverCoordinates[i][1] && mouseY <= legendMouseoverCoordinates[i][3]) {
-					OpenGL.drawQuadOutline2D(gl, Theme.tickLinesColor, legendMouseoverCoordinates[i][0], legendMouseoverCoordinates[i][1], legendMouseoverCoordinates[i][2], legendMouseoverCoordinates[i][3]);
-					handler = EventHandler.onPress(event -> ConfigureView.instance.forDataset(dataset));
-				}
-				OpenGL.drawQuad2D(gl, dataset.color.getGl(), legendBoxCoordinates[i][0], legendBoxCoordinates[i][1], legendBoxCoordinates[i][2], legendBoxCoordinates[i][3]);
-				OpenGL.drawMediumText(gl, dataset.name.get(), (int) xLegendNameLeft[i], (int) yLegendTextBaseline, 0);
-			}
-		}
-		
-		// draw the FFT info text if space is available
-		boolean spaceForFftInfoText = legendVisibility.get() ? xFftInfoTextLeft > xLegendBorderRight + Theme.legendTextPadding : xFftInfoTextLeft > 0;
-		if(fftInfoVisibility.get() && spaceForFftInfoText && haveDatasets) {
-			switch(chartStyle.get()) {
-				case SINGLE -> {
-					OpenGL.drawSmallText(gl, fftWindowLengthText, (int) xFftWindowLenghtTextLeft, (int) yFftWindowLengthTextBaseline, 0);
-				}
-				case HISTOGRAM -> {
-					OpenGL.drawSmallText(gl, fftWindowLengthText, (int) xFftWindowLenghtTextLeft, (int) yFftWindowLengthTextBaseline, 0);
-					OpenGL.drawSmallText(gl, fftWindowCountText, (int) xFftWindowCountTextLeft, (int) yFftWindowCountTextBaseline, 0);
-				}
-				case WATERFALL -> {
-					OpenGL.drawSmallText(gl, fftWindowLengthText, (int) xFftWindowLenghtTextLeft, (int) yFftWindowLengthTextBaseline, 0);
-					OpenGL.drawSmallText(gl, fftWindowCountText, (int) xFftWindowCountTextLeft, (int) yFftWindowCountTextBaseline, 0);
-					OpenGL.drawSmallText(gl, minPowerText, (int) xMinPowerTextLeft, (int) yPowerTextBaseline, 0);
-					OpenGL.drawSmallText(gl, maxPowerText, (int) xMaxPowerTextLeft, (int) yPowerTextBaseline, 0);
-					OpenGL.drawQuad2D(gl, Theme.plotBackgroundColor, xPowerScaleLeft, yPowerTextBaseline, xPowerScaleRight, yPowerTextTop);
-					for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
-						Field dataset = datasets.getNormal(datasetN);
-						float top = yPowerTextTop - (yPowerTextTop - yPowerTextBaseline) * datasetN / datasetsCount;
-						float bottom = top - (yPowerTextTop - yPowerTextBaseline) / datasetsCount;
-						float r = dataset.color.getGl()[0];
-						float g = dataset.color.getGl()[1];
-						float b = dataset.color.getGl()[2];
-						OpenGL.buffer.rewind();
-						OpenGL.buffer.put(xPowerScaleLeft);  OpenGL.buffer.put(top);    OpenGL.buffer.put(r); OpenGL.buffer.put(g); OpenGL.buffer.put(b); OpenGL.buffer.put(0);
-						OpenGL.buffer.put(xPowerScaleLeft);  OpenGL.buffer.put(bottom); OpenGL.buffer.put(r); OpenGL.buffer.put(g); OpenGL.buffer.put(b); OpenGL.buffer.put(0);
-						OpenGL.buffer.put(xPowerScaleRight); OpenGL.buffer.put(top);    OpenGL.buffer.put(r); OpenGL.buffer.put(g); OpenGL.buffer.put(b); OpenGL.buffer.put(1);
-						OpenGL.buffer.put(xPowerScaleRight); OpenGL.buffer.put(bottom); OpenGL.buffer.put(r); OpenGL.buffer.put(g); OpenGL.buffer.put(b); OpenGL.buffer.put(1);
-						OpenGL.buffer.rewind();
-						OpenGL.drawTrianglesXYRGBA(gl, GL3.GL_TRIANGLE_STRIP, OpenGL.buffer, 4);
-					}
-					OpenGL.drawQuadOutline2D(gl, Theme.legendBackgroundColor, xPowerScaleLeft, yPowerTextBaseline, xPowerScaleRight, yPowerTextTop);
-				}
-			}
-		}
-		
-		// draw the x-axis title if space is available
-		if(xAxisTitleVisibility.get())
-			if((!legendVisibility.get() && xXaxisTitleTextLeft > xPlotLeft) || (legendVisibility.get() && xXaxisTitleTextLeft > xLegendBorderRight + Theme.legendTextPadding))
-				OpenGL.drawLargeText(gl, xAxisTitle, (int) xXaxisTitleTextLeft, (int) yXaxisTitleTextBasline, 0);
-		
-		// draw the y-axis title if space is available
-		if(yAxisTitleVisibility.get() && yYaxisTitleTextLeft > yPlotBottom)
-			OpenGL.drawLargeText(gl, yAxisTitle, (int) xYaxisTitleTextBaseline, (int) yYaxisTitleTextLeft, 90);
-		
-		// clip to the plot region
-		int[] chartScissorArgs = new int[4];
-		gl.glGetIntegerv(GL3.GL_SCISSOR_BOX, chartScissorArgs, 0);
-		gl.glScissor(chartScissorArgs[0] + (int) xPlotLeft, chartScissorArgs[1] + (int) yPlotBottom, (int) plotWidth, (int) plotHeight);
-		
-		// update the matrix and mouse so the plot region starts at (0,0)
-		// x = x + xPlotLeft;
-		// y = y + yPlotBottom;
-		float[] plotMatrix = Arrays.copyOf(chartMatrix, 16);
-		OpenGL.translateMatrix(plotMatrix, xPlotLeft, yPlotBottom, 0);
-		OpenGL.useMatrix(gl, plotMatrix);
-		mouseX -= xPlotLeft;
-		mouseY -= yPlotBottom;
-		
-		// draw the FFTs
-		int[][][] histogram = null; // only populated in Histogram mode
-		int actualYaxisBins = 0;
-		if(fft.exists) {
-			if(chartStyle.is(ChartStyle.SINGLE)) {
-				
-				// adjust so: x = (x - plotMinX) / domain * plotWidth;
-				// adjust so: y = (y - plotMinY) / plotRange * plotHeight;
-				int fftBinCount = fft.binCount;
-				float[] plotMatrix2 = Arrays.copyOf(plotMatrix, 16);
-				OpenGL.scaleMatrix    (plotMatrix2, plotWidth/(float) (fftBinCount-1), plotHeight/(plotMaxPower - plotMinPower), 1);
-				OpenGL.translateMatrix(plotMatrix2, 0,                                 -plotMinPower,                            0);
-				OpenGL.useMatrix(gl, plotMatrix2);
-				
-				// draw the FFT line charts, and also draw points if there are relatively few bins on screen
-				for(int datasetN = 0; datasetN < datasets.normalDatasets.size(); datasetN++) {
-					FloatBuffer buffer = Buffers.newDirectFloatBuffer(fft.windows.get(0).get(datasetN));
-					OpenGL.drawLinesY(gl, GL3.GL_LINE_STRIP, datasets.normalDatasets.get(datasetN).color.getGl(), buffer, fftBinCount, 0);
-					if(width / fftBinCount > 2 * Theme.pointWidth)
-						OpenGL.drawPointsY(gl, datasets.normalDatasets.get(datasetN).color.getGl(), buffer, fftBinCount, 0);
-				}
-				
-				// restore the old matrix
-				OpenGL.useMatrix(gl, plotMatrix);
-				
-			} else if(chartStyle.is(ChartStyle.HISTOGRAM)) {
-				
-				int xBinCount = fft.binCount;
-				int yBinCount = yAxisBins;
-				
-				fftBinsPerPlotBin = 1;
-				while((xAxisBinsAutomatic.get() && xBinCount > plotWidth / 2) || (!xAxisBinsAutomatic.get() && xBinCount > xAxisBins)) {
-					fftBinsPerPlotBin++;
-					xBinCount = (int) Math.ceil((double) fft.binCount / (double) fftBinsPerPlotBin);
-				}
-				
-				if(yAxisBinsAutomatic.get())
-					yBinCount = (int) plotHeight / 2;
-				actualYaxisBins = yBinCount;
-				
-				if(xBinCount > 0 && yBinCount > 0) {
-					histogram = new int[datasetsCount][yBinCount][xBinCount];
-					ByteBuffer bytes = Buffers.newDirectByteBuffer(yBinCount * xBinCount * 4); // pixelCount * one int32 per pixel
-					IntBuffer ints = bytes.asIntBuffer();
-					
-					for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
-						for(int windowN = 0; windowN < fft.windows.size(); windowN++) {
-							float[] dft = fft.windows.get(windowN).get(datasetN);
-							for(int xBin = 0; xBin < fft.binCount; xBin++) {
-								int yBin = (int) ((dft[xBin] - plotMinPower) / (plotMaxPower - plotMinPower) * yBinCount);
-								if(yBin >= 0 && yBin < yBinCount)
-									histogram[datasetN][yBin][xBin / fftBinsPerPlotBin]++;
-							}
-						}
-						
-						float fullScale = 0;
-						for(int y = 0; y < yBinCount; y++)
-							for(int x = 0; x < xBinCount; x++)
-								fullScale = Math.max(fullScale, histogram[datasetN][y][x]);
-						
-						ints.rewind();
-						for(int y = 0; y < yBinCount; y++)
-							ints.put(histogram[datasetN][y]);
-						
-						if(histogramTexHandle == null) {
-							histogramTexHandle = new int[1];
-							OpenGL.createHistogramTexture(gl, histogramTexHandle, xBinCount, yBinCount);
-						}
-						OpenGL.writeHistogramTexture(gl, histogramTexHandle, xBinCount, yBinCount, bytes.rewind());
-						OpenGL.drawHistogram(gl, histogramTexHandle, datasets.normalDatasets.get(datasetN).color.getGl(), fullScale, gamma.getFloat(), 0, 0, (int) plotWidth, (int) plotHeight, 1f/xBinCount/2f);
-					}
-				}
-				
-			} else if(chartStyle.is(ChartStyle.WATERFALL)) {
-				
-				int binCount = fft.binCount;
-				
-				fftBinsPerPlotBin = 1;
-				while((xAxisBinsAutomatic.get() && binCount > plotWidth / 2) || (!xAxisBinsAutomatic.get() && binCount > xAxisBins)) {
-					fftBinsPerPlotBin++;
-					binCount = (int) Math.ceil((double) fft.binCount / (double) fftBinsPerPlotBin);
-				}
-				
-				if(binCount > 0) {
-					ByteBuffer bytes = Buffers.newDirectByteBuffer(binCount * fftCount.get() * 4 * 4); // pixelCount * four float32 per pixel
-					FloatBuffer pixels = bytes.asFloatBuffer();
-					
-					// populate the pixels, simulating glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
-					for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
-						float newR = datasets.normalDatasets.get(datasetN).color.getGl()[0];
-						float newG = datasets.normalDatasets.get(datasetN).color.getGl()[1];
-						float newB = datasets.normalDatasets.get(datasetN).color.getGl()[2];
-						
-						for(int windowN = 0; windowN < fft.windows.size(); windowN++) {
-							
-							int fftN = fft.windows.size() - 1 - windowN;						
-							float[] dft = fft.windows.get(fftN).get(datasetN);
-							
-							for(int binN = 0; binN < fft.binCount; binN += fftBinsPerPlotBin) {
-								int index = ((binN / fftBinsPerPlotBin) + (windowN * binCount)) * 4; // 4 floats per pixel
-								
-								float r = pixels.get(index + 0);
-								float g = pixels.get(index + 1);
-								float b = pixels.get(index + 2);
-								float a = pixels.get(index + 3);
-								
-								float newA = 0;
-								if(fftBinsPerPlotBin == 1) {
-									newA = (dft[binN] - plotMinPower) / (plotMaxPower - plotMinPower);
-								} else {
-									int firstBin = binN;
-									int lastBin = Math.min(binN + fftBinsPerPlotBin, fft.binCount - 1);
-									for(int bin = firstBin; bin <= lastBin; bin++)
-										newA += (dft[bin] - plotMinPower) / (plotMaxPower - plotMinPower);
-									newA /= lastBin - firstBin + 1;
-								}
-								
-								r = (newR * newA) + (r * (1f - newA));
-								g = (newG * newA) + (g * (1f - newA));
-								b = (newB * newA) + (b * (1f - newA));
-								a = (newA * 1f)   + (a * (1f - newA));
-								
-								pixels.put(index + 0, r);
-								pixels.put(index + 1, g);
-								pixels.put(index + 2, b);
-								pixels.put(index + 3, a);
-							}
-							
-						}
-					}
-					
-					if(waterfallTexHandle == null) {
-						waterfallTexHandle = new int[1];
-						OpenGL.createTexture(gl, waterfallTexHandle, binCount, fftCount.get(), GL3.GL_RGBA, GL3.GL_FLOAT, false);
-					}
-					OpenGL.writeTexture(gl, waterfallTexHandle, binCount, fftCount.get(), GL3.GL_RGBA, GL3.GL_FLOAT, bytes);
-					OpenGL.drawTexturedBox(gl, waterfallTexHandle, false, 0, 0, (int) plotWidth, (int) plotHeight, 1f/binCount/2f, false);
-				}
-			}
-		}
-		
-		// draw the tooltip if the mouse is in the plot region
-		if(fft.exists && SettingsView.instance.tooltipsVisibility.get() && mouseX >= 0 && mouseX <= plotWidth && mouseY >= 0 && mouseY <= plotHeight) {
-			
-			if(chartStyle.is(ChartStyle.SINGLE)) {
-				
-				// map mouseX to a frequency bin, and anchor the tooltip over that frequency bin
-				int binN = (int) ((float) mouseX / plotWidth * (fft.binCount - 1) + 0.5f);
-				if(binN > fft.binCount - 1)
-					binN = fft.binCount - 1;
-				float frequency = (float) (binN * fft.binSizeHz);
-				int anchorX = (int) ((frequency - plotMinX) / domain * plotWidth);
-				
-				// get the power levels for each dataset
-				Tooltip tooltip = new Tooltip();
-				tooltip.addRow(convertFrequencyRangeToString(binN, binN, fft));
-				List<float[]> fftOfDataset = fft.windows.get(0);
-				for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
-					tooltip.addRow(datasets.getNormal(datasetN).color.getGl(),
-					               convertPowerToString(fftOfDataset.get(datasetN)[binN]),
-					               (float) Math.max((int) ((fftOfDataset.get(datasetN)[binN] - plotMinY) / plotRange * plotHeight), 0));
-
-				tooltip.draw(gl, mouseX, mouseY, plotWidth, plotHeight, anchorX);
-				
-			} else if(chartStyle.is(ChartStyle.HISTOGRAM)) {
-				
-				// map mouseX to a frequency bin, and anchor the tooltip over that frequency bin
-				// note: one histogram bin corresponds to 1 or >1 FFT bins
-				int histogramBinCount = histogram[0][0].length;
-				int histogramBinN = (int) ((float) mouseX / plotWidth * (histogramBinCount - 1) + 0.5f);
-				if(histogramBinN > histogramBinCount - 1)
-					histogramBinN = histogramBinCount - 1;
-				int anchorX = (int) (((float) histogramBinN / (float) (histogramBinCount - 1)) * plotWidth);
-				int firstFftBin = histogramBinN * fftBinsPerPlotBin;
-				int lastFftBin  = Math.min(firstFftBin + fftBinsPerPlotBin - 1, fft.binCount - 1);
-				
-				// map mouseY to a power bin
-				int powerBinN = Math.round((float) mouseY / plotHeight * actualYaxisBins - 0.5f);
-				if(powerBinN > actualYaxisBins - 1)
-					powerBinN = actualYaxisBins - 1;
-				float minPower = (float) powerBinN / (float) actualYaxisBins * (plotMaxPower - plotMinPower) + plotMinPower;
-				float maxPower = (float) (powerBinN + 1) / (float) actualYaxisBins * (plotMaxPower - plotMinPower) + plotMinPower;
-				
-				// get the bin value for each dataset
-				int[] windowCountForDataset = new int[datasetsCount];
-				for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
-					windowCountForDataset[datasetN] = (int) Math.ceil((double) histogram[datasetN][powerBinN][histogramBinN] / (double) fftBinsPerPlotBin);
-				int windowCount = fft.windows.size();
-				
-				int anchorY = (int) (((float) powerBinN + 0.5f) / (float) actualYaxisBins * plotHeight);
-				Tooltip tooltip = new Tooltip();
-				tooltip.addRow(convertFrequencyRangeToString(firstFftBin, lastFftBin, fft));
-				tooltip.addRow(convertPowerRangeToString(minPower, maxPower));
-				for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
-					if(datasetN == 0)
-						tooltip.addRow(datasets.getNormal(datasetN).color.getGl(),
-						               ChartUtils.formattedNumber((double) windowCountForDataset[datasetN] / (double) windowCount * 100.0, 3) + "% (" + windowCountForDataset[datasetN] + " of " + windowCount + " FFTs)",
-						               (float) anchorY);
-					else
-						tooltip.addRow(datasets.getNormal(datasetN).color.getGl(),
-						               ChartUtils.formattedNumber((double) windowCountForDataset[datasetN] / (double) windowCount * 100.0, 3) + "% (" + windowCountForDataset[datasetN] + " of " + windowCount + " FFTs)");
-				
-				tooltip.draw(gl, mouseX, mouseY, plotWidth, plotHeight, anchorX);
-				
-			} else if(chartStyle.is(ChartStyle.WATERFALL)) {
-				
-				// map mouseX to a frequency bin, and anchor the tooltip over that frequency bin
-				// note: one histogram bin corresponds to 1 or >1 FFT bins
-				int histogramBinCount = (int) Math.ceil((double) fft.binCount / (double) fftBinsPerPlotBin);
-				int histogramBinN = (int) ((float) mouseX / plotWidth * (histogramBinCount - 1) + 0.5f);
-				if(histogramBinN > histogramBinCount - 1)
-					histogramBinN = histogramBinCount - 1;
-				int anchorX = (int) (((float) histogramBinN / (float) (histogramBinCount - 1)) * plotWidth);
-				int firstFftBin = histogramBinN * fftBinsPerPlotBin;
-				int lastFftBin  = Math.min(firstFftBin + fftBinsPerPlotBin - 1, fft.binCount - 1);
-				
-				// map mouseY to a time
-				int waterfallRowCount = fftCount.get();
-				int waterfallRowN = Math.round((float) mouseY / plotHeight * waterfallRowCount - 0.5f);
-				if(waterfallRowN > waterfallRowCount - 1)
-					waterfallRowN = waterfallRowCount - 1;
-				int trueLastSampleNumber = endSampleNumber - (endSampleNumber % fft.windowLength);
-				int rowLastSampleNumber = trueLastSampleNumber - (waterfallRowN * fft.windowLength) - 1;
-				int rowFirstSampleNumber = rowLastSampleNumber - fft.windowLength + 1;
-				if(rowFirstSampleNumber >= 0) {
-					// mouse is over an FFT, so proceed with the tooltip
-					float secondsElapsed = ((float) waterfallRowN + 0.5f) / (float) waterfallRowCount * plotMaxTime;
-					int anchorY = (int) (((float) waterfallRowN + 0.5f) / (float) waterfallRowCount * plotHeight);
-					Tooltip tooltip = new Tooltip();
-					tooltip.addRow(convertFrequencyRangeToString(firstFftBin, lastFftBin, fft));
-					tooltip.addRow(ChartUtils.formattedNumber(secondsElapsed, 4) + " seconds ago");
-					
-					// get the power levels for each dataset
-					for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
-						float power = 0;
-						for(int bin = firstFftBin; bin <= lastFftBin; bin++)
-							power += fft.windows.get(fft.windows.size() - waterfallRowN - 1).get(datasetN)[bin];
-						power /= lastFftBin - firstFftBin + 1;
-						if(datasetN == 0)
-							tooltip.addRow(datasets.getNormal(datasetN).color.getGl(),
-							               convertPowerToString(power),
-							               (float) anchorY);
-						else
-							tooltip.addRow(datasets.getNormal(datasetN).color.getGl(),
-							               convertPowerToString(power));
-					}
-					
-					tooltip.draw(gl, mouseX, mouseY, plotWidth, plotHeight, anchorX);
-				}
-			}
-			
-		}
-
-		// stop clipping to the plot region
-		gl.glScissor(chartScissorArgs[0], chartScissorArgs[1], chartScissorArgs[2], chartScissorArgs[3]);
-		
-		// switch back to the chart matrix
-		OpenGL.useMatrix(gl, chartMatrix);
-
-		// draw the plot border
-		OpenGL.drawQuadOutline2D(gl, Theme.plotOutlineColor, xPlotLeft, yPlotBottom, xPlotRight, yPlotTop);
-		
-		return handler;
-		
-	}
-	
-	/**
-	 * @param value    Value, in log10 Watts.
-	 * @return         The string, for example: "1.234 mW" etc.
-	 */
-	private String convertPowerToString(float value) {
-		
-		String unit = null;
-		
-		     if(value >= 24)  { value -= 24; unit = "YW";      } // yotta
-		else if(value >= 21)  { value -= 21; unit = "ZW";      } // zetta
-		else if(value >= 18)  { value -= 18; unit = "EW";      } // exa
-		else if(value >= 15)  { value -= 15; unit = "PW";      } // peta
-		else if(value >= 12)  { value -= 12; unit = "TW";      } // tera
-		else if(value >= 9)   { value -=  9; unit = "GW";      } // giga
-		else if(value >= 6)   { value -=  6; unit = "MW";      } // mega
-		else if(value >= 3)   { value -=  3; unit = "kW";      } // kilo
-		else if(value >= 0)   { value -=  0; unit =  "W";      }
-		else if(value >= -3)  { value +=  3; unit = "mW";      } // milli
-		else if(value >= -6)  { value +=  6; unit = "\u00B5W"; } // micro
-		else if(value >= -9)  { value +=  9; unit = "nW";      } // nano
-		else if(value >= -12) { value += 12; unit = "pW";      } // pico
-		else if(value >= -15) { value += 15; unit = "fW";      } // femto
-		else if(value >= -18) { value += 18; unit = "aW";      } // atto
-		else if(value >= -21) { value += 21; unit = "zW";      } // zepto
-		else                  { value += 24; unit = "yW";      } // yocto
-		
-		return ChartUtils.formattedNumber(Math.pow(10, value), 4) + " " + unit;
+		// draw the plot
+		return new OpenGLPlot(chartMatrix, width, height, mouseX, mouseY)
+		           .withLegend(legendVisibility.get(), datasets)
+		           .withXaxis(xAxisStyle.get(), OpenGLPlot.AxisScale.LINEAR, plotMinX, plotMaxX, xAxisTitle)
+		           .withYaxis(yAxisStyle.get(), chartStyle.is(ChartStyle.WATERFALL) ? OpenGLPlot.AxisScale.LINEAR : OpenGLPlot.AxisScale.LOG, plotMinY, plotMaxY, yAxisTitle)
+		           .withFftInfo(fftInfoVisibility.get(), chartStyle.get(), fft.windowLength, fft.windows.size(), plotMinPower, plotMaxPower)
+		           .withPlotDrawer(plot -> {
+		               if(fft.exists && chartStyle.is(ChartStyle.SINGLE)) {
+		                   // the matrix is currently configured so (0,0) is the bottom-left of the plot, with units of pixels
+		                   // but x will be auto-generated, ranging from 0 to binCount-1
+		                   // and y will be FFT results, ranging from plotMinPower to plotMaxPower
+		                   // we can scale x into pixels with: x =            (x) / plotDomain * plotWidth
+		                   // we can scale y into pixels with: y = (y - plotMinY) / plotRange  * plotHeight;
+		                   float[] matrix = Arrays.copyOf(plot.matrix(), 16);
+		                   OpenGL.scaleMatrix    (matrix, plot.width()/(float) (fft.binCount-1), plot.height()/(plotMaxPower - plotMinPower), 1);
+		                   OpenGL.translateMatrix(matrix,                                     0,                              -plotMinPower,  0);
+		                   OpenGL.useMatrix(gl, matrix);
+		                   
+		                   // draw the FFTs as line charts, and also draw points if there are relatively few bins on screen
+		                   for(int datasetN = 0; datasetN < datasets.normalDatasets.size(); datasetN++) {
+		                       FloatBuffer buffer = Buffers.newDirectFloatBuffer(fft.windows.get(0).get(datasetN));
+		                       OpenGL.drawLinesY(gl, GL3.GL_LINE_STRIP, datasets.normalDatasets.get(datasetN).color.getGl(), buffer, fft.binCount, 0);
+		                       if(width / fft.binCount > 2 * Theme.pointWidth)
+		                           OpenGL.drawPointsY(gl, datasets.normalDatasets.get(datasetN).color.getGl(), buffer, fft.binCount, 0);
+		                   }
+		               } else if(fft.exists && chartStyle.is(ChartStyle.HISTOGRAM)) {
+		                   
+		                   int xBinCount = fft.binCount;
+		                   int yBinCount = yAxisBinsAutomatic.get() ? (int) plot.height() / 2 : yAxisBins;
+		                   
+		                   fftBinsPerPlotBin = 1;
+		                   while((xAxisBinsAutomatic.get() && xBinCount > plot.width() / 2) || (!xAxisBinsAutomatic.get() && xBinCount > xAxisBins)) {
+		                       fftBinsPerPlotBin++;
+		                       xBinCount = (int) Math.ceil((double) fft.binCount / (double) fftBinsPerPlotBin);
+		                   }
+		                   actualYaxisBins = yBinCount;
+		                   
+		                   if(xBinCount > 0 && yBinCount > 0) {
+		                       histogram = new int[datasetsCount][yBinCount][xBinCount];
+		                       ByteBuffer bytes = Buffers.newDirectByteBuffer(yBinCount * xBinCount * 4); // pixelCount * one int32 per pixel
+		                       IntBuffer ints = bytes.asIntBuffer();
+		                       
+		                       for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
+		                           for(int windowN = 0; windowN < fft.windows.size(); windowN++) {
+		                               float[] dft = fft.windows.get(windowN).get(datasetN);
+		                               for(int xBin = 0; xBin < fft.binCount; xBin++) {
+		                                   int yBin = (int) ((dft[xBin] - plotMinPower) / (plotMaxPower - plotMinPower) * yBinCount);
+		                                   if(yBin >= 0 && yBin < yBinCount)
+		                                       histogram[datasetN][yBin][xBin / fftBinsPerPlotBin]++;
+		                               }
+		                           }
+		                           
+		                           float fullScale = 0;
+		                           for(int y = 0; y < yBinCount; y++)
+		                               for(int x = 0; x < xBinCount; x++)
+		                                   fullScale = Math.max(fullScale, histogram[datasetN][y][x]);
+		                           
+		                           ints.rewind();
+		                           for(int y = 0; y < yBinCount; y++)
+		                               ints.put(histogram[datasetN][y]);
+		                           
+		                           if(histogramTexHandle == null) {
+		                               histogramTexHandle = new int[1];
+		                               OpenGL.createHistogramTexture(gl, histogramTexHandle, xBinCount, yBinCount);
+		                           }
+		                           OpenGL.writeHistogramTexture(gl, histogramTexHandle, xBinCount, yBinCount, bytes.rewind());
+		                           OpenGL.drawHistogram(gl, histogramTexHandle, datasets.normalDatasets.get(datasetN).color.getGl(), fullScale, gamma.getFloat(), 0, 0, (int) plot.width(), (int) plot.height(), 1f/xBinCount/2f);
+		                       }
+		                   }
+		                   
+		               } else if(fft.exists && chartStyle.is(ChartStyle.WATERFALL)) {
+		                   
+		                   int binCount = fft.binCount;
+		                   
+		                   fftBinsPerPlotBin = 1;
+		                   while((xAxisBinsAutomatic.get() && binCount > plot.width() / 2) || (!xAxisBinsAutomatic.get() && binCount > xAxisBins)) {
+		                       fftBinsPerPlotBin++;
+		                       binCount = (int) Math.ceil((double) fft.binCount / (double) fftBinsPerPlotBin);
+		                   }
+		                   
+		                   if(binCount > 0) {
+		                       ByteBuffer bytes = Buffers.newDirectByteBuffer(binCount * fftCount.get() * 4 * 4); // pixelCount * four float32 per pixel
+		                       FloatBuffer pixels = bytes.asFloatBuffer();
+		                       
+		                       // populate the pixels, simulating glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA)
+		                       for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
+		                           float newR = datasets.normalDatasets.get(datasetN).color.getGl()[0];
+		                           float newG = datasets.normalDatasets.get(datasetN).color.getGl()[1];
+		                           float newB = datasets.normalDatasets.get(datasetN).color.getGl()[2];
+		                           
+		                           for(int windowN = 0; windowN < fft.windows.size(); windowN++) {
+		                               
+		                               int fftN = fft.windows.size() - 1 - windowN;						
+		                               float[] dft = fft.windows.get(fftN).get(datasetN);
+		                               
+		                               for(int binN = 0; binN < fft.binCount; binN += fftBinsPerPlotBin) {
+		                                   int index = ((binN / fftBinsPerPlotBin) + (windowN * binCount)) * 4; // 4 floats per pixel
+		                                   
+		                                   float r = pixels.get(index + 0);
+		                                   float g = pixels.get(index + 1);
+		                                   float b = pixels.get(index + 2);
+		                                   float a = pixels.get(index + 3);
+		                                   
+		                                   float newA = 0;
+		                                   if(fftBinsPerPlotBin == 1) {
+		                                       newA = (dft[binN] - plotMinPower) / (plotMaxPower - plotMinPower);
+		                                   } else {
+		                                       int firstBin = binN;
+		                                       int lastBin = Math.min(binN + fftBinsPerPlotBin, fft.binCount - 1);
+		                                       for(int bin = firstBin; bin <= lastBin; bin++)
+		                                           newA += (dft[bin] - plotMinPower) / (plotMaxPower - plotMinPower);
+		                                       newA /= lastBin - firstBin + 1;
+		                                   }
+		                                   
+		                                   r = (newR * newA) + (r * (1f - newA));
+		                                   g = (newG * newA) + (g * (1f - newA));
+		                                   b = (newB * newA) + (b * (1f - newA));
+		                                   a = (newA * 1f)   + (a * (1f - newA));
+		                                   
+		                                   pixels.put(index + 0, r);
+		                                   pixels.put(index + 1, g);
+		                                   pixels.put(index + 2, b);
+		                                   pixels.put(index + 3, a);
+		                               }
+		                               
+		                           }
+		                       }
+		                       
+		                       if(waterfallTexHandle == null) {
+		                           waterfallTexHandle = new int[1];
+		                           OpenGL.createTexture(gl, waterfallTexHandle, binCount, fftCount.get(), GL3.GL_RGBA, GL3.GL_FLOAT, false);
+		                       }
+		                       OpenGL.writeTexture(gl, waterfallTexHandle, binCount, fftCount.get(), GL3.GL_RGBA, GL3.GL_FLOAT, bytes);
+		                       OpenGL.drawTexturedBox(gl, waterfallTexHandle, false, 0, 0, (int) plot.width(), (int) plot.height(), 1f/binCount/2f, false);
+		                   }
+		                   
+		               }
+		               return null;
+		           })
+		           .withTooltipDrawer(plot -> {
+		               if(fft.exists && chartStyle.is(ChartStyle.SINGLE)) {
+		                   
+		                   // map mouseX to a frequency bin, and anchor the tooltip over that frequency bin
+		                   int binN = (int) ((float) plot.mouseX() / plot.width() * (fft.binCount - 1) + 0.5f);
+		                   if(binN > fft.binCount - 1)
+		                       binN = fft.binCount - 1;
+		                   float frequency = (float) (binN * fft.binSizeHz);
+		                   int xAnchor = (int) ((frequency - plotMinX) / domain * plot.width());
+		                   
+		                   // get the power levels for each dataset
+		                   Tooltip tooltip = new Tooltip(getFrequencyRangeString(binN, binN, fft), xAnchor, -1);
+		                   List<float[]> fftOfDataset = fft.windows.get(0);
+		                   for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
+		                       tooltip.addRow(datasets.getNormal(datasetN).color.getGl(),
+		                                      Theme.getLog10float(fftOfDataset.get(datasetN)[binN], "Watts"),
+		                                      (float) Math.max((int) ((fftOfDataset.get(datasetN)[binN] - plotMinY) / plotRange * plot.height()), 0));
+		                   tooltip.draw(gl, plot.mouseX(), plot.mouseY(), plot.width(), plot.height());
+		                   
+		               } else if(fft.exists && chartStyle.is(ChartStyle.HISTOGRAM)) {
+		                   
+		                   // map mouseX to a frequency bin, and anchor the tooltip over that frequency bin
+		                   // note: one histogram bin corresponds to 1 or >1 FFT bins
+		                   int histogramBinCount = histogram[0][0].length;
+		                   int histogramBinN = (int) ((float) plot.mouseX() / plot.width() * (histogramBinCount - 1) + 0.5f);
+		                   if(histogramBinN > histogramBinCount - 1)
+		                       histogramBinN = histogramBinCount - 1;
+		                   int xAnchor = (int) (((float) histogramBinN / (float) (histogramBinCount - 1)) * plot.width());
+		                   int firstFftBin = histogramBinN * fftBinsPerPlotBin;
+		                   int lastFftBin  = Math.min(firstFftBin + fftBinsPerPlotBin - 1, fft.binCount - 1);
+		                   
+		                   // map mouseY to a power bin
+		                   int powerBinN = Math.round((float) plot.mouseY() / plot.height() * actualYaxisBins - 0.5f);
+		                   if(powerBinN > actualYaxisBins - 1)
+		                       powerBinN = actualYaxisBins - 1;
+		                   float minPow = (float) powerBinN / (float) actualYaxisBins * (plotMaxPower - plotMinPower) + plotMinPower;
+		                   float maxPow = (float) (powerBinN + 1) / (float) actualYaxisBins * (plotMaxPower - plotMinPower) + plotMinPower;
+		                   
+		                   // get the bin value for each dataset
+		                   int[] windowCountForDataset = new int[datasetsCount];
+		                   for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
+		                       windowCountForDataset[datasetN] = (int) Math.ceil((double) histogram[datasetN][powerBinN][histogramBinN] / (double) fftBinsPerPlotBin);
+		                   int windowCount = fft.windows.size();
+		                   
+		                   int yAnchor = (int) (((float) powerBinN + 0.5f) / (float) actualYaxisBins * plot.height());
+		                   Tooltip tooltip = new Tooltip(getFrequencyRangeString(firstFftBin, lastFftBin, fft) + "\n" + getPowerRangeString(minPow, maxPow), xAnchor, yAnchor);
+		                   for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
+		                       tooltip.addRow(datasets.getNormal(datasetN).color.getGl(),
+		                                      Theme.getFloat((float) windowCountForDataset[datasetN] / (float) windowCount * 100f, "%", true) + " (" + windowCountForDataset[datasetN] + " of " + windowCount + " FFTs)");
+		                   
+		                   tooltip.draw(gl, plot.mouseX(), plot.mouseY(), plot.width(), plot.height());
+		                   
+		               } else if(fft.exists && chartStyle.is(ChartStyle.WATERFALL)) {
+		                   
+		                   // map mouseX to a frequency bin, and anchor the tooltip over that frequency bin
+		                   // note: one histogram bin corresponds to 1 or >1 FFT bins
+		                   int histogramBinCount = (int) Math.ceil((double) fft.binCount / (double) fftBinsPerPlotBin);
+		                   int histogramBinN = (int) ((float) plot.mouseX() / plot.width() * (histogramBinCount - 1) + 0.5f);
+		                   if(histogramBinN > histogramBinCount - 1)
+		                       histogramBinN = histogramBinCount - 1;
+		                   int xAnchor = (int) (((float) histogramBinN / (float) (histogramBinCount - 1)) * plot.width());
+		                   int firstFftBin = histogramBinN * fftBinsPerPlotBin;
+		                   int lastFftBin  = Math.min(firstFftBin + fftBinsPerPlotBin - 1, fft.binCount - 1);
+		                   
+		                   // map mouseY to a time
+		                   int waterfallRowCount = fftCount.get();
+		                   int waterfallRowN = Math.round((float) plot.mouseY() / plot.height() * waterfallRowCount - 0.5f);
+		                   if(waterfallRowN > waterfallRowCount - 1)
+		                       waterfallRowN = waterfallRowCount - 1;
+		                   int trueLastSampleNumber = endSampleNumber - (endSampleNumber % fft.windowLength);
+		                   int rowLastSampleNumber = trueLastSampleNumber - (waterfallRowN * fft.windowLength) - 1;
+		                   int rowFirstSampleNumber = rowLastSampleNumber - fft.windowLength + 1;
+		                   if(rowFirstSampleNumber >= 0) {
+		                       // mouse is over an FFT, so proceed with the tooltip
+		                       float secondsElapsed = ((float) waterfallRowN + 0.5f) / (float) waterfallRowCount * plotMaxTime;
+		                       int yAnchor = (int) (((float) waterfallRowN + 0.5f) / (float) waterfallRowCount * plot.height());
+		                       Tooltip tooltip = new Tooltip(getFrequencyRangeString(firstFftBin, lastFftBin, fft) + "\n" + Theme.getFloatOrInteger(secondsElapsed, "seconds ago", true), xAnchor, yAnchor);
+		                       
+		                       // get the power levels for each dataset
+		                       for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
+		                           float power = 0;
+		                           for(int bin = firstFftBin; bin <= lastFftBin; bin++)
+		                               power += fft.windows.get(fft.windows.size() - waterfallRowN - 1).get(datasetN)[bin];
+		                           power /= lastFftBin - firstFftBin + 1;
+		                           tooltip.addRow(datasets.getNormal(datasetN).color.getGl(),
+		                                          Theme.getLog10float(power, "Watts"));
+		                       }
+		                       
+		                       tooltip.draw(gl, plot.mouseX(), plot.mouseY(), plot.width(), plot.height());
+		                   }
+		               }
+		               return null;
+		           })
+		           .draw(gl);
 		
 	}
 	
@@ -942,29 +538,9 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 	 * @param max    Larger value,  in log10 Watts.
 	 * @return       The string, for example: "1.234 - 2.345 mW" etc.
 	 */
-	private String convertPowerRangeToString(float min, float max) {
+	private String getPowerRangeString(float min, float max) {
 		
-		String unit = null;
-		
-		     if(min >= 24  && max >= 24)  { min -= 24; max -= 24; unit = "YW";      } // yotta
-		else if(min >= 21  && max >= 21)  { min -= 21; max -= 21; unit = "ZW";      } // zetta
-		else if(min >= 18  && max >= 18)  { min -= 18; max -= 18; unit = "EW";      } // exa
-		else if(min >= 15  && max >= 15)  { min -= 15; max -= 15; unit = "PW";      } // peta
-		else if(min >= 12  && max >= 12)  { min -= 12; max -= 12; unit = "TW";      } // tera
-		else if(min >= 9   && max >= 9)   { min -=  9; max -=  9; unit = "GW";      } // giga
-		else if(min >= 6   && max >= 6)   { min -=  6; max -=  6; unit = "MW";      } // mega
-		else if(min >= 3   && max >= 3)   { min -=  3; max -=  3; unit = "kW";      } // kilo
-		else if(min >= 0   && max >= 0)   { min -=  0; max -=  0; unit =  "W";      }
-		else if(min >= -3  && max >= -3)  { min +=  3; max +=  3; unit = "mW";      } // milli
-		else if(min >= -6  && max >= -6)  { min +=  6; max +=  6; unit = "\u00B5W"; } // micro
-		else if(min >= -9  && max >= -9)  { min +=  9; max +=  9; unit = "nW";      } // nano
-		else if(min >= -12 && max >= -12) { min += 12; max += 12; unit = "pW";      } // pico
-		else if(min >= -15 && max >= -15) { min += 15; max += 15; unit = "fW";      } // femto
-		else if(min >= -18 && max >= -18) { min += 18; max += 18; unit = "aW";      } // atto
-		else if(min >= -21 && max >= -21) { min += 21; max += 21; unit = "zW";      } // zepto
-		else                              { min += 24; max += 24; unit = "yW";      } // yocto
-		
-		return ChartUtils.formattedNumber(Math.pow(10, min), 4) + " - " + ChartUtils.formattedNumber(Math.pow(10, max), 4) + " " + unit;
+		return Theme.getLog10float(min, "W") + " - " + Theme.getLog10float(max, "W");
 		
 	}
 	
@@ -974,13 +550,13 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 	 * @param fft         The FFTs.
 	 * @return            The string, for example "123.45 - 123.56 Hz" etc.
 	 */
-	private String convertFrequencyRangeToString(int firstBin, int lastBin, FFTs fft) {
+	private String getFrequencyRangeString(int firstBin, int lastBin, FFTs fft) {
 		
 		float minFrequency = (float) (firstBin * fft.binSizeHz) - (float) (fft.binSizeHz / 2);
 		float maxFrequency = (float) (lastBin  * fft.binSizeHz) + (float) (fft.binSizeHz / 2);
 		minFrequency = Math.max(minFrequency, 0);
 		maxFrequency = Math.min(maxFrequency, fft.maxHz);
-		return ChartUtils.formattedNumber(minFrequency, 5) + " - " + ChartUtils.formattedNumber(maxFrequency, 5) + " Hz";
+		return Theme.getFloat(minFrequency, "", true) + " - " + Theme.getFloat(maxFrequency, "Hz", true);
 		
 	}
 	

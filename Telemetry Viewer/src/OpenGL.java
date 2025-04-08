@@ -1213,8 +1213,9 @@ public class OpenGL {
 	private static int[] onscreenScissor  = new int[4]; // x,y,w,h
 	
 	/**
-	 * Saves the current viewport/scissor/point settings, disables the scissor test,
-	 * switches to the off-screen framebuffer and replaces the existing texture with a new one,
+	 * Saves the current viewport/scissor settings,
+	 * switches to the off-screen framebuffer,
+	 * optionally replaces the existing texture with a new one,
 	 * then applies the new matrix.
 	 * 
 	 * @param gl                 The OpenGL context.
@@ -1223,8 +1224,9 @@ public class OpenGL {
 	 * @param textureHandle      Handle to the texture.
 	 * @param width              Width, in pixels.
 	 * @param height             Height, in pixels.
+	 * @param replaceTexture     The texture should be replaced if the width or height has changed.
 	 */
-	public static void startDrawingOffscreen(GL2ES3 gl, float[] offscreenMatrix, int[] fboHandle, int[] textureHandle, int width, int height) {
+	public static void startDrawingOffscreen(GL2ES3 gl, float[] offscreenMatrix, int[] fboHandle, int[] textureHandle, int width, int height, boolean replaceTexture) {
 		
 		// save the on-screen viewport and scissor settings
 		gl.glGetIntegerv(GL3.GL_VIEWPORT, onscreenViewport, 0);
@@ -1237,55 +1239,18 @@ public class OpenGL {
 		else
 			gl.glBindTexture(GL3.GL_TEXTURE_2D, textureHandle[0]);
 
-		// replace the existing texture
-		if(SettingsView.instance.antialiasingSlider.get() > 1)
-			gl.glTexImage2DMultisample(GL3.GL_TEXTURE_2D_MULTISAMPLE, SettingsView.instance.antialiasingSlider.get(), GL3.GL_RGBA, width, height, true);
-		else
-			gl.glTexImage2D(GL3.GL_TEXTURE_2D, 0, GL3.GL_RGBA, width, height, 0, GL3.GL_RGBA, GL3.GL_UNSIGNED_BYTE, null);
+		// replace the existing texture if needed
+		if(replaceTexture) {
+			if(SettingsView.instance.antialiasingSlider.get() > 1)
+				gl.glTexImage2DMultisample(GL3.GL_TEXTURE_2D_MULTISAMPLE, SettingsView.instance.antialiasingSlider.get(), GL3.GL_RGBA, width, height, true);
+			else
+				gl.glTexImage2D(GL3.GL_TEXTURE_2D, 0, GL3.GL_RGBA, width, height, 0, GL3.GL_RGBA, GL3.GL_UNSIGNED_BYTE, null);
+			gl.glClearColor(0, 0, 0, 0);
+			gl.glClear(GL3.GL_COLOR_BUFFER_BIT);
+		}
 
-		// set the viewport and disable the scissor test
+		// set the viewport
 		gl.glViewport(0, 0, width, height);
-		gl.glDisable(GL3.GL_SCISSOR_TEST);
-		
-		// set the matrix
-		useMatrix(gl, offscreenMatrix);
-		
-		// set the blend function
-		gl.glBlendFuncSeparate(GL3.GL_SRC_ALPHA, GL3.GL_ONE_MINUS_SRC_ALPHA, GL3.GL_ONE, GL3.GL_ONE_MINUS_SRC_ALPHA);
-		
-		// clear the texture
-		gl.glClearColor(0, 0, 0, 0);
-		gl.glClear(GL3.GL_COLOR_BUFFER_BIT);
-		
-	}
-	
-	/**
-	 * Saves the current viewport/scissor/point settings, disables the scissor test,
-	 * switches to the off-screen framebuffer and applies the new matrix.
-	 * 
-	 * @param gl                 The OpenGL context.
-	 * @param offscreenMatrix    The 4x4 matrix to use.
-	 * @param fboHandle          Handle to the FBO.
-	 * @param textureHandle      Handle to the texture.
-	 * @param width              Width, in pixels.
-	 * @param height             Height, in pixels.
-	 */
-	public static void continueDrawingOffscreen(GL2ES3 gl, float[] offscreenMatrix, int[] fboHandle, int[] textureHandle, int width, int height) {
-		
-		// save the on-screen viewport and scissor settings
-		gl.glGetIntegerv(GL3.GL_VIEWPORT, onscreenViewport, 0);
-		gl.glGetIntegerv(GL3.GL_SCISSOR_BOX, onscreenScissor, 0);
-
-		// switch to the off-screen framebuffer and corresponding texture
-		gl.glBindFramebuffer(GL3.GL_FRAMEBUFFER, fboHandle[0]);
-		if(SettingsView.instance.antialiasingSlider.get() > 1)
-			gl.glBindTexture(GL3.GL_TEXTURE_2D_MULTISAMPLE, textureHandle[0]);
-		else
-			gl.glBindTexture(GL3.GL_TEXTURE_2D, textureHandle[0]);
-
-		// set the viewport and disable the scissor test
-		gl.glViewport(0, 0, width, height);
-		gl.glDisable(GL3.GL_SCISSOR_TEST);
 		
 		// set the matrix
 		useMatrix(gl, offscreenMatrix);
@@ -1296,7 +1261,7 @@ public class OpenGL {
 	}
 	
 	/**
-	 * Switches back to the on-screen framebuffer, applies the on-screen matrix, and re-enables the scissor test.
+	 * Switches back to the on-screen framebuffer, and applies the on-screen matrix.
 	 * 
 	 * @param gl                The OpenGL context.
 	 * @param onscreenMatrix    The 4x4 matrix to use.
@@ -1309,9 +1274,6 @@ public class OpenGL {
 		// restore the on-screen viewport and scissor settings
 		gl.glViewport(onscreenViewport[0], onscreenViewport[1], onscreenViewport[2], onscreenViewport[3]);
 		gl.glScissor(onscreenScissor[0], onscreenScissor[1], onscreenScissor[2], onscreenScissor[3]);
-		
-		// enable the scissor test
-		gl.glEnable(GL3.GL_SCISSOR_TEST);
 		
 		// set the matrix
 		useMatrix(gl, onscreenMatrix);

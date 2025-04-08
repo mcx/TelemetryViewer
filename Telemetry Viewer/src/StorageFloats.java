@@ -155,8 +155,7 @@ public class StorageFloats {
 	public FloatBuffer getSamplesBuffer(int firstSampleNumber, int lastSampleNumber, Cache cache) {
 
 		cache.update(firstSampleNumber, lastSampleNumber);
-		cache.cacheFloats.position(firstSampleNumber - cache.startOfCache);
-		return cache.cacheFloats.slice(); // must slice, to prevent the position() from changing if getSample() or getSamplesBuffer() is called again before "using" this buffer
+		return cache.cacheFloats.slice(firstSampleNumber - cache.startOfCache, lastSampleNumber - firstSampleNumber + 1); // must slice, to prevent the position() from changing if getSample() or getSamplesBuffer() is called again before "using" this buffer
 		
 	}
 	

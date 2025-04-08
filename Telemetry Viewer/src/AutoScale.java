@@ -9,15 +9,15 @@ public class AutoScale {
 	public static final int MODE_STICKY = 0;
 	public static final int MODE_EXPONENTIAL = 1;
 	
-	Queue<Float> minSequence;
-	Queue<Float> maxSequence;
+	final Queue<Float> minSequence;
+	final Queue<Float> maxSequence;
 	
 	float min;
 	float max;
 	
-	int mode;
-	int frameCount;
-	float hysteresis;
+	final int mode;
+	final int frameCount;
+	final float hysteresis;
 	
 	/**
 	 * Creates an object that takes the true min/max values for an axis, and outputs new min/max values that re-scale the axis based on some settings.
@@ -41,6 +41,22 @@ public class AutoScale {
 		this.mode = mode;
 		this.frameCount = frameCount;
 		this.hysteresis = hysteresis;
+		
+	}
+	
+	/**
+	 * Resets everything. This is useful if the axis is being reconfigured and you don't want the transition to be animated.
+	 */
+	public void reset() {
+		
+		minSequence.clear();
+		maxSequence.clear();
+		
+		minSequence.add(Float.MAX_VALUE);
+		maxSequence.add(Float.MIN_VALUE);
+		
+		min = Float.MAX_VALUE;
+		max = Float.MIN_VALUE;
 		
 	}
 	

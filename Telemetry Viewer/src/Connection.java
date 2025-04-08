@@ -160,10 +160,10 @@ public abstract class Connection {
 	public abstract void dispose();
 	
 	/**
-	 * Disconnects from the device and removes any connection-related Notifications.
+	 * If connected, disconnects from the device and removes any connection-related Notifications.
 	 * This method blocks until disconnected, so it should not be called directly from the receiver thread.
 	 * 
-	 * @param errorMessage    If not null, show this as a Notification until a connection is attempted. 
+	 * @param errorMessage    If not null, show this as a Notification until a new connection is attempted. 
 	 */
 	public void disconnect(String errorMessage) {
 
@@ -183,9 +183,10 @@ public abstract class Connection {
 				while(receiverThread.isAlive()); // wait
 			}
 			
+			NotificationsController.removeIfConnectionRelated();
+			
 		}
 		
-		NotificationsController.removeIfConnectionRelated();
 		if(errorMessage != null) {
 			Toolkit.getDefaultToolkit().beep();
 			NotificationsController.showFailureUntil(errorMessage, () -> false, true);

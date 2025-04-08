@@ -151,44 +151,59 @@ public abstract class PositionedChart {
 	public abstract EventHandler drawChart(GL2ES3 gl, float[] chartMatrix, int width, int height, long endTimestamp, int endSampleNumber, double zoomLevel, int mouseX, int mouseY);
 	
 	public static final class Tooltip {
-		private record Row(float[] glColor, String text, Float pixelY) {}
+		private record Row(float[] glColor, String text) {}
 		private List<Row> rows = new ArrayList<Row>();
 		public final int sampleNumber;
 		public final long timestamp;
+		private final float xAnchor;
+		private final List<Float> yAnchors = new ArrayList<Float>();
 		
-		public Tooltip()                                 { this.sampleNumber = -1;           this.timestamp = -1;        }
-		public Tooltip(int sampleNumber, long timestamp) { this.sampleNumber = sampleNumber; this.timestamp = timestamp; }
+		/**
+		 * Creates a tooltip that does not correspond to a specific sample.
+		 * (This is used by Frequency Domain and Histogram charts.)
+		 * 
+		 * @param title      Text to show at the top of the tooltip. May be multiple lines separated by \n characters.
+		 * @param xAnchor    The x pixel to anchor this tooltip to.
+		 * @param yAnchor    The y pixel to anchor this tooltip to. Use <0 if not yet determined.
+		 */
+		public Tooltip(String title, float xAnchor, float yAnchor) {
+			this.sampleNumber = -1;
+			this.timestamp = -1;
+			this.xAnchor = xAnchor;
+			if(yAnchor >= 0)
+				this.yAnchors.add(yAnchor);
+			List.of(title.split("\n")).forEach(line -> rows.add(new Row(null, line)));
+		}
 		
-		public Tooltip addRow(float[] glColor, String text, Float pixelY) {
-			if(text == null || text.isEmpty())
-				text = " ";
-			rows.add(new Row(glColor, text, pixelY));
+		/**
+		 * Creates a tooltip that corresponds to a specific sample.
+		 * A title showing the sample number and timestamp will be automatically created.
+		 * (This is used by Time Domain charts.)
+		 * 
+		 * @param sampleNumber    Sample number for this tooltip.
+		 * @param timestamp       Timestamp for this tooltip.
+		 * @param xAnchor         The x pixel to anchor this tooltip to.
+		 * @param yAnchor         The y pixel to anchor this tooltip to. Use <0 if not yet determined.
+		 */
+		public Tooltip(int sampleNumber, long timestamp, float xAnchor, float yAnchor) {
+			this.sampleNumber = sampleNumber;
+			this.timestamp = timestamp;
+			this.xAnchor = xAnchor;
+			if(yAnchor >= 0)
+				this.yAnchors.add(yAnchor);
+			String title = (sampleNumber >= 0) ? "Sample " + sampleNumber + "\n" + SettingsView.formatTimestampToMilliseconds(timestamp) :
+			                                     SettingsView.formatTimestampToMilliseconds(timestamp);
+			List.of(title.split("\n")).forEach(line -> rows.add(new Row(null, line)));
+		}
+		
+		public Tooltip addRow(float[] glColor, String text, float yAnchor) {
+			rows.add(new Row(glColor, text));
+			yAnchors.add(yAnchor);
 			return this;
 		}
 		
 		public Tooltip addRow(float[] glColor, String text) {
-			if(text == null || text.isEmpty())
-				text = " ";
-			rows.add(new Row(glColor, text, null));
-			return this;
-		}
-		
-		public Tooltip addRow(String text) {
-			if(text == null || text.isEmpty())
-				text = " ";
-			if(text.contains("\n")) {
-				for(String line : text.split("\n"))
-					addRow(line);
-			} else {
-				rows.add(new Row(null, text, null));
-			}
-			return this;
-		}
-		
-		public Tooltip addRow(String text, Float pixelY) {
-			if(text == null || text.isEmpty())
-				text = " ";
-			rows.add(new Row(null, text, pixelY));
+			rows.add(new Row(glColor, text));
 			return this;
 		}
 		
@@ -209,7 +224,8 @@ public abstract class PositionedChart {
 		                boolean     isDrawable) {
 			
 			Drawable(List<Row> rows, float xBoxLeft, float xBoxRight, float yBoxBottom, float yBoxTop, float xTriangleA, float yTriangleA, float xTriangleB, float yTriangleB, float xTriangleC, float yTriangleC, float padding, FloatBuffer outline, float[] anchorLineDots) {
-				this(rows, xBoxLeft, xBoxRight, yBoxBottom, yBoxTop, xTriangleA, yTriangleA, xTriangleB, yTriangleB, xTriangleC, yTriangleC, padding, outline, anchorLineDots, true);
+				// important: rounding xBoxLeft and xBoxRight to integers reduces text "jiggling"
+				this(rows, Math.round(xBoxLeft), Math.round(xBoxRight), yBoxBottom, yBoxTop, xTriangleA, yTriangleA, xTriangleB, yTriangleB, xTriangleC, yTriangleC, padding, outline, anchorLineDots, true);
 			}
 			
 			Drawable(boolean isDrawable) {
@@ -296,18 +312,16 @@ public abstract class PositionedChart {
 			float boxHeight = rows.size() * (OpenGL.smallTextHeight + padding) + padding;
 			
 			// determine the outline color and where/how to anchor
-			List<Float> pixelYs = rows.stream().filter(row -> row.pixelY != null).map(row -> row.pixelY).toList();
-			float yAnchor = pixelYs.size() == 0 ? plotHeight - boxHeight - padding : // edge marker mode, so anchor at the top
-			                pixelYs.size() == 1 ? Math.max(0, pixelYs.get(0))      : // tooltip for one dataset, so anchor to the data
-			                                      plotHeight - boxHeight - padding;  // tooltip for multiple datasets, so anchor at the top
-			float[] outlineColor = pixelYs.size() == 0 ? Theme.markerBorderColor :   // edge marker mode
-			                                             Theme.tooltipBorderColor;   // regular tooltip mode
-			float[] anchorLineDots = null;
-			if(pixelYs.size() > 1) {
-				anchorLineDots = new float[pixelYs.size() * 2];
-				for(int i = 0; i < pixelYs.size(); i++) {
+			boolean edgeMarker = yAnchors.isEmpty();
+			boolean multipleDatasets = yAnchors.size() > 1;
+			boolean anchoredAtTop = edgeMarker || multipleDatasets;
+			float yAnchor = anchoredAtTop ? plotHeight - boxHeight - padding : Math.max(0, yAnchors.getFirst());
+			float[] outlineColor = edgeMarker ? Theme.markerBorderColor : Theme.tooltipBorderColor;
+			float[] anchorLineDots = multipleDatasets ? new float[yAnchors.size() * 2] : null;
+			if(multipleDatasets) {
+				for(int i = 0; i < yAnchors.size(); i++) {
 					anchorLineDots[2*i]     = xAnchor;
-					anchorLineDots[2*i + 1] = pixelYs.get(i);
+					anchorLineDots[2*i + 1] = yAnchors.get(i);
 				}
 			}
 			
@@ -328,7 +342,7 @@ public abstract class PositionedChart {
 					float yTriangleC = yBoxBottom;
 					if(mouseX >= xBoxLeft && mouseX <= xBoxRight && mouseY >= yBoxBottom && mouseY <= yBoxTop)
 						outlineColor = Theme.tooltipBorderColor; // force outline to black if mouseOver
-					FloatBuffer outline = Buffers.newDirectFloatBuffer(6*14 + (pixelYs.size() == 1 ? 0 : 6*2));
+					FloatBuffer outline = Buffers.newDirectFloatBuffer(6*14 + (anchoredAtTop ? 6*2 : 0));
 					outline.put(xBoxLeft);   outline.put(yBoxTop);    outline.put(outlineColor);
 					outline.put(xBoxRight);  outline.put(yBoxTop);    outline.put(outlineColor);
 					outline.put(xBoxRight);  outline.put(yBoxTop);    outline.put(outlineColor);
@@ -343,11 +357,11 @@ public abstract class PositionedChart {
 					outline.put(xBoxLeft);   outline.put(yBoxBottom); outline.put(outlineColor);
 					outline.put(xBoxLeft);   outline.put(yBoxBottom); outline.put(outlineColor);
 					outline.put(xBoxLeft);   outline.put(yBoxTop);    outline.put(outlineColor);
-					if(pixelYs.size() == 0) { // edge marker mode, so draw a fading downward line
+					if(edgeMarker) { // draw a fading downward line
 						outline.put(xAnchor); outline.put(yAnchor);               outline.put(outlineColor);
 						outline.put(xAnchor); outline.put(yAnchor - padding * 6); outline.put(outlineColor, 0, 3); outline.put(0);
-					} else if(pixelYs.size() > 1) { // tooltip for multiple datasets, so draw a line down to the lowest piece of data
-						float minY = Math.min(plotHeight, pixelYs.stream().min(Float::compare).get());
+					} else if(multipleDatasets) { // draw a line down to the lowest piece of data
+						float minY = Math.min(yAnchor, yAnchors.stream().min(Float::compare).get());
 						outline.put(xAnchor); outline.put(yAnchor); outline.put(Theme.tooltipVerticalBarColor);
 						outline.put(xAnchor); outline.put(minY);    outline.put(Theme.tooltipVerticalBarColor);
 					}
@@ -366,7 +380,7 @@ public abstract class PositionedChart {
 					float yTriangleC = yAnchor + padding;
 					if(mouseX >= xBoxLeft && mouseX <= xBoxRight && mouseY >= yBoxBottom && mouseY <= yBoxTop)
 						outlineColor = Theme.tooltipBorderColor; // force outline to black if mouseOver
-					FloatBuffer outline = Buffers.newDirectFloatBuffer(6*10 + (pixelYs.size() == 1 ? 0 : 6*2));
+					FloatBuffer outline = Buffers.newDirectFloatBuffer(6*10 + (anchoredAtTop ? 6*2 : 0));
 					outline.put(xBoxLeft);   outline.put(yBoxTop);     outline.put(outlineColor);
 					outline.put(xBoxRight);  outline.put(yBoxTop);     outline.put(outlineColor);
 					outline.put(xBoxRight);  outline.put(yBoxTop);     outline.put(outlineColor);
@@ -377,11 +391,11 @@ public abstract class PositionedChart {
 					outline.put(xBoxLeft);   outline.put(yBoxBottom);  outline.put(outlineColor);
 					outline.put(xBoxLeft);   outline.put(yBoxBottom);  outline.put(outlineColor);
 					outline.put(xBoxLeft);   outline.put(yBoxTop);     outline.put(outlineColor);
-					if(pixelYs.size() == 0) { // edge marker mode, so draw a fading downward line
+					if(edgeMarker) { // draw a fading downward line
 						outline.put(xAnchor); outline.put(yAnchor);               outline.put(outlineColor);
 						outline.put(xAnchor); outline.put(yAnchor - padding * 6); outline.put(outlineColor, 0, 3); outline.put(0);
-					} else if(pixelYs.size() > 1) { // tooltip for multiple datasets, so draw a line down to the lowest piece of data
-						float minY = Math.min(plotHeight, pixelYs.stream().min(Float::compare).get());
+					} else if(multipleDatasets) { // draw a line down to the lowest piece of data
+						float minY = Math.min(yAnchor, yAnchors.stream().min(Float::compare).get());
 						outline.put(xAnchor); outline.put(yAnchor); outline.put(Theme.tooltipVerticalBarColor);
 						outline.put(xAnchor); outline.put(minY);    outline.put(Theme.tooltipVerticalBarColor);
 					}
@@ -400,7 +414,7 @@ public abstract class PositionedChart {
 					float yTriangleC = yAnchor + padding;
 					if(mouseX >= xBoxLeft && mouseX <= xBoxRight && mouseY >= yBoxBottom && mouseY <= yBoxTop)
 						outlineColor = Theme.tooltipBorderColor; // force outline to black if mouseOver
-					FloatBuffer outline = Buffers.newDirectFloatBuffer(6*10 + (pixelYs.size() == 1 ? 0 : 6*2));
+					FloatBuffer outline = Buffers.newDirectFloatBuffer(6*10 + (anchoredAtTop ? 6*2 : 0));
 					outline.put(xBoxLeft);   outline.put(yBoxTop);    outline.put(outlineColor);
 					outline.put(xBoxRight);  outline.put(yBoxTop);    outline.put(outlineColor);
 					outline.put(xBoxRight);  outline.put(yBoxTop);    outline.put(outlineColor);
@@ -411,11 +425,11 @@ public abstract class PositionedChart {
 					outline.put(xTriangleB); outline.put(yTriangleB); outline.put(outlineColor);
 					outline.put(xTriangleB); outline.put(yTriangleB); outline.put(outlineColor);
 					outline.put(xBoxLeft);   outline.put(yBoxTop);    outline.put(outlineColor);
-					if(pixelYs.size() == 0) { // edge marker mode, so draw a fading downward line
+					if(edgeMarker) { // draw a fading downward line
 						outline.put(xAnchor); outline.put(yAnchor);               outline.put(outlineColor);
 						outline.put(xAnchor); outline.put(yAnchor - padding * 6); outline.put(outlineColor, 0, 3); outline.put(0);
-					} else if(pixelYs.size() > 1) { // tooltip for multiple datasets, so draw a line down to the lowest piece of data
-						float minY = Math.min(plotHeight, pixelYs.stream().min(Float::compare).get());
+					} else if(multipleDatasets) { // draw a line down to the lowest piece of data
+						float minY = Math.min(yAnchor, yAnchors.stream().min(Float::compare).get());
 						outline.put(xAnchor); outline.put(yAnchor); outline.put(Theme.tooltipVerticalBarColor);
 						outline.put(xAnchor); outline.put(minY);    outline.put(Theme.tooltipVerticalBarColor);
 					}
@@ -439,7 +453,7 @@ public abstract class PositionedChart {
 					float yTriangleC = yAnchor - (padding / 2f);
 					if(mouseX >= xBoxLeft && mouseX <= xBoxRight && mouseY >= yBoxBottom && mouseY <= yBoxTop)
 						outlineColor = Theme.tooltipBorderColor; // force outline to black if mouseOver
-					FloatBuffer outline = Buffers.newDirectFloatBuffer(6*14 + (pixelYs.size() == 1 ? 0 : 6*2));
+					FloatBuffer outline = Buffers.newDirectFloatBuffer(6*14 + (anchoredAtTop ? 6*2 : 0));
 					outline.put(xBoxLeft);   outline.put(yBoxTop);    outline.put(outlineColor);
 					outline.put(xBoxRight);  outline.put(yBoxTop);    outline.put(outlineColor);
 					outline.put(xBoxRight);  outline.put(yBoxTop);    outline.put(outlineColor);
@@ -454,11 +468,11 @@ public abstract class PositionedChart {
 					outline.put(xBoxLeft);   outline.put(yBoxBottom); outline.put(outlineColor);
 					outline.put(xBoxLeft);   outline.put(yBoxBottom); outline.put(outlineColor);
 					outline.put(xBoxLeft);   outline.put(yBoxTop);    outline.put(outlineColor);
-					if(pixelYs.size() == 0) { // edge marker mode, so draw a fading downward line
+					if(edgeMarker) { // draw a fading downward line
 						outline.put(xAnchor); outline.put(yAnchor);               outline.put(outlineColor);
 						outline.put(xAnchor); outline.put(yAnchor - padding * 6); outline.put(outlineColor, 0, 3); outline.put(0);
-					} else if(pixelYs.size() > 1) { // tooltip for multiple datasets, so draw a line down to the lowest piece of data
-						float minY = Math.min(plotHeight, pixelYs.stream().min(Float::compare).get());
+					} else if(multipleDatasets) { // draw a line down to the lowest piece of data
+						float minY = Math.min(yAnchor, yAnchors.stream().min(Float::compare).get());
 						outline.put(xAnchor); outline.put(yAnchor); outline.put(Theme.tooltipVerticalBarColor);
 						outline.put(xAnchor); outline.put(minY);    outline.put(Theme.tooltipVerticalBarColor);
 					}
@@ -477,7 +491,7 @@ public abstract class PositionedChart {
 					float yTriangleC = yAnchor + (padding / 2f);
 					if(mouseX >= xBoxLeft && mouseX <= xBoxRight && mouseY >= yBoxBottom && mouseY <= yBoxTop)
 						outlineColor = Theme.tooltipBorderColor; // force outline to black if mouseOver
-					FloatBuffer outline = Buffers.newDirectFloatBuffer(6*14 + (pixelYs.size() == 1 ? 0 : 6*2));
+					FloatBuffer outline = Buffers.newDirectFloatBuffer(6*14 + (anchoredAtTop ? 6*2 : 0));
 					outline.put(xBoxLeft);   outline.put(yBoxTop);    outline.put(outlineColor);
 					outline.put(xBoxRight);  outline.put(yBoxTop);    outline.put(outlineColor);
 					outline.put(xBoxRight);  outline.put(yBoxTop);    outline.put(outlineColor);
@@ -492,11 +506,11 @@ public abstract class PositionedChart {
 					outline.put(xTriangleC); outline.put(yTriangleC); outline.put(outlineColor);
 					outline.put(xTriangleC); outline.put(yTriangleC); outline.put(outlineColor);
 					outline.put(xBoxLeft);   outline.put(yBoxTop);    outline.put(outlineColor);
-					if(pixelYs.size() == 0) { // edge marker mode, so draw a fading downward line
+					if(edgeMarker) { // draw a fading downward line
 						outline.put(xAnchor); outline.put(yAnchor);               outline.put(outlineColor);
 						outline.put(xAnchor); outline.put(yAnchor - padding * 6); outline.put(outlineColor, 0, 3); outline.put(0);
-					} else if(pixelYs.size() > 1) { // tooltip for multiple datasets, so draw a line down to the lowest piece of data
-						float minY = Math.min(plotHeight, pixelYs.stream().min(Float::compare).get());
+					} else if(multipleDatasets) { // draw a line down to the lowest piece of data
+						float minY = Math.min(yAnchor, yAnchors.stream().min(Float::compare).get());
 						outline.put(xAnchor); outline.put(yAnchor); outline.put(Theme.tooltipVerticalBarColor);
 						outline.put(xAnchor); outline.put(minY);    outline.put(Theme.tooltipVerticalBarColor);
 					}
@@ -521,7 +535,7 @@ public abstract class PositionedChart {
 					float yTriangleC = yBoxTop;
 					if(mouseX >= xBoxLeft && mouseX <= xBoxRight && mouseY >= yBoxBottom && mouseY <= yBoxTop)
 						outlineColor = Theme.tooltipBorderColor; // force outline to black if mouseOver
-					FloatBuffer outline = Buffers.newDirectFloatBuffer(6*14 + (pixelYs.size() == 1 ? 0 : 6*2));
+					FloatBuffer outline = Buffers.newDirectFloatBuffer(6*14 + (anchoredAtTop ? 6*2 : 0));
 					outline.put(xBoxLeft);   outline.put(yBoxTop);    outline.put(outlineColor);
 					outline.put(xTriangleA); outline.put(yTriangleA); outline.put(outlineColor);
 					outline.put(xTriangleA); outline.put(yTriangleA); outline.put(outlineColor);
@@ -536,11 +550,11 @@ public abstract class PositionedChart {
 					outline.put(xBoxLeft);   outline.put(yBoxBottom); outline.put(outlineColor);
 					outline.put(xBoxLeft);   outline.put(yBoxBottom); outline.put(outlineColor);
 					outline.put(xBoxLeft);   outline.put(yBoxTop);    outline.put(outlineColor);
-					if(pixelYs.size() == 0) { // edge marker mode, so draw a fading downward line
+					if(edgeMarker) { // draw a fading downward line
 						outline.put(xAnchor); outline.put(yAnchor);               outline.put(outlineColor);
 						outline.put(xAnchor); outline.put(yAnchor - padding * 6); outline.put(outlineColor, 0, 3); outline.put(0);
-					} else if(pixelYs.size() > 1) { // tooltip for multiple datasets, so draw a line down to the lowest piece of data
-						float minY = Math.min(plotHeight, pixelYs.stream().min(Float::compare).get());
+					} else if(multipleDatasets) { // draw a line down to the lowest piece of data
+						float minY = Math.min(yAnchor, yAnchors.stream().min(Float::compare).get());
 						outline.put(xAnchor); outline.put(yAnchor); outline.put(Theme.tooltipVerticalBarColor);
 						outline.put(xAnchor); outline.put(minY);    outline.put(Theme.tooltipVerticalBarColor);
 					}
@@ -559,7 +573,7 @@ public abstract class PositionedChart {
 					float yTriangleC = yAnchor - padding;
 					if(mouseX >= xBoxLeft && mouseX <= xBoxRight && mouseY >= yBoxBottom && mouseY <= yBoxTop)
 						outlineColor = Theme.tooltipBorderColor; // force outline to black if mouseOver
-					FloatBuffer outline = Buffers.newDirectFloatBuffer(6*10 + (pixelYs.size() == 1 ? 0 : 6*2));
+					FloatBuffer outline = Buffers.newDirectFloatBuffer(6*10 + (anchoredAtTop ? 6*2 : 0));
 					outline.put(xBoxLeft);   outline.put(yBoxTop);    outline.put(outlineColor);
 					outline.put(xTriangleA); outline.put(yTriangleA); outline.put(outlineColor);
 					outline.put(xTriangleA); outline.put(yTriangleA); outline.put(outlineColor);
@@ -570,11 +584,11 @@ public abstract class PositionedChart {
 					outline.put(xBoxLeft);   outline.put(yBoxBottom); outline.put(outlineColor);
 					outline.put(xBoxLeft);   outline.put(yBoxBottom); outline.put(outlineColor);
 					outline.put(xBoxLeft);   outline.put(yBoxTop);    outline.put(outlineColor);
-					if(pixelYs.size() == 0) { // edge marker mode, so draw a fading downward line
+					if(edgeMarker) { // draw a fading downward line
 						outline.put(xAnchor); outline.put(yAnchor);               outline.put(outlineColor);
 						outline.put(xAnchor); outline.put(yAnchor - padding * 6); outline.put(outlineColor, 0, 3); outline.put(0);
-					} else if(pixelYs.size() > 1) { // tooltip for multiple datasets, so draw a line down to the lowest piece of data
-						float minY = Math.min(plotHeight, pixelYs.stream().min(Float::compare).get());
+					} else if(multipleDatasets) { // draw a line down to the lowest piece of data
+						float minY = Math.min(yAnchor, yAnchors.stream().min(Float::compare).get());
 						outline.put(xAnchor); outline.put(yAnchor); outline.put(Theme.tooltipVerticalBarColor);
 						outline.put(xAnchor); outline.put(minY);    outline.put(Theme.tooltipVerticalBarColor);
 					}
@@ -593,7 +607,7 @@ public abstract class PositionedChart {
 					float yTriangleC = yAnchor - padding;
 					if(mouseX >= xBoxLeft && mouseX <= xBoxRight && mouseY >= yBoxBottom && mouseY <= yBoxTop)
 						outlineColor = Theme.tooltipBorderColor; // force outline to black if mouseOver
-					FloatBuffer outline = Buffers.newDirectFloatBuffer(6*10 + (pixelYs.size() == 1 ? 0 : 6*2));
+					FloatBuffer outline = Buffers.newDirectFloatBuffer(6*10 + (anchoredAtTop ? 6*2 : 0));
 					outline.put(xTriangleB); outline.put(yTriangleB); outline.put(outlineColor);
 					outline.put(xTriangleC); outline.put(yTriangleC); outline.put(outlineColor);
 					outline.put(xTriangleC); outline.put(yTriangleC); outline.put(outlineColor);
@@ -604,11 +618,11 @@ public abstract class PositionedChart {
 					outline.put(xBoxLeft);   outline.put(yBoxBottom); outline.put(outlineColor);
 					outline.put(xBoxLeft);   outline.put(yBoxBottom); outline.put(outlineColor);
 					outline.put(xTriangleB); outline.put(yTriangleB); outline.put(outlineColor);
-					if(pixelYs.size() == 0) { // edge marker mode, so draw a fading downward line
+					if(edgeMarker) { // draw a fading downward line
 						outline.put(xAnchor); outline.put(yAnchor);               outline.put(outlineColor);
 						outline.put(xAnchor); outline.put(yAnchor - padding * 6); outline.put(outlineColor, 0, 3); outline.put(0);
-					} else if(pixelYs.size() > 1) { // tooltip for multiple datasets, so draw a line down to the lowest piece of data
-						float minY = Math.min(plotHeight, pixelYs.stream().min(Float::compare).get());
+					} else if(multipleDatasets) { // draw a line down to the lowest piece of data
+						float minY = Math.min(yAnchor, yAnchors.stream().min(Float::compare).get());
 						outline.put(xAnchor); outline.put(yAnchor); outline.put(Theme.tooltipVerticalBarColor);
 						outline.put(xAnchor); outline.put(minY);    outline.put(Theme.tooltipVerticalBarColor);
 					}
@@ -634,7 +648,7 @@ public abstract class PositionedChart {
 		 * @param plotHeight    Height of the plot region, in pixels.
 		 * @returns             True if the tooltip was drawn, or false there wasn't enough space to draw it.
 		 */
-		public boolean draw(GL2ES3 gl, int mouseX, int mouseY, float plotWidth, float plotHeight, float xAnchor) {
+		public boolean draw(GL2ES3 gl, int mouseX, int mouseY, float plotWidth, float plotHeight) {
 			
 			return bake(gl, plotWidth, plotHeight, mouseX, mouseY, xAnchor).draw(gl, false, null);
 			
@@ -700,7 +714,6 @@ public abstract class PositionedChart {
 	
 	/**
 	 * Charts that create cache files or other non-GPU resources must dispose of them when this method is called.
-	 * The chart may be drawn after this call, so the chart must be able to automatically regenerate any needed caches.
 	 */
 	public void disposeNonGpu() {
 		

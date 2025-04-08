@@ -1,8 +1,13 @@
+import java.io.InputStream;
 import java.nio.FloatBuffer;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Scanner;
 
 import javax.swing.JPanel;
+
+import com.jogamp.common.nio.Buffers;
 import com.jogamp.opengl.GL2ES3;
 import com.jogamp.opengl.GL3;
 import com.jogamp.opengl.math.Quaternion;
@@ -31,8 +36,7 @@ public class OpenGLQuaternionChart extends PositionedChart {
 		
 		duration = 1;
 		
-		shape = ChartUtils.getShapeFromAsciiStl(getClass().getResourceAsStream("monkey.stl"));
-		shape.rewind();
+		shape = getShapeFromAsciiStl(getClass().getResourceAsStream("monkey.stl"));
 		
 		datasetsWidget = datasets.getComboboxesWidget(List.of("Q0", "Q1", "Q2", "Q3"),
 		                                              null);
@@ -139,6 +143,66 @@ public class OpenGLQuaternionChart extends PositionedChart {
 		}
 		
 		return null;
+		
+	}
+	
+	/**
+	 * Parses an ASCII STL file to extract it's vertices and normal vectors.
+	 * 
+	 * Blender users: when exporting the STL file (File > Export > Stl) ensure the "Ascii" checkbox is selected,
+	 * and ensure your model fits in a bounding box from -1 to +1 Blender units, centered at the origin.
+	 * 
+	 * @param fileStream    InputStream of an ASCII STL file.
+	 * @returns             A FloatBuffer with a layout of x1,y1,z1,u1,v1,w1... or null if the InputStream could not be parsed.
+	 */
+	private static FloatBuffer getShapeFromAsciiStl(InputStream fileStream) {
+		
+		try {
+			
+			// get the lines of text
+			List<String> lines = new ArrayList<String>();
+			Scanner s = new Scanner(fileStream);
+			while(s.hasNextLine())
+				lines.add(s.nextLine());
+			s.close();
+			
+			// count the vertices
+			int vertexCount = 0;
+			for(String line : lines)
+				if(line.startsWith("vertex"))
+					vertexCount++;
+			
+			
+			// write the vertices into the FloatBuffer
+			FloatBuffer buffer = Buffers.newDirectFloatBuffer(vertexCount * 6);
+			float u = 0;
+			float v = 0;
+			float w = 0;
+			for(String line : lines) {
+				if(line.startsWith("facet normal")) {
+					String[] token = line.split(" ");
+					u = Float.parseFloat(token[2]);
+					v = Float.parseFloat(token[3]);
+					w = Float.parseFloat(token[4]);
+				} else if(line.startsWith("vertex")) {
+					String[] token = line.split(" ");
+					buffer.put(Float.parseFloat(token[1]));
+					buffer.put(Float.parseFloat(token[2]));
+					buffer.put(Float.parseFloat(token[3]));
+					buffer.put(u);
+					buffer.put(v);
+					buffer.put(w);
+				}
+			}
+			
+			return buffer.rewind();
+			
+		} catch (Exception e) {
+			
+			e.printStackTrace();
+			return null;
+			
+		}
 		
 	}
 

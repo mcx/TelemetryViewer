@@ -1,6 +1,4 @@
 import java.nio.FloatBuffer;
-import java.util.Arrays;
-import java.util.Map;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import com.jogamp.common.nio.Buffers;
@@ -9,8 +7,6 @@ import com.jogamp.opengl.GL3;
 
 public class OpenGLHistogramChart extends PositionedChart {
 	
-	FloatBuffer[] samples; // [datasetN]
-	int[][] bins; // [datasetN][binN]
 	FloatBuffer[] binsAsTriangles; // [datasetN], filled with binN's, for drawing
 	
 	private DatasetsInterface.WidgetDatasets datasetsWidget;
@@ -20,6 +16,7 @@ public class OpenGLHistogramChart extends PositionedChart {
 		MIN_MAX     { @Override public String toString() { return "Minimum/Maximum"; } },
 		CENTER_SPAN { @Override public String toString() { return "Center/Span";     } };
 	};
+	private WidgetToggleButton<OpenGLPlot.AxisStyle> xAxisStyle;
 	private WidgetToggleButton<XAxisScale> xAxisScale;
 	private WidgetTextfield<Float> xAxisMinimum;
 	private WidgetCheckbox xAxisMinimumAutomatic;
@@ -30,40 +27,28 @@ public class OpenGLHistogramChart extends PositionedChart {
 	private WidgetTextfield<Float> xAxisSpan;
 	private WidgetCheckbox xAxisSpanAutomatic;
 	private WidgetTextfield<Integer> binCount;
-	private WidgetCheckbox xAxisTicksVisibility;
-	private WidgetCheckbox xAxisTitleVisibility;
 	private enum YAxisScale {
-		FREQUENCY          { @Override public String toString() { return "Frequency";          } },
-		RELATIVE_FREQUENCY { @Override public String toString() { return "Relative Frequency"; } },
-		BOTH               { @Override public String toString() { return "Both";               } };
+		SAMPLE_COUNT { @Override public String toString() { return "Sample Count"; } },
+		PERCENTAGE   { @Override public String toString() { return "Percentage";   } },
+		BOTH         { @Override public String toString() { return "Both";         } };
 	};
+	private WidgetToggleButton<OpenGLPlot.AxisStyle> yAxisStyle;
 	private WidgetToggleButton<YAxisScale> yAxisScale;
 	private WidgetTextfield<Integer> yAxisMinimumFrequency;
-	private WidgetCheckbox yAxisMinimumFrequencyIsZero;
 	private WidgetTextfield<Integer> yAxisMaximumFrequency;
-	private WidgetCheckbox yAxisMaximumFrequencyAutomatic;
 	private WidgetTextfield<Float> yAxisMinimumRelativeFrequency;
-	private WidgetCheckbox yAxisMinimumRelativeFrequencyIsZero;
 	private WidgetTextfield<Float> yAxisMaximumRelativeFrequency;
-	private WidgetCheckbox yAxisMaximumRelativeFrequencyAutomatic;
-	private WidgetCheckbox yAxisTicksVisibility;
-	private WidgetCheckbox yAxisTitleVisibility;
+	private WidgetCheckbox yAxisMinimumIsZero;
+	private WidgetCheckbox yAxisMaximumIsAutomatic;
 	
-	private AutoScale  yAutoscaleRelativeFrequency;
-	private AutoScale  yAutoscaleFrequency;
+	private AutoScale yAutoscale;
 	
-	@Override public String toString() {
-		
-		return "Histogram";
-		
-	}
+	@Override public String toString() { return "Histogram"; }
 	
 	public OpenGLHistogramChart() {
 
-		yAutoscaleRelativeFrequency = new AutoScale(AutoScale.MODE_EXPONENTIAL, 30, 0.20f);
-		yAutoscaleFrequency = new AutoScale(AutoScale.MODE_EXPONENTIAL, 30, 0.20f);
+		yAutoscale = new AutoScale(AutoScale.MODE_EXPONENTIAL, 30, 0.20f);
 		
-		// create the control widgets and event handlers
 		durationWidget = WidgetTextfield.ofInt(2, Integer.MAX_VALUE / 16, ConnectionsController.getDefaultChartDuration())
 		                                .setSuffix("Samples")
 		                                .setExportLabel("sample count")
@@ -133,7 +118,6 @@ public class OpenGLHistogramChart extends PositionedChart {
 		                          .setPrefix("Bins")
 		                          .setExportLabel("x-axis bin count")
 		                          .onChange((newBinCount, oldBinCount) -> {
-		                                        bins = new int[datasets.normalsCount()][newBinCount];
 		                                        for(int i = 0; i < datasets.normalsCount(); i++)
 		                                            binsAsTriangles[i] = Buffers.newDirectFloatBuffer(newBinCount * 12);
 		                                        return true;
@@ -141,8 +125,6 @@ public class OpenGLHistogramChart extends PositionedChart {
 
 		datasetsWidget = datasets.getCheckboxesWidget(newDatasets -> {
 		                                                  int datasetsCount = datasets.normalsCount();
-		                                                  samples = new FloatBuffer[datasetsCount];
-		                                                  bins = new int[datasetsCount][binCount.get()];
 		                                                  binsAsTriangles = new FloatBuffer[datasetsCount];
 		                                                  for(int i = 0; i < datasetsCount; i++)
 		                                                      binsAsTriangles[i] = Buffers.newDirectFloatBuffer(binCount.get() * 12);
@@ -159,7 +141,10 @@ public class OpenGLHistogramChart extends PositionedChart {
 		                                                  }
 		                                              });
 		
-		xAxisScale = new WidgetToggleButton<XAxisScale>("Specify as", XAxisScale.values(), XAxisScale.MIN_MAX)
+		xAxisStyle = new WidgetToggleButton<OpenGLPlot.AxisStyle>("", OpenGLPlot.AxisStyle.values(), OpenGLPlot.AxisStyle.OUTER)
+		                 .setExportLabel("x-axis style");
+		
+		xAxisScale = new WidgetToggleButton<XAxisScale>("Scale", XAxisScale.values(), XAxisScale.MIN_MAX)
 		                 .setExportLabel("x-axis scale")
 		                 .onChange((newScale, oldScale) -> {
 		                      xAxisMinimum.setVisible(newScale == XAxisScale.MIN_MAX);
@@ -173,107 +158,88 @@ public class OpenGLHistogramChart extends PositionedChart {
 		                      return true;
 		                  });
 		
-		xAxisTicksVisibility = new WidgetCheckbox("Show Ticks", true)
-		                           .setExportLabel("x-axis show ticks");
+		yAxisStyle = new WidgetToggleButton<OpenGLPlot.AxisStyle>("", OpenGLPlot.AxisStyle.values(), OpenGLPlot.AxisStyle.OUTER)
+		                 .setExportLabel("y-axis style");
 		
-		xAxisTitleVisibility = new WidgetCheckbox("Show Title", true)
-		                           .setExportLabel("x-axis show title");
-		
-		yAxisMinimumFrequency = WidgetTextfield.ofInt(0, Integer.MAX_VALUE, 0)
+		yAxisMinimumFrequency = WidgetTextfield.ofInt(0, Integer.MAX_VALUE-1, 0)
 		                                       .setPrefix("Minimum")
+		                                       .setSuffix("samples")
 		                                       .setExportLabel("y-axis minimum frequency")
 		                                       .onChange((newMinimum, oldMinimum) -> {
-		                                                     if(newMinimum > yAxisMaximumFrequency.get())
-		                                                         yAxisMaximumFrequency.set(newMinimum);
+		                                                     if(newMinimum >= yAxisMaximumFrequency.get())
+		                                                         yAxisMaximumFrequency.set(newMinimum + 1);
 		                                                     return true;
 		                                                 });
 		
-		yAxisMinimumFrequencyIsZero = new WidgetCheckbox("Zero", true)
-		                                  .setExportLabel("y-axis minimum frequency is zero")
-		                                  .onChange(isZero -> {
-		                                                if(isZero)
-		                                                    yAxisMinimumFrequency.disableWithMessage("0");
-		                                                else
-		                                                    yAxisMinimumFrequency.setEnabled(true);
-		                                            });
-		
-		yAxisMaximumFrequency = WidgetTextfield.ofInt(0, Integer.MAX_VALUE, 1000)
+		yAxisMaximumFrequency = WidgetTextfield.ofInt(1, Integer.MAX_VALUE, 1000)
 		                                       .setPrefix("Maximum")
+		                                       .setSuffix("samples")
 		                                       .setExportLabel("y-axis maximum frequency")
 		                                       .onChange((newMaximum, oldMaximum) -> {
-		                                                     if(newMaximum < yAxisMinimumFrequency.get())
-		                                                         yAxisMinimumFrequency.set(newMaximum);
+		                                                     if(newMaximum <= yAxisMinimumFrequency.get())
+		                                                         yAxisMinimumFrequency.set(newMaximum - 1);
 		                                                     return true;
 		                                                 });
 		
-		yAxisMaximumFrequencyAutomatic = new WidgetCheckbox("Automatic", true)
-		                                     .setExportLabel("y-axis maximum frequency automatic")
-		                                     .onChange(isAutomatic -> {
-		                                                   if(isAutomatic)
-		                                                       yAxisMaximumFrequency.disableWithMessage("Automatic");
-		                                                   else
-		                                                       yAxisMaximumFrequency.setEnabled(true);
-		                                               });
-		
-		yAxisMinimumRelativeFrequency = WidgetTextfield.ofFloat(0, 1, 0)
+		yAxisMinimumRelativeFrequency = WidgetTextfield.ofFloat(0, 99, 0)
 		                                               .setPrefix("Minimum")
+		                                               .setSuffix("%")
 		                                               .setExportLabel("y-axis minimum relative frequency")
 		                                               .onChange((newMinimum, oldMinimum) -> {
-		                                                             if(newMinimum > yAxisMaximumRelativeFrequency.get())
-		                                                                 yAxisMaximumRelativeFrequency.set(newMinimum);
+		                                                             if(newMinimum >= yAxisMaximumRelativeFrequency.get())
+		                                                                 yAxisMaximumRelativeFrequency.set(newMinimum + 1);
 		                                                             return true;
 		                                                         });
 		
-		yAxisMinimumRelativeFrequencyIsZero = new WidgetCheckbox("Zero", true)
-		                                          .setExportLabel("y-axis minimum relative frequency is zero")
-		                                          .onChange(isZero -> {
-		                                                        if(isZero)
-		                                                            yAxisMinimumRelativeFrequency.disableWithMessage("0");
-		                                                        else
-		                                                            yAxisMinimumRelativeFrequency.setEnabled(true);
-		                                                    });
-		
-		yAxisMaximumRelativeFrequency = WidgetTextfield.ofFloat(0, 1, 1)
+		yAxisMaximumRelativeFrequency = WidgetTextfield.ofFloat(1, 100, 100)
 		                                               .setPrefix("Maximum")
+		                                               .setSuffix("%")
 		                                               .setExportLabel("y-axis maximum relative frequency")
 		                                               .onChange((newMaximum, oldMaximum) -> {
-		                                                             if(newMaximum < yAxisMinimumRelativeFrequency.get())
-		                                                                 yAxisMinimumRelativeFrequency.set(newMaximum);
+		                                                             if(newMaximum <= yAxisMinimumRelativeFrequency.get())
+		                                                                 yAxisMinimumRelativeFrequency.set(newMaximum - 1);
 		                                                             return true;
 		                                                         });
 		
-		yAxisMaximumRelativeFrequencyAutomatic = new WidgetCheckbox("Automatic", true)
-		                                             .setExportLabel("y-axis maximum relative frequency automatic")
-		                                             .onChange(isAutomatic -> {
-		                                                           if(isAutomatic)
-		                                                               yAxisMaximumRelativeFrequency.disableWithMessage("Automatic");
-		                                                           else
-		                                                               yAxisMaximumRelativeFrequency.setEnabled(true);
-		                                                       });
+		yAxisMinimumIsZero = new WidgetCheckbox("Zero", true)
+		                         .setExportLabel("y-axis minimum is zero")
+		                         .onChange(isZero -> {
+		                                       if(isZero) {
+		                                           yAxisMinimumFrequency.disableWithMessage("0 samples");
+		                                           yAxisMinimumRelativeFrequency.disableWithMessage("0.0 %");
+		                                       } else {
+		                                           yAxisMinimumFrequency.setEnabled(true);
+		                                           yAxisMinimumRelativeFrequency.setEnabled(true);
+		                                       }
+		                                   });
 		
-		yAxisScale = new WidgetToggleButton<YAxisScale>("Scale", YAxisScale.values(), YAxisScale.RELATIVE_FREQUENCY)
+		yAxisMaximumIsAutomatic = new WidgetCheckbox("Automatic", true)
+		                              .setExportLabel("y-axis maximum is automatic")
+		                              .onChange(isAutomatic -> {
+		                                            if(isAutomatic) {
+		                                                yAxisMaximumFrequency.disableWithMessage("Automatic");
+		                                                yAxisMaximumRelativeFrequency.disableWithMessage("Automatic");
+		                                            } else {
+		                                                yAxisMaximumFrequency.setEnabled(true);
+		                                                yAxisMaximumRelativeFrequency.setEnabled(true);
+		                                            }
+		                                        });
+		
+		yAxisScale = new WidgetToggleButton<YAxisScale>("Scale", YAxisScale.values(), YAxisScale.PERCENTAGE)
 		                 .setExportLabel("y-axis scale")
 		                 .onChange((newScale, oldScale) -> {
-		                      yAxisMinimumFrequency.setVisible(newScale == YAxisScale.FREQUENCY);
-		                      yAxisMinimumFrequencyIsZero.setVisible(newScale == YAxisScale.FREQUENCY);
-		                      yAxisMaximumFrequency.setVisible(newScale == YAxisScale.FREQUENCY);
-		                      yAxisMaximumFrequencyAutomatic.setVisible(newScale == YAxisScale.FREQUENCY);
-		                      yAxisMinimumRelativeFrequency.setVisible(newScale != YAxisScale.FREQUENCY);
-		                      yAxisMinimumRelativeFrequencyIsZero.setVisible(newScale != YAxisScale.FREQUENCY);
-		                      yAxisMaximumRelativeFrequency.setVisible(newScale != YAxisScale.FREQUENCY);
-		                      yAxisMaximumRelativeFrequencyAutomatic.setVisible(newScale != YAxisScale.FREQUENCY);
+		                      yAxisMinimumFrequency.setVisible(newScale != YAxisScale.PERCENTAGE);
+		                      yAxisMinimumRelativeFrequency.setVisible(newScale == YAxisScale.PERCENTAGE);
+		                      yAxisMaximumFrequency.setVisible(newScale != YAxisScale.PERCENTAGE);
+		                      yAxisMaximumRelativeFrequency.setVisible(newScale == YAxisScale.PERCENTAGE);
+		                      yAutoscale.reset();
 		                      return true;
 		                  });
-		
-		yAxisTicksVisibility = new WidgetCheckbox("Show Ticks", true)
-		                           .setExportLabel("y-axis show ticks");
-		
-		yAxisTitleVisibility = new WidgetCheckbox("Show Title", true)
-		                           .setExportLabel("y-axis show title");
 		
 		widgets.add(datasetsWidget);
 		widgets.add(durationWidget);
 		widgets.add(legendVisibility);
+		widgets.add(xAxisStyle);
 		widgets.add(xAxisScale);
 		widgets.add(xAxisMinimum);
 		widgets.add(xAxisMinimumAutomatic);
@@ -283,19 +249,14 @@ public class OpenGLHistogramChart extends PositionedChart {
 		widgets.add(xAxisSpan);
 		widgets.add(xAxisSpanAutomatic);
 		widgets.add(binCount);
-		widgets.add(xAxisTicksVisibility);
-		widgets.add(xAxisTitleVisibility);
+		widgets.add(yAxisStyle);
 		widgets.add(yAxisScale);
 		widgets.add(yAxisMinimumFrequency);
-		widgets.add(yAxisMinimumFrequencyIsZero);
 		widgets.add(yAxisMaximumFrequency);
-		widgets.add(yAxisMaximumFrequencyAutomatic);
 		widgets.add(yAxisMinimumRelativeFrequency);
-		widgets.add(yAxisMinimumRelativeFrequencyIsZero);
 		widgets.add(yAxisMaximumRelativeFrequency);
-		widgets.add(yAxisMaximumRelativeFrequencyAutomatic);
-		widgets.add(yAxisTicksVisibility);
-		widgets.add(yAxisTitleVisibility);
+		widgets.add(yAxisMinimumIsZero);
+		widgets.add(yAxisMaximumIsAutomatic);
 		
 	}
 	
@@ -303,11 +264,12 @@ public class OpenGLHistogramChart extends PositionedChart {
 		
 		gui.add(Theme.newWidgetsPanel("Data")
 		             .with(datasetsWidget)
-		             .with(durationWidget, "split 2, sizegroup 0")
+		             .with(durationWidget,   "split 2, sizegroup 0")
 		             .with(legendVisibility, "sizegroup 0")
 		             .getPanel());
 		
 		gui.add(Theme.newWidgetsPanel("X-Axis")
+		             .with(xAxisStyle)
 		             .with(xAxisScale)
 		             .with(xAxisMinimum,           "split 2, grow")
 		             .with(xAxisMinimumAutomatic,  "sizegroup 1")
@@ -320,483 +282,144 @@ public class OpenGLHistogramChart extends PositionedChart {
 		             .withGap(Theme.padding)
 		             .with(binCount,               "split 2, grow")
 		             .with(new JLabel(" "),        "sizegroup 1")
-		             .withGap(Theme.padding)
-		             .with(xAxisTicksVisibility,   "split 2")
-		             .with(xAxisTitleVisibility)
 		             .getPanel());
 		
 		gui.add(Theme.newWidgetsPanel("Y-Axis")
+		             .with(yAxisStyle)
 		             .with(yAxisScale)
-		             .with(yAxisMinimumFrequency,                  "split 2, grow")
-		             .with(yAxisMinimumFrequencyIsZero,            "sizegroup 1")
-		             .with(yAxisMaximumFrequency,                  "split 2, grow")
-		             .with(yAxisMaximumFrequencyAutomatic,         "sizegroup 1")
-		             .with(yAxisMinimumRelativeFrequency,          "split 2, grow")
-		             .with(yAxisMinimumRelativeFrequencyIsZero,    "sizegroup 2")
-		             .with(yAxisMaximumRelativeFrequency,          "split 2, grow")
-		             .with(yAxisMaximumRelativeFrequencyAutomatic, "sizegroup 2")
-		             .withGap(Theme.padding)
-		             .with(yAxisTicksVisibility,                   "split 2")
-		             .with(yAxisTitleVisibility)
+		             .with(yAxisMinimumFrequency,         "split 2, grow")
+		             .with(yAxisMinimumRelativeFrequency, "split 2, grow")
+		             .with(yAxisMinimumIsZero,            "sizegroup 1")
+		             .with(yAxisMaximumFrequency,         "split 2, grow")
+		             .with(yAxisMaximumRelativeFrequency, "split 2, grow")
+		             .with(yAxisMaximumIsAutomatic,       "sizegroup 1")
 		             .getPanel());
 		
 	}
 	
 	@Override public EventHandler drawChart(GL2ES3 gl, float[] chartMatrix, int width, int height, long endTimestamp, int endSampleNumber, double zoomLevel, int mouseX, int mouseY) {
 		
-		EventHandler handler = null;
-		
-		// get the samples
+		// determine the sample set
 		int trueLastSampleNumber = datasets.hasNormals() ? datasets.connection.getSampleCount() - 1 : -1;
 		int lastSampleNumber = Integer.min(trueLastSampleNumber, endSampleNumber);
-		int firstSampleNumber = lastSampleNumber - (int) (duration * zoomLevel) + 1;
-		if(firstSampleNumber < 0)
-			firstSampleNumber = 0;
-		
+		int firstSampleNumber = Integer.max(0, lastSampleNumber - (int) (duration * zoomLevel) + 1);
 		int sampleCount = lastSampleNumber - firstSampleNumber + 1;
 		int datasetsCount = datasets.normalsCount();
-		if(sampleCount > 0)
-			for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
-				Field dataset = datasets.getNormal(datasetN);
-				samples[datasetN] = datasets.getSamplesBuffer(dataset, firstSampleNumber, lastSampleNumber);
-			}
 
-		// determine the true x-axis range
-		float[] minMax = datasets.getRange(firstSampleNumber, lastSampleNumber);
-		float trueMinX = minMax[0];
-		float trueMaxX = minMax[1];
-		
-		// determine the plotted x-axis range
-		float minX = 0;
-		float maxX = 0;
-		if(xAxisScale.is(XAxisScale.CENTER_SPAN)) {
-			float leftHalf  = (float) Math.abs(xAxisCenter.get() - trueMinX);
-			float rightHalf = (float) Math.abs(xAxisCenter.get() - trueMaxX);
-			float half = xAxisSpanAutomatic.get() ? Float.max(leftHalf, rightHalf) : xAxisSpan.get() / 2;
-			minX = xAxisCenter.get() - half;
-			maxX = Math.nextUp(xAxisCenter.get() + half); // increment because the bins are >=min, <max
-		} else {
-			minX = xAxisMinimumAutomatic.get() ?             trueMinX  :             xAxisMinimum.get();
-			maxX = xAxisMaximumAutomatic.get() ? Math.nextUp(trueMaxX) : Math.nextUp(xAxisMaximum.get()); // increment because the bins are >=min, <max
-		}
-		float range = maxX - minX;
+		// determine the x-axis range
+		var trueXaxisRange = datasets.getRange(firstSampleNumber, lastSampleNumber);
+		float centerSpanLeftHalf  = (float) Math.abs(xAxisCenter.get() - trueXaxisRange.min());
+		float centerSpanRightHalf = (float) Math.abs(xAxisCenter.get() - trueXaxisRange.max());
+		float centerSpanHalf = xAxisSpanAutomatic.get() ? Float.max(centerSpanLeftHalf, centerSpanRightHalf) : xAxisSpan.get() / 2;
+		float xAxisMin = xAxisScale.is(XAxisScale.CENTER_SPAN) ? xAxisCenter.get() - centerSpanHalf :
+		                 xAxisMinimumAutomatic.get()           ? trueXaxisRange.min() :
+		                                                         xAxisMinimum.get();
+		float xAxisMax = xAxisScale.is(XAxisScale.CENTER_SPAN) ? Math.nextUp(xAxisCenter.get() + centerSpanHalf) : // increment because the bins are >=min, <max
+		                 xAxisMaximumAutomatic.get()           ? Math.nextUp(trueXaxisRange.max()) :
+		                                                         Math.nextUp(xAxisMaximum.get());
+		float xAxisRange = xAxisMax - xAxisMin;
 		int binsCount = binCount.get();
-		float binSize = range / (float) binsCount;
+		float binSize = xAxisRange / (float) binsCount;
 
 		// calculate the histogram
+		int[][] bins = new int[datasetsCount][binsCount]; // [datasetN][binN]
 		int maxBinSize = 0;
 		if(sampleCount > 0) {
-			// empty the bins
-			for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
-				for(int binN = 0; binN < binsCount; binN++)
-					bins[datasetN][binN] = 0;
-			
-			// fill the bins
 			for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
+				FloatBuffer samples = datasets.getSamplesBuffer(datasets.getNormal(datasetN), firstSampleNumber, lastSampleNumber);
 				for(int sampleN = 0; sampleN < sampleCount; sampleN++) {
-					float sample = samples[datasetN].get();
-					if(sample >= minX && sample < maxX) {
-						int binN = (int) Math.floor((sample - minX) / range * binsCount);
+					float sample = samples.get();
+					if(sample >= xAxisMin && sample < xAxisMax) {
+						int binN = (int) Math.floor((sample - xAxisMin) / xAxisRange * binsCount);
 						if(binN == binsCount) binN--; // needed because of float math imperfection
 						bins[datasetN][binN]++;
 					}
 				}
 			}
 			
-			// get the max
 			for(int datasetN = 0; datasetN < datasetsCount; datasetN++)
 				for(int binN = 0; binN < binsCount; binN++)
-					if(bins[datasetN][binN] > maxBinSize)
-						maxBinSize = bins[datasetN][binN];
+					maxBinSize = Math.max(maxBinSize, bins[datasetN][binN]);
 		}
 		
-		// determine the true y-axis range
-		float trueMaxYfreq    = sampleCount < 1 ? 1 : maxBinSize;
-		float trueMaxYrelFreq = sampleCount < 1 ? 1 : trueMaxYfreq / (float) sampleCount;
+		// determine the y-axis range
+		float yAxisMin = yAxisMinimumIsZero.get()               ? 0 :
+		                 (yAxisScale.is(YAxisScale.PERCENTAGE)) ? yAxisMinimumRelativeFrequency.get() :
+		                 /* SAMPLE COUNT or BOTH */               yAxisMinimumFrequency.get();
+		yAutoscale.update(yAxisMin, (sampleCount < 1)                    ? 1 :
+		                            yAxisScale.is(YAxisScale.PERCENTAGE) ? maxBinSize / (float) sampleCount * 100:
+		                            /* SAMPLE COUNT or BOTH */             maxBinSize);
+		float yAxisMax = yAxisMaximumIsAutomatic.isTrue()     ? yAutoscale.getMax() :
+		                 yAxisScale.is(YAxisScale.PERCENTAGE) ? yAxisMaximumRelativeFrequency.get() :
+		                 /* SAMPLE COUNT or BOTH */             yAxisMaximumFrequency.get();
+		float yAxisRange = yAxisMax - yAxisMin;
 		
-		// determine the plotted y-axis range
-		float minYrelFreq = 0;
-		float maxYrelFreq = 0;
-		float minYfreq = 0;
-		float maxYfreq = 0;
-		float yRelFreqRange = 0;
-		float yFreqRange = 0;
-		if(yAxisScale.is(YAxisScale.RELATIVE_FREQUENCY) || yAxisScale.is(YAxisScale.BOTH)) {
-			
-			// the range is determined by relative frequency, and frequency is forced to match it
-			minYrelFreq = yAxisMinimumRelativeFrequencyIsZero.get() ? 0 : yAxisMinimumRelativeFrequency.get();
-			yAutoscaleRelativeFrequency.update(minYrelFreq, trueMaxYrelFreq);
-			maxYrelFreq = yAxisMaximumRelativeFrequencyAutomatic.get() ? yAutoscaleRelativeFrequency.getMax() : yAxisMaximumRelativeFrequency.get();
-			minYfreq = sampleCount < 1 ? minYrelFreq : minYrelFreq * (float) sampleCount;
-			maxYfreq = sampleCount < 1 ? maxYrelFreq : maxYrelFreq * (float) sampleCount;
-			
-		} else {
-			
-			// the range is determined by frequency, and relative frequency is forced to match it
-			minYfreq = yAxisMinimumFrequencyIsZero.get() ? 0 : yAxisMinimumFrequency.get();
-			yAutoscaleFrequency.update(minYfreq, trueMaxYfreq);
-			maxYfreq = yAxisMaximumFrequencyAutomatic.get() ? yAutoscaleFrequency.getMax() : yAxisMaximumFrequency.get();
-			minYrelFreq = minYfreq / (float) sampleCount;
-			maxYrelFreq = maxYfreq / (float) sampleCount;
-			
-		}
-		yRelFreqRange = maxYrelFreq - minYrelFreq;
-		yFreqRange = maxYfreq - minYfreq;
+		// determine the axis titles
+		String xAxisTitle = (datasetsCount == 0) ? "" : datasets.getNormal(0).unit.get();
+		String yAxisTitle = switch(yAxisScale.get()) { case PERCENTAGE   -> "Percentage";
+		                                               case SAMPLE_COUNT -> "Sample Count";
+		                                               case BOTH         -> "Sample Count (Percentage)"; };
 		
-		// calculate x and y positions of everything
-		float xPlotLeft = Theme.tilePadding;
-		float xPlotRight = width - Theme.tilePadding;
-		float plotWidth = xPlotRight - xPlotLeft;
-		float yPlotTop = height - Theme.tilePadding;
-		float yPlotBottom = Theme.tilePadding;
-		float plotHeight = yPlotTop - yPlotBottom;
-		
-		float yXaxisTitleTextBasline = Theme.tilePadding;
-		float yXaxisTitleTextTop = yXaxisTitleTextBasline + OpenGL.largeTextHeight;
-		String xAxisTitle = datasetsCount == 0 ? "(0 Samples)" : datasets.getNormal(0).unit.get() + " (" + sampleCount + " Samples)";
-		float xXaxisTitleTextLeft = xPlotLeft + (plotWidth  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-		if(xAxisTitleVisibility.get()) {
-			float temp = yXaxisTitleTextTop + Theme.tickTextPadding;
-			if(yPlotBottom < temp) {
-				yPlotBottom = temp;
-				plotHeight = yPlotTop - yPlotBottom;
-			}
-		}
-		
-		float xLegendBorderLeft = Theme.tilePadding;
-		float yLegendBorderBottom = Theme.tilePadding;
-		float yLegendTextBaseline = yLegendBorderBottom + Theme.legendTextPadding;
-		float yLegendTextTop = yLegendTextBaseline + OpenGL.mediumTextHeight;
-		float yLegendBorderTop = yLegendTextTop + Theme.legendTextPadding;
-		float[][] legendMouseoverCoordinates = new float[datasetsCount][4];
-		float[][] legendBoxCoordinates = new float[datasetsCount][4];
-		float[] xLegendNameLeft = new float[datasetsCount];
-		float xLegendBorderRight = 0;
-		if(legendVisibility.get() && datasetsCount > 0) {
-			float xOffset = xLegendBorderLeft + (Theme.lineWidth / 2) + Theme.legendTextPadding;
-			for(int i = 0; i < datasetsCount; i++) {
-				legendMouseoverCoordinates[i][0] = xOffset - Theme.legendTextPadding;
-				legendMouseoverCoordinates[i][1] = yLegendBorderBottom;
-				
-				legendBoxCoordinates[i][0] = xOffset;
-				legendBoxCoordinates[i][1] = yLegendTextBaseline;
-				legendBoxCoordinates[i][2] = xOffset + OpenGL.mediumTextHeight;
-				legendBoxCoordinates[i][3] = yLegendTextTop;
-				
-				xOffset += OpenGL.mediumTextHeight + Theme.legendTextPadding;
-				xLegendNameLeft[i] = xOffset;
-				xOffset += OpenGL.mediumTextWidth(gl, datasets.getNormal(i).name.get()) + Theme.legendNamesPadding;
-				
-				legendMouseoverCoordinates[i][2] = xOffset - Theme.legendNamesPadding + Theme.legendTextPadding;
-				legendMouseoverCoordinates[i][3] = yLegendBorderTop;
-			}
-			
-			xLegendBorderRight = xOffset - Theme.legendNamesPadding + Theme.legendTextPadding + (Theme.lineWidth / 2);
-			if(xAxisTitleVisibility.get())
-				xXaxisTitleTextLeft = xLegendBorderRight + ((xPlotRight - xLegendBorderRight) / 2) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			
-			float temp = yLegendBorderTop + Theme.legendTextPadding;
-			if(yPlotBottom < temp) {
-				yPlotBottom = temp;
-				plotHeight = yPlotTop - yPlotBottom;
-			}
-		}
-		
-		float yXaxisTickTextBaseline = yPlotBottom;
-		float yXaxisTickTextTop = yXaxisTickTextBaseline + OpenGL.smallTextHeight;
-		float yXaxisTickBottom = yXaxisTickTextTop + Theme.tickTextPadding;
-		float yXaxisTickTop = yXaxisTickBottom + Theme.tickLength;
-		if(xAxisTicksVisibility.get()) {
-			yPlotBottom = yXaxisTickTop;
-			plotHeight = yPlotTop - yPlotBottom;
-		}
-		
-		// get the y divisions now that we know the final plot height
-		Map<Float, String> yDivisionsFrequency = ChartUtils.getYdivisions125(plotHeight, minYfreq, maxYfreq);
-		Map<Float, String> yDivisionsRelativeFrequency = ChartUtils.getYdivisions125(plotHeight, minYrelFreq, maxYrelFreq);
-		
-		float xYaxisLeftTitleTextTop = 0;
-		float xYaxisLeftTitleTextBaseline = 0;
-		String yAxisLeftTitle = null;
-		float yYaxisLeftTitleTextLeft = 0;
-		float xYaxisRightTitleTextTop = 0;
-		float xYaxisRightTitleTextBaseline = 0;
-		String yAxisRightTitle = null;
-		float yYaxisRightTitleTextLeft = 0;
-		if(yAxisTitleVisibility.get()) {
-			// the left y-axis is for Relative Frequency unless only Frequency will be shown
-			xYaxisLeftTitleTextTop = xPlotLeft;
-			xYaxisLeftTitleTextBaseline = xYaxisLeftTitleTextTop + OpenGL.largeTextHeight;
-			yAxisLeftTitle = (yAxisScale.is(YAxisScale.RELATIVE_FREQUENCY) || yAxisScale.is(YAxisScale.BOTH)) ? "Relative Frequency" : "Frequency";
-			yYaxisLeftTitleTextLeft = yPlotBottom + (plotHeight / 2.0f) - (OpenGL.largeTextWidth(gl, yAxisLeftTitle) / 2.0f);
-			
-			xPlotLeft = xYaxisLeftTitleTextBaseline + Theme.tickTextPadding;
-			plotWidth = xPlotRight - xPlotLeft;
-			
-			if(xAxisTitleVisibility.get() && !legendVisibility.get())
-				xXaxisTitleTextLeft = xPlotLeft + (plotWidth  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			
-			// the right y-axis is always for Frequency
-			if(yAxisScale.is(YAxisScale.BOTH)) {
-				xYaxisRightTitleTextTop = xPlotRight;
-				xYaxisRightTitleTextBaseline = xYaxisRightTitleTextTop - OpenGL.largeTextHeight;
-				yAxisRightTitle = "Frequency";
-				yYaxisRightTitleTextLeft = yPlotTop - (plotHeight / 2.0f) + (OpenGL.largeTextWidth(gl, yAxisRightTitle) / 2.0f);
-				
-				xPlotRight = xYaxisRightTitleTextBaseline - Theme.tickTextPadding;
-				plotWidth = xPlotRight - xPlotLeft;
-				
-				if(xAxisTitleVisibility.get() && !legendVisibility.get())
-					xXaxisTitleTextLeft = xPlotLeft + (plotWidth  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			}
-		}
-		
-		float xYaxisLeftTickTextRight = 0;
-		float xYaxisLeftTickLeft = 0;
-		float xYaxisLeftTickRight = 0;
-		float xYaxisRightTickTextLeft = 0;
-		float xYaxisRightTickLeft = 0;
-		float xYaxisRightTickRight = 0;
-		if(yAxisTicksVisibility.get()) {
-			// the left y-axis is for Relative Frequency unless only Frequency will be shown
-			float maxTextWidth = 0;
-			for(String text : yAxisScale.is(YAxisScale.FREQUENCY) ? yDivisionsFrequency.values() : yDivisionsRelativeFrequency.values())
-				maxTextWidth = Math.max(maxTextWidth, OpenGL.smallTextWidth(gl, text));
-			
-			xYaxisLeftTickTextRight = xPlotLeft + maxTextWidth;
-			xYaxisLeftTickLeft = xYaxisLeftTickTextRight + Theme.tickTextPadding;
-			xYaxisLeftTickRight = xYaxisLeftTickLeft + Theme.tickLength;
-			
-			xPlotLeft = xYaxisLeftTickRight;
-			plotWidth = xPlotRight - xPlotLeft;
-			
-			if(xAxisTitleVisibility.get() && !legendVisibility.get())
-				xXaxisTitleTextLeft = xPlotLeft + (plotWidth  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			
-			// the right y-axis is always for Frequency
-			if(yAxisScale.is(YAxisScale.BOTH)) {
-				maxTextWidth = 0;
-				for(String text : yDivisionsFrequency.values())
-					maxTextWidth = Math.max(maxTextWidth, OpenGL.smallTextWidth(gl, text));
-				
-				xYaxisRightTickTextLeft = xPlotRight - maxTextWidth;
-				xYaxisRightTickRight = xYaxisRightTickTextLeft - Theme.tickTextPadding;
-				xYaxisRightTickLeft = xYaxisRightTickRight - Theme.tickLength;
-				
-				xPlotRight = xYaxisRightTickLeft;
-				plotWidth = xPlotRight - xPlotLeft;
-				
-				if(xAxisTitleVisibility.get() && !legendVisibility.get())
-					xXaxisTitleTextLeft = xPlotLeft + (plotWidth  / 2.0f) - (OpenGL.largeTextWidth(gl, xAxisTitle)  / 2.0f);
-			}
-		}
-		
-		// get the x divisions now that we know the final plot width
-		Map<Float, String> xDivisions = ChartUtils.getFloatXdivisions125(gl, plotWidth, minX, maxX);
-		
-		// stop if the plot is too small
-		if(plotWidth < 1 || plotHeight < 1)
-			return handler;
-		
-		// draw plot background
-		OpenGL.drawQuad2D(gl, Theme.plotBackgroundColor, xPlotLeft, yPlotBottom, xPlotRight, yPlotTop);
-		
-		// draw the x-axis scale
-		if(xAxisTicksVisibility.get()) {
-			OpenGL.buffer.rewind();
-			for(Float xValue : xDivisions.keySet()) {
-				float x = ((xValue - minX) / range * plotWidth) + xPlotLeft;
-				OpenGL.buffer.put(x); OpenGL.buffer.put(yPlotTop);    OpenGL.buffer.put(Theme.divisionLinesColor);
-				OpenGL.buffer.put(x); OpenGL.buffer.put(yPlotBottom); OpenGL.buffer.put(Theme.divisionLinesColor);
-				
-				OpenGL.buffer.put(x); OpenGL.buffer.put(yXaxisTickTop);    OpenGL.buffer.put(Theme.tickLinesColor);
-				OpenGL.buffer.put(x); OpenGL.buffer.put(yXaxisTickBottom); OpenGL.buffer.put(Theme.tickLinesColor);
-			}
-			OpenGL.buffer.rewind();
-			int vertexCount = xDivisions.keySet().size() * 4;
-			OpenGL.drawLinesXyrgba(gl, GL3.GL_LINES, OpenGL.buffer, vertexCount);
-			
-			for(Map.Entry<Float,String> entry : xDivisions.entrySet()) {
-				float x = ((entry.getKey() - minX) / range * plotWidth) + xPlotLeft - (OpenGL.smallTextWidth(gl, entry.getValue()) / 2.0f);
-				float y = yXaxisTickTextBaseline;
-				OpenGL.drawSmallText(gl, entry.getValue(), (int) x, (int) y, 0);
-			}
-		}
-		
-		// draw the y-axis scale
-		if(yAxisTicksVisibility.get()) {
-		
-			// draw right y-axis scale if showing both frequency and relative frequency
-			if(yAxisScale.is(YAxisScale.BOTH)) {
-				OpenGL.buffer.rewind();
-				for(Float entry : yDivisionsFrequency.keySet()) {
-					float y = (entry - minYfreq) / yFreqRange * plotHeight + yPlotBottom;
-					OpenGL.buffer.put(xPlotRight); OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.divisionLinesColor);
-					OpenGL.buffer.put(xPlotLeft);  OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.divisionLinesFadedColor);
-
-					OpenGL.buffer.put(xYaxisRightTickLeft);  OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.tickLinesColor);
-					OpenGL.buffer.put(xYaxisRightTickRight); OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.tickLinesColor);
-				}
-				OpenGL.buffer.rewind();
-				int vertexCount = yDivisionsFrequency.keySet().size() * 4;
-				OpenGL.drawLinesXyrgba(gl, GL3.GL_LINES, OpenGL.buffer, vertexCount);
-	
-				for(Map.Entry<Float,String> entry : yDivisionsFrequency.entrySet()) {
-					float x = xYaxisRightTickTextLeft;
-					float y = (entry.getKey() - minYfreq) / yFreqRange * plotHeight + yPlotBottom - (OpenGL.smallTextHeight / 2.0f);
-					OpenGL.drawSmallText(gl, entry.getValue(), (int) x, (int) y, 0);
-				}
-				
-			}
-			
-			// relative frequency is drawn on the left unless only frequency is to be drawn
-			if(yAxisScale.is(YAxisScale.FREQUENCY)) {
-				
-				OpenGL.buffer.rewind();
-				for(Float entry : yDivisionsFrequency.keySet()) {
-					float y = (entry - minYfreq) / yFreqRange * plotHeight + yPlotBottom;
-					OpenGL.buffer.put(xPlotLeft);  OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.divisionLinesColor);
-					OpenGL.buffer.put(xPlotRight); OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.divisionLinesColor);
-
-					OpenGL.buffer.put(xYaxisLeftTickLeft);  OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.tickLinesColor);
-					OpenGL.buffer.put(xYaxisLeftTickRight); OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.tickLinesColor);
-				}
-				OpenGL.buffer.rewind();
-				int vertexCount = yDivisionsFrequency.keySet().size() * 4;
-				OpenGL.drawLinesXyrgba(gl, GL3.GL_LINES, OpenGL.buffer, vertexCount);
-				
-				for(Map.Entry<Float,String> entry : yDivisionsFrequency.entrySet()) {
-					float x = xYaxisLeftTickTextRight - OpenGL.smallTextWidth(gl, entry.getValue());
-					float y = (entry.getKey() - minYfreq) / yFreqRange * plotHeight + yPlotBottom - (OpenGL.smallTextHeight / 2.0f);
-					OpenGL.drawSmallText(gl, entry.getValue(), (int) x, (int) y, 0);
-				}
-			
-			} else {
-				
-				OpenGL.buffer.rewind();
-				for(Float entry : yDivisionsRelativeFrequency.keySet()) {
-					float y = (entry - minYrelFreq) / yRelFreqRange * plotHeight + yPlotBottom;
-					OpenGL.buffer.put(xPlotLeft);  OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.divisionLinesColor);
-					OpenGL.buffer.put(xPlotRight); OpenGL.buffer.put(y); OpenGL.buffer.put(yAxisScale.is(YAxisScale.BOTH) ? Theme.divisionLinesFadedColor : Theme.divisionLinesColor);
-
-					OpenGL.buffer.put(xYaxisLeftTickLeft);  OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.tickLinesColor);
-					OpenGL.buffer.put(xYaxisLeftTickRight); OpenGL.buffer.put(y); OpenGL.buffer.put(Theme.tickLinesColor);
-				}
-				OpenGL.buffer.rewind();
-				int vertexCount = yDivisionsRelativeFrequency.keySet().size() * 4;
-				OpenGL.drawLinesXyrgba(gl, GL3.GL_LINES, OpenGL.buffer, vertexCount);
-				
-				for(Map.Entry<Float,String> entry : yDivisionsRelativeFrequency.entrySet()) {
-					float x = xYaxisLeftTickTextRight - OpenGL.smallTextWidth(gl, entry.getValue());
-					float y = (entry.getKey() - minYrelFreq) / yRelFreqRange * plotHeight + yPlotBottom - (OpenGL.smallTextHeight / 2.0f);
-					OpenGL.drawSmallText(gl, entry.getValue(), (int) x, (int) y, 0);
-				}
-				
-			}
-			
-		}
-		
-		// draw the legend, if space is available
-		if(legendVisibility.get() && datasetsCount > 0 && xLegendBorderRight < width - Theme.tilePadding) {
-			OpenGL.drawQuad2D(gl, Theme.legendBackgroundColor, xLegendBorderLeft, yLegendBorderBottom, xLegendBorderRight, yLegendBorderTop);
-			
-			for(int i = 0; i < datasetsCount; i++) {
-				Field d = datasets.getNormal(i);
-				if(mouseX >= legendMouseoverCoordinates[i][0] && mouseX <= legendMouseoverCoordinates[i][2] && mouseY >= legendMouseoverCoordinates[i][1] && mouseY <= legendMouseoverCoordinates[i][3]) {
-					OpenGL.drawQuadOutline2D(gl, Theme.tickLinesColor, legendMouseoverCoordinates[i][0], legendMouseoverCoordinates[i][1], legendMouseoverCoordinates[i][2], legendMouseoverCoordinates[i][3]);
-					handler = EventHandler.onPress(event -> ConfigureView.instance.forDataset(d));
-				}
-				OpenGL.drawQuad2D(gl, d.color.getGl(), legendBoxCoordinates[i][0], legendBoxCoordinates[i][1], legendBoxCoordinates[i][2], legendBoxCoordinates[i][3]);
-				OpenGL.drawMediumText(gl, d.name.get(), (int) xLegendNameLeft[i], (int) yLegendTextBaseline, 0);
-			}
-		}
-					
-		// draw the x-axis title, if space is available
-		if(xAxisTitleVisibility.get())
-			if((!legendVisibility.get() && xXaxisTitleTextLeft > xPlotLeft) || (legendVisibility.get() && xXaxisTitleTextLeft > xLegendBorderRight + Theme.legendTextPadding))
-				OpenGL.drawLargeText(gl, xAxisTitle, (int) xXaxisTitleTextLeft, (int) yXaxisTitleTextBasline, 0);
-		
-		// draw the left y-axis title, if space is available
-		if(yAxisTitleVisibility.get() && yYaxisLeftTitleTextLeft >= yPlotBottom)
-			OpenGL.drawLargeText(gl, yAxisLeftTitle, (int) xYaxisLeftTitleTextBaseline, (int) yYaxisLeftTitleTextLeft, 90);
-		
-		// draw the right y-axis title, if applicable, and if space is available
-		if(yAxisTitleVisibility.get() && yAxisScale.is(YAxisScale.BOTH) && yYaxisRightTitleTextLeft <= yPlotTop)
-			OpenGL.drawLargeText(gl, yAxisRightTitle, (int) xYaxisRightTitleTextBaseline, (int) yYaxisRightTitleTextLeft, -90);
-
-		// clip to the plot region
-		int[] chartScissorArgs = new int[4];
-		gl.glGetIntegerv(GL3.GL_SCISSOR_BOX, chartScissorArgs, 0);
-		gl.glScissor(chartScissorArgs[0] + (int) xPlotLeft, chartScissorArgs[1] + (int) yPlotBottom, (int) plotWidth, (int) plotHeight);
-		
-		// update the matrix and mouse so the plot region starts at (0,0)
-		// x = x + xPlotLeft;
-		// y = y + yPlotBottom;
-		float[] plotMatrix = Arrays.copyOf(chartMatrix, 16);
-		OpenGL.translateMatrix(plotMatrix, xPlotLeft, yPlotBottom, 0);
-		OpenGL.useMatrix(gl, plotMatrix);
-		mouseX -= xPlotLeft;
-		mouseY -= yPlotBottom;
-		
-		// draw the bins
-		if(sampleCount > 0) {
-			for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
-				binsAsTriangles[datasetN].rewind();
-				for(int binN = 0; binN < binsCount; binN++) {
-					
-					float min = minX + (binSize *  binN);      // inclusive
-					float max = minX + (binSize * (binN + 1)); // exclusive
-					float center = (max + min) / 2f;
-					
-					float xBarCenter = ((center - minX) / range * plotWidth);
-					float yBarTop = ((float) bins[datasetN][binN] - minYfreq) / yFreqRange * plotHeight;
-					float halfBarWidth = plotWidth / binsCount / 2f;
-					
-					float x1 = xBarCenter - halfBarWidth; // top-left
-					float y1 = yBarTop;
-					float x2 = xBarCenter - halfBarWidth; // bottom-left
-					float y2 = 0;
-					float x3 = xBarCenter + halfBarWidth; // bottom-right
-					float y3 = 0;
-					float x4 = xBarCenter + halfBarWidth; // top-right
-					float y4 = yBarTop;
-					binsAsTriangles[datasetN].put(x1).put(y1).put(x2).put(y2).put(x3).put(y3);
-					binsAsTriangles[datasetN].put(x3).put(y3).put(x4).put(y4).put(x1).put(y1);
-					
-				}
-				binsAsTriangles[datasetN].rewind();
-				OpenGL.drawTrianglesXY(gl, GL3.GL_TRIANGLES, datasets.getNormal(datasetN).color.getGl(), binsAsTriangles[datasetN], 6 * binsCount);
-			}
-		}
-		
-		// draw the tooltip if the mouse is in the plot region
-		if(sampleCount > 0 && SettingsView.instance.tooltipsVisibility.get() && mouseX >= 0 && mouseX <= plotWidth && mouseY >= 0 && mouseY <= plotHeight) {
-			int binN = (int) Math.floor((float) mouseX / plotWidth * binsCount);
-			if(binN > binsCount - 1)
-				binN = binsCount - 1;
-			float min = minX + (binSize *  binN);      // inclusive
-			float max = minX + (binSize * (binN + 1)); // exclusive
-			float xBarCenter = ((binSize *  binN) + (binSize * (binN + 1))) / 2f / range * plotWidth;
-			Tooltip tooltip = new Tooltip();
-			tooltip.addRow(ChartUtils.formattedNumber(min, 5) + " to " + ChartUtils.formattedNumber(max, 5) + " " + datasets.getNormal(0).unit.get());
-			for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
-				tooltip.addRow(datasets.getNormal(datasetN).color.getGl(),
-				               bins[datasetN][binN] + " samples (" + ChartUtils.formattedNumber((double) bins[datasetN][binN] / (double) sampleCount * 100f, 4) + "%)",
-				               (float) Math.max((int) (((float) bins[datasetN][binN] - minYfreq) / yFreqRange * plotHeight), 0));
-			}
-			tooltip.draw(gl, mouseX, mouseY, plotWidth, plotHeight, xBarCenter);
-		}
-
-		// stop clipping to the plot region
-		gl.glScissor(chartScissorArgs[0], chartScissorArgs[1], chartScissorArgs[2], chartScissorArgs[3]);
-		
-		// switch back to the chart matrix
-		OpenGL.useMatrix(gl, chartMatrix);
-		
-		// draw the plot border
-		OpenGL.drawQuadOutline2D(gl, Theme.plotOutlineColor, xPlotLeft, yPlotBottom, xPlotRight, yPlotTop);
-		
-		return handler;
+		// draw the plot
+		return new OpenGLPlot(chartMatrix, width, height, mouseX, mouseY)
+		           .withLegend(legendVisibility.get(), datasets)
+		           .withXaxis(xAxisStyle.get(), OpenGLPlot.AxisScale.LINEAR, xAxisMin, xAxisMax, xAxisTitle)
+		           .withYaxis(yAxisStyle.get(), OpenGLPlot.AxisScale.LINEAR, yAxisMin, yAxisMax, yAxisTitle)
+		           .withYaxisConvertedToPercentage(yAxisScale.is(YAxisScale.BOTH), sampleCount)
+		           .withPlotDrawer(plot -> {
+		                if(sampleCount > 0) {
+		                    for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
+		                        binsAsTriangles[datasetN].rewind();
+		                        for(int binN = 0; binN < binsCount; binN++) {
+		                            float min = xAxisMin + (binSize *  binN);      // inclusive
+		                            float max = xAxisMin + (binSize * (binN + 1)); // exclusive
+		                            float center = (max + min) / 2f;
+		                            
+		                            float value = yAxisScale.is(YAxisScale.PERCENTAGE) ? (float) bins[datasetN][binN] / (float) sampleCount * 100 :
+		                                          /* SAMPLE COUNT or BOTH */             (float) bins[datasetN][binN];
+		                            float xBarCenter = ((center - xAxisMin) / xAxisRange * plot.width());
+		                            float yBarTop = (value - yAxisMin) / yAxisRange * plot.height();
+		                            float halfBarWidth = plot.width() / binsCount / 2f;
+		                            
+		                            float x1 = xBarCenter - halfBarWidth; // top-left
+		                            float y1 = yBarTop;
+		                            float x2 = xBarCenter - halfBarWidth; // bottom-left
+		                            float y2 = 0;
+		                            float x3 = xBarCenter + halfBarWidth; // bottom-right
+		                            float y3 = 0;
+		                            float x4 = xBarCenter + halfBarWidth; // top-right
+		                            float y4 = yBarTop;
+		                            binsAsTriangles[datasetN].put(x1).put(y1).put(x2).put(y2).put(x3).put(y3);
+		                            binsAsTriangles[datasetN].put(x3).put(y3).put(x4).put(y4).put(x1).put(y1);
+		                        }
+		                        binsAsTriangles[datasetN].rewind();
+		                        OpenGL.drawTrianglesXY(gl, GL3.GL_TRIANGLES, datasets.getNormal(datasetN).color.getGl(), binsAsTriangles[datasetN], 6 * binsCount);
+		                    }
+		                }
+		                return null;
+		           })
+		           .withTooltipDrawer(plot -> {
+		                if(sampleCount > 0) {
+		                    int binN = (int) Math.floor((float) plot.mouseX() / plot.width() * binsCount);
+		                    if(binN > binsCount - 1)
+		                        binN = binsCount - 1;
+		                    float min = xAxisMin + (binSize *  binN);      // inclusive
+		                    float max = xAxisMin + (binSize * (binN + 1)); // exclusive
+		                    float xAnchor = ((binSize *  binN) + (binSize * (binN + 1))) / 2f / xAxisRange * plot.width();
+		                    Tooltip tooltip = new Tooltip(Theme.getFloat(min, "", false) + " to " + Theme.getFloat(max, datasets.getNormal(0).unit.get(), false), xAnchor, -1);
+		                    for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
+		                        float value = yAxisScale.is(YAxisScale.PERCENTAGE) ? (float) bins[datasetN][binN] / (float) sampleCount * 100 :
+		                                      /* SAMPLE COUNT or BOTH */             (float) bins[datasetN][binN];
+		                        int pixelY = (int) ((value - yAxisMin) / yAxisRange * plot.height());
+		                        tooltip.addRow(datasets.getNormal(datasetN).color.getGl(),
+		                                       bins[datasetN][binN] + " samples (" + Theme.getFloatOrInteger((float) bins[datasetN][binN] / (float) sampleCount * 100f, "%)", true),
+		                                       Math.clamp(pixelY, 0, plot.height()));
+		                    }
+		                    tooltip.draw(gl, plot.mouseX(), plot.mouseY(), plot.width(), plot.height());
+		                }
+		                return null;
+		           })
+		           .draw(gl);
 		
 	}
 

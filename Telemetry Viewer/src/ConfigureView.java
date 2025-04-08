@@ -187,7 +187,7 @@ public class ConfigureView extends JPanel {
 		widgetsPanel.setVisible(true);
 		
 		// important: redefine any onEnter handlers because they may have been written assuming the data structure is still being defined!
-		widgetsPanel.add(Theme.newWidgetsPanel("Dataset")
+		widgetsPanel.add(Theme.newWidgetsPanel(dataset.connection.name.is("Demo Mode") ? "Dataset (Not Editable in Demo Mode)" : "Dataset")
 		                      .with(dataset.name.onEnter(event -> close()), "sizegroup 1")
 		                      .with(dataset.color,                          "sizegroup 1")
 		                      .with(dataset.unit.onEnter(event -> close()), "sizegroup 1")

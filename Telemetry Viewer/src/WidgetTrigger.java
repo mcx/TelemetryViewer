@@ -131,12 +131,17 @@ public class WidgetTrigger implements Widget {
 		                level.setEnabled(triggerEnabled);
 		                hysteresis.setEnabled(triggerEnabled);
 		                prePostRatio.setEnabled(triggerEnabled);
-		                eventHandler.accept(triggerEnabled);
+		                if(eventHandler != null)
+		                	eventHandler.accept(triggerEnabled);
 		                return true;
 		            });
 		
 		widgets = List.of(mode, affects, type, channel, level, hysteresis, prePostRatio);
 		
+	}
+	
+	public boolean isEnabled() {
+		return !mode.is(Mode.DISABLED);
 	}
 	
 	/**

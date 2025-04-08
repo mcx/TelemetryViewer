@@ -153,6 +153,8 @@ public class WidgetToggleButton<T> implements Widget {
 						button.getParent().revalidate();
 						button.getParent().repaint();
 					}
+				} else {
+					selectedValue = value;
 				}
 			});
 			group.add(button);

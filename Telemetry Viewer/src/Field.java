@@ -43,7 +43,7 @@ public class Field implements Comparable<Field> {
 	final ConnectionTelemetry connection;
 	StorageFloats floats;
 	
-	float conversionFactor;
+	float conversionFactor = 1;
 	boolean isBitfield = false;
 	final List<Bitfield> bitfields = new ArrayList<Bitfield>();
 	
@@ -190,7 +190,7 @@ public class Field implements Comparable<Field> {
 		                                })
 		                                .onEnter(event -> addButton.doClick());
 		
-		scalingFactorB = WidgetTextfield.ofFloat(-Float.MAX_VALUE, Float.MAX_VALUE, 1)
+		scalingFactorB = WidgetTextfield.ofFloat(-Float.MAX_VALUE, Float.MAX_VALUE, conversionFactor)
 		                                .setExportLabel("conversion factor b")
 		                                .setFixedWidth(8)
 		                                .onChange((newNumber, oldNumber) -> {
@@ -447,24 +447,6 @@ public class Field implements Comparable<Field> {
 	}
 	
 	/**
-	 * Gets one sample, as a String.
-	 * 
-	 * @param sampleNumber    Sample number to obtain.
-	 * @param cache           Place to cache samples.
-	 * @return                The sample, formatted as a String.
-	 */
-	public String getSampleAsString(int sampleNumber, StorageFloats.Cache cache) {
-		
-		float value = getSample(sampleNumber, cache);
-		
-		if(isBitfield)
-			return "0b" + String.format("%8s", Integer.toBinaryString((int) value)).replace(' ', '0');
-		else
-			return ChartUtils.formattedNumber(value, 5) + " " + unit.get();
-		
-	}
-	
-	/**
 	 * Gets a sequence of samples, as a FloatBuffer.
 	 * 
 	 * @param firstSampleNumber    First sample number to obtain, inclusive.
@@ -655,8 +637,7 @@ public class Field implements Comparable<Field> {
 						if(edgeTooltips.containsKey(sampleNumber)) {
 							edgeTooltips.get(sampleNumber).addRow(states[stateN].glColor, states[stateN].name);
 						} else {
-							edgeTooltips.put(sampleNumber, new PositionedChart.Tooltip(sampleNumber, timestamp)
-							                                   .addRow(sampleCountMode ? "Sample " + sampleNumber : "Sample " + sampleNumber + "\n" + SettingsView.formatTimestampToMilliseconds(timestamp))
+							edgeTooltips.put(sampleNumber, new PositionedChart.Tooltip(sampleNumber, timestamp, -1, -1)
 							                                   .addRow(states[stateN].glColor, states[stateN].name));
 						}
 					}
@@ -695,7 +676,7 @@ public class Field implements Comparable<Field> {
 			
 			String label;                   // Example: "Bit 7 = 1" (shown in the BitfieldPanel.Visualization)
 			int value;                      // Example: "1"
-			String name;                    // Example: "Some Fault Occurred" (shown on markers on the charts)
+			String name;                    // Example: "Some Fault Occurred" (shown on chart tooltips)
 			Color color;                    // shown in the PacketBinary.BitfieldPanel
 			float[] glColor;                // shown on markers on the charts
 			ConnectionTelemetry connection; // owner of this State
