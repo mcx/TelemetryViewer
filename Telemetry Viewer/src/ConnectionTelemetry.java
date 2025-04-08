@@ -250,15 +250,15 @@ public abstract class ConnectionTelemetry extends Connection {
 		                   .setExportLabel("transmit data")
 		                   .onEnter(event -> transmitTransmitButton.doClick())
 		                   .onChange((newText, oldText) -> {
-		                        boolean haveBytes = transmitData.getAsBytes(transmitAppendCR.get(), transmitAppendLF.get()).length > 0;
-		                        transmitRepeatedly.setEnabled(haveBytes);
-		                        transmitRepeatedlyMilliseconds.setEnabled(haveBytes);
-		                        transmitSaveButton.setEnabled(haveBytes);
-		                        transmitTransmitButton.setEnabled(haveBytes);
+		                        boolean haveData = transmitAppendCR.get() || transmitAppendLF.get() || !newText.isEmpty();
+		                        transmitRepeatedly.setEnabled(haveData);
+		                        transmitRepeatedlyMilliseconds.setEnabled(haveData);
+		                        transmitSaveButton.setEnabled(haveData);
+		                        transmitTransmitButton.setEnabled(haveData);
 		                        return true;
 		                   })
 		                   .onIncompleteChange(text -> {
-		                       boolean haveData = transmitAppendCR.get() || transmitAppendLF.get() || transmitData.hasText();
+		                       boolean haveData = transmitAppendCR.get() || transmitAppendLF.get() || !text.isEmpty();
 		                       transmitRepeatedly.setEnabled(haveData);
 		                       transmitRepeatedlyMilliseconds.setEnabled(haveData);
 		                       transmitSaveButton.setEnabled(haveData);
@@ -269,21 +269,21 @@ public abstract class ConnectionTelemetry extends Connection {
 		transmitAppendCR = new WidgetCheckbox("CR", false)
 		                       .setExportLabel("transmit appends cr")
 		                       .onChange(isAppened -> {
-		                            boolean haveBytes = transmitData.getAsBytes(transmitAppendCR.get(), transmitAppendLF.get()).length > 0;
-		                            transmitRepeatedly.setEnabled(haveBytes);
-		                            transmitRepeatedlyMilliseconds.setEnabled(haveBytes);
-		                            transmitSaveButton.setEnabled(haveBytes);
-		                            transmitTransmitButton.setEnabled(haveBytes);
+		                            boolean haveData = transmitAppendCR.get() || transmitAppendLF.get() || !transmitData.get().isEmpty();
+		                            transmitRepeatedly.setEnabled(haveData);
+		                            transmitRepeatedlyMilliseconds.setEnabled(haveData);
+		                            transmitSaveButton.setEnabled(haveData);
+		                            transmitTransmitButton.setEnabled(haveData);
 		                       });
 		
 		transmitAppendLF = new WidgetCheckbox("LF", false)
 		                       .setExportLabel("transmit appends lf")
 		                       .onChange(isAppened -> {
-		                            boolean haveBytes = transmitData.getAsBytes(transmitAppendCR.get(), transmitAppendLF.get()).length > 0;
-		                            transmitRepeatedly.setEnabled(haveBytes);
-		                            transmitRepeatedlyMilliseconds.setEnabled(haveBytes);
-		                            transmitSaveButton.setEnabled(haveBytes);
-		                            transmitTransmitButton.setEnabled(haveBytes);
+		                            boolean haveData = transmitAppendCR.get() || transmitAppendLF.get() || !transmitData.get().isEmpty();
+		                            transmitRepeatedly.setEnabled(haveData);
+		                            transmitRepeatedlyMilliseconds.setEnabled(haveData);
+		                            transmitSaveButton.setEnabled(haveData);
+		                            transmitTransmitButton.setEnabled(haveData);
 		                       });
 		
 		// which data format the user will provide
@@ -1880,7 +1880,7 @@ public abstract class ConnectionTelemetry extends Connection {
 			
 		} else {
 			
-			boolean haveData = !transmitData.get().isEmpty() || transmitAppendCR.get() || transmitAppendLF.get();
+			boolean haveData = transmitAppendCR.get() || transmitAppendLF.get() || !transmitData.get().isEmpty();
 			
 			// show all of the widgets and saved packets
 			JPanel gui = new JPanel(new MigLayout("hidemode 3, fillx, wrap 2, insets " + Theme.padding + ", gap " + Theme.padding));

@@ -79,6 +79,7 @@ public class WidgetTextfield<T> implements Widget {
 	private boolean changeHandlerCalled = false;
 	private BiPredicate<T,T> changeHandler = null; // (newValue, oldValue)
 	private Consumer<String> incompleteChangeHandler = null;
+	private boolean maskIncompleteChangeHandler = false;
 	private ActionListener enterHandler = null;
 	
 	private boolean mouseButtonDown = false;
@@ -388,8 +389,12 @@ public class WidgetTextfield<T> implements Widget {
 				
 				// otherwise we are only replacing part of the userText region
 				// in that case, convert this replace() into a possible remove() and a possible insert()
-				if(length > 0)
+				// important: disable notifyIncompleteHandler() during this remove() because it would report an incomplete state change
+				if(length > 0) {
+					maskIncompleteChangeHandler = true;
 					remove(fb, offset, length);
+					maskIncompleteChangeHandler = false;
+				}
 				if(string.length() > 0)
 					insertString(fb, offset, string, attr);
 				
@@ -777,6 +782,9 @@ public class WidgetTextfield<T> implements Widget {
 	}
 	
 	private void notifyIncompleteHandler() {
+		
+		if(maskIncompleteChangeHandler)
+			return;
 		
 		if(incompleteChangeHandler == null)
 			return;
