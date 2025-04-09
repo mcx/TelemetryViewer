@@ -535,8 +535,10 @@ public class OpenGLChartsView extends JPanel {
 						triggerDetails = new WidgetTrigger.Result(false, null, -1, -1, -1, -1, 0, endTimestamp);
 					} else {
 						int endSampleNumber = -1;
-						if(globalTrigger.triggerChannel != null && endSampleNumbers.containsKey(globalTrigger.triggerChannel.connection))
-							endSampleNumber = endSampleNumbers.get(globalTrigger.triggerChannel.connection);
+						if(globalTrigger.normalDataset != null && endSampleNumbers.containsKey(globalTrigger.normalDataset.connection))
+							endSampleNumber = endSampleNumbers.get(globalTrigger.normalDataset.connection);
+						else if(globalTrigger.bitfieldState != null && endSampleNumbers.containsKey(globalTrigger.bitfieldState.connection))
+							endSampleNumber = endSampleNumbers.get(globalTrigger.bitfieldState.connection);
 						
 						triggerDetails = globalTrigger.checkForTrigger(endSampleNumber, endTimestamp, zoomLevel);
 						

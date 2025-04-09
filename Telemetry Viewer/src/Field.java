@@ -235,6 +235,8 @@ public class Field implements Comparable<Field> {
 				                                                              () -> {
 				                                                            	  insert();
 				                                                            	  connection.scrollableRegion.setBorder(oldBorder);
+				                                                            	  name.setEnabled(true);
+				                                                            	  color.setEnabled(true);
 				                                                              }));
 				
 				return;
@@ -697,8 +699,16 @@ public class Field implements Comparable<Field> {
 				bitfield = Bitfield.this;
 			}
 			
+			/**
+			 * @return    A user-friendly String describing this Bitfield State.
+			 *            This will be shown to the user by WidgetDatasets, and will also be used when exporting/importing.
+			 *            Therefore this String *must* uniquely identify this Bitfield State among *every* Bitfield State of *every* ConnectionTelemetry!
+			 */
 			@Override public String toString() {
-				return "connection " + ConnectionsController.allConnections.indexOf(dataset.connection) + " location " + Field.this.location.get() + " [" + Bitfield.this.MSBit + ":" + Bitfield.this.LSBit + "] = " + value;
+				
+				boolean oneConnection = ConnectionsController.telemetryConnections.size() == 1;
+				return oneConnection ? name : "[" + connection.toString() + "] " + name;
+				
 			}
 			
 			/**
@@ -971,8 +981,21 @@ public class Field implements Comparable<Field> {
 					                                                       .setPrefix("Name")
 					                                                       .setExportLabel("bitfield state name")
 					                                                       .onChange((newName, oldName) -> {
-					                                                           state.name = newName;
-					                                                           return true;
+					                                                           boolean nameAlreadyUsed = connection.getDatasetsList()
+					                                                                                               .stream()
+					                                                                                               .flatMap(dataset -> {
+					                                                                                                    if(!dataset.isBitfield)
+					                                                                                                        return Stream.of(dataset.name.get());
+					                                                                                                    else
+					                                                                                                        return dataset.bitfields.stream().flatMap(b -> Stream.of(b.states)).map(s -> s.name);
+					                                                                                               })
+					                                                                                               .anyMatch(name -> name.equals(newName) && !newName.isEmpty());
+					                                                           if(nameAlreadyUsed) {
+					                                                               return false;
+					                                                           } else {
+					                                                               state.name = newName;
+					                                                               return true;
+					                                                           }
 					                                                       });
 					nameTextfield.onIncompleteChange(incompleteName -> {
 						if(incompleteName.contains(","))

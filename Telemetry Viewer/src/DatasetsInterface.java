@@ -699,9 +699,60 @@ public class DatasetsInterface {
 	}
 	
 	/**
+	 * A Widget that lets the user select one dataset or one bitfield state.
+	 */
+	public WidgetDatasets getDatasetOrStateCombobox(Consumer<Field> datasetHandler, Consumer<Field.Bitfield.State> stateHandler) {
+		List<String> options = ConnectionsController.telemetryConnections
+		                                            .stream()
+		                                            .flatMap(connection -> connection.getDatasetsList().stream())
+		                                            .flatMap(dataset -> {
+		                                                if(!dataset.isBitfield)
+		                                                    return Stream.of(dataset.toString());
+		                                                else
+		                                                    return dataset.bitfields.stream().flatMap(bitfield -> Stream.of(bitfield.states)).map(state -> state.toString());
+		                                            })
+		                                            .toList();
+		String defaultOption = options.isEmpty() ? null : options.getFirst();
+		
+		WidgetDatasets w = new WidgetDatasets();
+		w.triggerChannelCombobox = new WidgetCombobox<String>("Channel", options, defaultOption)
+		                               .setExportLabel("trigger channel")
+		                               .onChange((newChannelName, oldChannelName) -> {
+		                                    if(newChannelName != null) {
+		                                        var dataset = ConnectionsController.telemetryConnections
+		                                                                           .stream()
+		                                                                           .flatMap(connection -> connection.getDatasetsList().stream())
+		                                                                           .filter(d -> !d.isBitfield)
+		                                                                           .filter(d -> d.toString().equals(newChannelName))
+		                                                                           .findFirst().orElse(null);
+		                                        var state   = ConnectionsController.telemetryConnections
+		                                                                           .stream()
+		                                                                           .flatMap(connection -> connection.getDatasetsList().stream())
+		                                                                           .filter(d -> d.isBitfield)
+		                                                                           .flatMap(d -> d.bitfields.stream().flatMap(b -> Stream.of(b.states)))
+		                                                                           .filter(s -> s.toString().equals(newChannelName))
+		                                                                           .findFirst().orElse(null);
+		                                        if(dataset != null) {
+		                                            normalDatasets.clear();
+		                                            normalDatasets.add(dataset);
+		                                            flushCaches();
+		                                            if(datasetHandler != null)
+		                                                datasetHandler.accept(dataset);
+		                                        } else if(state != null) {
+		                                            edgeStates.clear();
+		                                            edgeStates.add(state);
+		                                            flushCaches();
+		                                            if(stateHandler != null)
+		                                                stateHandler.accept(state);
+		                                        }
+		                                    }
+		                                    return true;
+		                                });
+		return w;
+	}
+	
+	/**
 	 * A widget that allows the user to select a fixed number of normal datasets (but not bitfields.)
-	 * 
-	 * @return
 	 */
 	public WidgetDatasets getComboboxesWidget(List<String> labels, Consumer<List<Field>> eventHandler) {
 		List<Field> fields = ConnectionsController.telemetryConnections.stream()
@@ -753,6 +804,7 @@ public class DatasetsInterface {
 		public  WidgetToggleButton<DurationUnit>               durationUnit;
 
 		public List<WidgetCombobox<Field>> comboboxes = new ArrayList<WidgetCombobox<Field>>();
+		public WidgetCombobox<String> triggerChannelCombobox = null;
 		private boolean isEnabled = true;
 		private boolean isVisible = true;
 		
@@ -762,21 +814,36 @@ public class DatasetsInterface {
 		 */
 		private void createAndUpdateWidgets() {
 			
-			List<Field>                existingDatasets  = ConnectionsController.telemetryConnections.stream().flatMap(connection -> connection.getDatasetsList().stream()).filter(field -> !field.isBitfield).toList();
-			List<Field>                existingBitfields = ConnectionsController.telemetryConnections.stream().flatMap(connection -> connection.getDatasetsList().stream()).filter(field -> field.isBitfield).toList();
-			List<Field.Bitfield.State> existingStates    = ConnectionsController.telemetryConnections.stream().flatMap(connection -> connection.getDatasetsList().stream()).filter(field -> field.isBitfield).flatMap(field -> field.bitfields.stream()).flatMap(bitfield -> Stream.of(bitfield.states)).toList();
+			List<Field>                currentDatasets  = ConnectionsController.telemetryConnections.stream().flatMap(connection -> connection.getDatasetsList().stream()).filter(field -> !field.isBitfield).toList();
+			List<Field>                currentBitfields = ConnectionsController.telemetryConnections.stream().flatMap(connection -> connection.getDatasetsList().stream()).filter(field -> field.isBitfield).toList();
+			List<Field.Bitfield.State> currentStates    = ConnectionsController.telemetryConnections.stream().flatMap(connection -> connection.getDatasetsList().stream()).filter(field -> field.isBitfield).flatMap(field -> field.bitfields.stream()).flatMap(bitfield -> Stream.of(bitfield.states)).filter(state -> !state.name.isEmpty()).toList();
 			
-			if(!comboboxes.isEmpty()) {
+			if(triggerChannelCombobox != null) {
+				// trigger channel combobox
+				List<String> currentOptions = ConnectionsController.telemetryConnections
+				                                                   .stream()
+				                                                   .flatMap(connection -> connection.getDatasetsList().stream())
+				                                                   .flatMap(dataset -> {
+				                                                       if(!dataset.isBitfield)
+				                                                           return Stream.of(dataset.toString());
+				                                                       else
+				                                                           return dataset.bitfields.stream().flatMap(bitfield -> Stream.of(bitfield.states)).map(state -> state.toString());
+				                                                   })
+				                                                   .toList();
+				String selectedChannel = triggerChannelCombobox.get();
+				triggerChannelCombobox.resetValues(currentOptions, selectedChannel);
+				triggerChannelCombobox.setEnabled(currentOptions.isEmpty() ? false : isEnabled);
+			} else if(!comboboxes.isEmpty()) {
 				// dataset comboboxes
 				comboboxes.forEach(combobox -> {
 					Field selectedField = combobox.get();
-					combobox.resetValues(existingDatasets, selectedField);
-					combobox.setEnabled(existingDatasets.isEmpty() ? false : isEnabled);
+					combobox.resetValues(currentDatasets, selectedField);
+					combobox.setEnabled(currentDatasets.isEmpty() ? false : isEnabled);
 				});
 			} else if(datasetsHandler != null) {
 				// dataset checkboxes
-				datasets.entrySet().removeIf(entry -> !existingDatasets.contains(entry.getKey()));
-				existingDatasets.forEach(field -> {
+				datasets.entrySet().removeIf(entry -> !currentDatasets.contains(entry.getKey()));
+				currentDatasets.forEach(field -> {
 				    if(datasets.containsKey(field))
 				        datasets.get(field).setText(field.toString());
 				    else
@@ -796,9 +863,9 @@ public class DatasetsInterface {
 			
 			// bitfield edges and levels
 			if(edgesHandler != null && levelsHandler != null) {
-				edges.removeIf(button -> !existingBitfields.contains(button.get().dataset));
-				levels.removeIf(button -> !existingBitfields.contains(button.get().dataset));
-				existingStates.forEach(state -> {
+				edges.removeIf(button -> !currentBitfields.contains(button.get().dataset));
+				levels.removeIf(button -> !currentBitfields.contains(button.get().dataset));
+				currentStates.forEach(state -> {
 				    if(edges.stream().noneMatch(button -> button.get() == state))
 				        edges.add(new WidgetToggleButton<Field.Bitfield.State>(false, "Show as tooltip", null, state, isSelected -> {
 				                          if(isSelected)
@@ -837,6 +904,8 @@ public class DatasetsInterface {
 			
 			createAndUpdateWidgets();
 			
+			if(triggerChannelCombobox != null)
+				triggerChannelCombobox.appendTo(panel, "");
 			comboboxes.forEach(combobox -> combobox.appendTo(panel, ""));
 			datasets.values().forEach(checkbox -> checkbox.appendTo(panel, ""));
 			for(int i = 0; i < edges.size(); i++) {
@@ -854,6 +923,8 @@ public class DatasetsInterface {
 			
 			this.isVisible = isVisible;
 			
+			if(triggerChannelCombobox != null)
+				triggerChannelCombobox.setVisible(isVisible);
 			comboboxes.forEach(combobox -> combobox.setVisible(isVisible));
 			datasets.values().forEach(checkbox -> checkbox.setVisible(isVisible));
 			edges.forEach(button -> button.setVisible(isVisible));
@@ -876,6 +947,8 @@ public class DatasetsInterface {
 		
 		public void setEnabled(boolean isEnabled) {
 			this.isEnabled = isEnabled;
+			if(triggerChannelCombobox != null)
+				triggerChannelCombobox.setEnabled(isEnabled);
 			comboboxes.forEach(combobox -> combobox.setEnabled(isEnabled));
 		}
 
@@ -896,6 +969,11 @@ public class DatasetsInterface {
 		}
 		
 		@Override public void importFrom(ConnectionsController.QueueOfLines lines) throws AssertionError {
+			
+			if(triggerChannelCombobox != null) {
+				triggerChannelCombobox.importFrom(lines);
+				return;
+			}
 			
 			List<Field> fields = ConnectionsController.telemetryConnections.stream().flatMap(connection -> connection.getDatasetsList().stream()).toList();
 			
@@ -941,6 +1019,11 @@ public class DatasetsInterface {
 		}
 		
 		@Override public void exportTo(PrintWriter file) {
+			
+			if(triggerChannelCombobox != null) {
+				triggerChannelCombobox.exportTo(file);
+				return;
+			}
 			
 			if(!comboboxes.isEmpty()) {
 				file.println("\t" + "datasets = " + comboboxes.stream()

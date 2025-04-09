@@ -534,8 +534,8 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		                    int triggeredSampleNumber = point.triggeredSampleNumber();
 		                    float xTriggerPoint = triggeredSampleNumber >= 0 ? getPixelXforSampleNumber(triggeredSampleNumber, plot.width(), plotMinX, plotDomain) : 0;
 		                    
-		                    // trigger level marker
-		                    if(yTriggerLevel >= 0 && yTriggerLevel <= plot.height()) {
+		                    // trigger level marker is only drawn if the trigger channel is a normal dataset
+		                    if(yTriggerLevel >= 0 && yTriggerLevel <= plot.height() && trigger.normalDataset != null) {
 		                        if(plot.mouseX() >= 0 && plot.mouseX() <= markerLength*1.5 && plot.mouseY() >= yTriggerLevel - markerThickness*1.5 && plot.mouseY() <= yTriggerLevel + markerThickness*1.5) {
 		                            mouseOverTriggerMarkers = true;
 		                            handler = EventHandler.onPressOrDrag(dragStarted -> trigger.setPaused(true),
@@ -564,7 +564,7 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		                                handler = EventHandler.onPressOrDrag(dragStarted -> trigger.setPaused(true),
 		                                                                     newLocation -> {
 		                                                                         float newPrePostRatio = Math.clamp((newLocation.x - plot.xLeft()) / plot.width(), 0, 1);
-		                                                                         trigger.prePostRatio.set(Math.round(newPrePostRatio * 100));
+		                                                                         trigger.prePostRatio.set(Math.round(newPrePostRatio * 10000));
 		                                                                     },
 		                                                                     dragEnded -> trigger.setPaused(false),
 		                                                                     this,
@@ -580,15 +580,24 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		                        }
 		                    }
 		                    
-		                    // draw lines to the trigger level and trigger point when the user is interacting with the markers
 		                    if(mouseOverTriggerMarkers || trigger.isPaused()) {
-		                        OpenGL.buffer.rewind();
-		                        OpenGL.buffer.put(0);              OpenGL.buffer.put(yTriggerLevel);  OpenGL.buffer.put(Theme.tickLinesColor);
-		                        OpenGL.buffer.put(xTriggerPoint);  OpenGL.buffer.put(yTriggerLevel);  OpenGL.buffer.put(Theme.tickLinesColor, 0, 3);  OpenGL.buffer.put(0.2f);
-		                        OpenGL.buffer.put(xTriggerPoint);  OpenGL.buffer.put(plot.height());  OpenGL.buffer.put(Theme.tickLinesColor);
-		                        OpenGL.buffer.put(xTriggerPoint);  OpenGL.buffer.put(yTriggerLevel);  OpenGL.buffer.put(Theme.tickLinesColor, 0, 3);  OpenGL.buffer.put(0.2f);
-		                        OpenGL.buffer.rewind();
-		                        OpenGL.drawLinesXyrgba(gl, GL3.GL_LINES, OpenGL.buffer, 4);
+		                    	if(trigger.normalDataset != null) {
+		                    		// draw lines to the trigger level and trigger point when the user is interacting with the markers
+			                        OpenGL.buffer.rewind();
+			                        OpenGL.buffer.put(0);              OpenGL.buffer.put(yTriggerLevel);  OpenGL.buffer.put(Theme.tickLinesColor);
+			                        OpenGL.buffer.put(xTriggerPoint);  OpenGL.buffer.put(yTriggerLevel);  OpenGL.buffer.put(Theme.tickLinesColor, 0, 3);  OpenGL.buffer.put(0.2f);
+			                        OpenGL.buffer.put(xTriggerPoint);  OpenGL.buffer.put(plot.height());  OpenGL.buffer.put(Theme.tickLinesColor);
+			                        OpenGL.buffer.put(xTriggerPoint);  OpenGL.buffer.put(yTriggerLevel);  OpenGL.buffer.put(Theme.tickLinesColor, 0, 3);  OpenGL.buffer.put(0.2f);
+			                        OpenGL.buffer.rewind();
+			                        OpenGL.drawLinesXyrgba(gl, GL3.GL_LINES, OpenGL.buffer, 4);
+		                    	} else {
+		                    		// draw a line to the trigger point when the user is interacting with the marker
+			                        OpenGL.buffer.rewind();
+			                        OpenGL.buffer.put(xTriggerPoint);  OpenGL.buffer.put(plot.height());  OpenGL.buffer.put(Theme.tickLinesColor);
+			                        OpenGL.buffer.put(xTriggerPoint);  OpenGL.buffer.put(0);              OpenGL.buffer.put(Theme.tickLinesColor);
+			                        OpenGL.buffer.rewind();
+			                        OpenGL.drawLinesXyrgba(gl, GL3.GL_LINES, OpenGL.buffer, 2);
+		                    	}
 		                    }
 		                    
 		                }

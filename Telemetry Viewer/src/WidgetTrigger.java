@@ -36,7 +36,8 @@ public class WidgetTrigger implements Widget {
 	final private List<Widget> widgets;
 	
 	private boolean triggeringPaused = false;
-	public Field triggerChannel = null;
+	public Field normalDataset = null;
+	public Field.Bitfield.State bitfieldState = null;
 	private boolean userSpecifiedTheChannel = false;
 	final private DatasetsInterface datasets = new DatasetsInterface(); // must use our own interface, because the trigger channel might not be displayed on the chart
 	final private PositionedChart chart;
@@ -98,21 +99,32 @@ public class WidgetTrigger implements Widget {
 		                                          return true;
 		                                      });
 		
-		channel = datasets.getComboboxesWidget(List.of("Channel"),
-		                                       newDatasets -> {
-		                                           if(newDatasets.isEmpty()) // no telemetry connections
-		                                               return;
-		                                           triggerChannel = newDatasets.get(0);
-		                                           userSpecifiedTheChannel = true;
-		                                           resetTrigger();
-		                                           level.setSuffix(datasets.getNormal(0).unit.get());
-		                                           hysteresis.setSuffix(datasets.getNormal(0).unit.get());
-		                                       });
+		channel = datasets.getDatasetOrStateCombobox(newDataset -> {
+		                                                 normalDataset = newDataset;
+		                                                 bitfieldState = null;
+		                                                 userSpecifiedTheChannel = true;
+		                                                 resetTrigger();
+		                                                 level.setSuffix(normalDataset.unit.get());
+		                                                 level.setEnabled(true);
+		                                                 hysteresis.setSuffix(normalDataset.unit.get());
+		                                                 hysteresis.setEnabled(true);
+		                                             },
+		                                             newState -> {
+		                                                 normalDataset = null;
+		                                                 bitfieldState = newState;
+		                                                 userSpecifiedTheChannel = true;
+		                                                 resetTrigger();
+		                                                 SwingUtilities.invokeLater(() -> { // invokeLater so importing can finish before disabling
+		                                                     level.disableWithMessage(" -- ");
+		                                                     hysteresis.disableWithMessage(" -- ");
+		                                                 });
+		                                                 
+		                                             });
 		
 		// the event handler above will get called automatically, so reset userSpecifiedTheChannel to false
 		SwingUtilities.invokeLater(() -> userSpecifiedTheChannel = false);
 		
-		prePostRatio = new WidgetSlider("Pre/Post Ratio", 0, 100, 20)
+		prePostRatio = new WidgetSlider("Pre/Post Ratio", 0, 10000, 2000)
 		                   .setExportLabel("trigger pre/post ratio")
 		                   .onChange(dragStarted -> setPaused(true),
 		                             null,
@@ -121,18 +133,23 @@ public class WidgetTrigger implements Widget {
 		mode = new WidgetToggleButton<Mode>("", Mode.values(), Mode.DISABLED)
 		           .setExportLabel("trigger mode")
 		           .onChange((newMode, oldMode) -> {
-		                if(newMode != Mode.DISABLED && triggerChannel == null)
+		                boolean triggerChannelExists = normalDataset != null || bitfieldState != null;
+		                boolean enabled = newMode != Mode.DISABLED;
+		                if(enabled && !triggerChannelExists)
 		                    return false;
 		                resetTrigger();
-		                boolean triggerEnabled = newMode != Mode.DISABLED && triggerChannel != null;
-		                affects.setEnabled(triggerEnabled);
-		                type.setEnabled(triggerEnabled);
-		                channel.setEnabled(triggerEnabled);
-		                level.setEnabled(triggerEnabled);
-		                hysteresis.setEnabled(triggerEnabled);
-		                prePostRatio.setEnabled(triggerEnabled);
+		                affects.setEnabled(enabled && triggerChannelExists);
+		                type.setEnabled(enabled && triggerChannelExists);
+		                channel.setEnabled(enabled && triggerChannelExists);
+		                level.setEnabled(enabled && normalDataset != null);
+		                hysteresis.setEnabled(enabled && normalDataset != null);
+		                if(bitfieldState != null) {
+		                    level.disableWithMessage(" -- ");
+		                    hysteresis.disableWithMessage(" -- ");
+		                }
+		                prePostRatio.setEnabled(enabled && triggerChannelExists);
 		                if(eventHandler != null)
-		                	eventHandler.accept(triggerEnabled);
+		                    eventHandler.accept(enabled && triggerChannelExists);
 		                return true;
 		            });
 		
@@ -158,7 +175,7 @@ public class WidgetTrigger implements Widget {
 	
 	public void setDefaultChannel(Field dataset) {
 		if(!userSpecifiedTheChannel) {
-			channel.comboboxes.get(0).set(dataset);
+			channel.triggerChannelCombobox.set(dataset.toString());
 			userSpecifiedTheChannel = false; // the event handler will set this to true, so reset it to false
 		}
 	}
@@ -199,7 +216,10 @@ public class WidgetTrigger implements Widget {
 	 */
 	public Result checkForTrigger(int nonTriggeredEndSampleNumber, long nonTriggeredEndTimestamp, double zoomLevel) {
 		
-		int trueMaxSampleNumber = (triggerChannel == null) ? -1 : triggerChannel.connection.getSampleCount() - 1;
+		Field dataset = normalDataset != null ? normalDataset :
+		                bitfieldState != null ? bitfieldState.dataset :
+		                                        null;
+		int trueMaxSampleNumber = (dataset != null) ? dataset.connection.getSampleCount() - 1 : -1;
 		
 		// sanity checks
 		if(mode.is(Mode.DISABLED) || trueMaxSampleNumber < 1 || (nonTriggeredEndSampleNumber < 1 && nonTriggeredEndTimestamp < 1))
@@ -262,14 +282,14 @@ public class WidgetTrigger implements Widget {
 		
 		// determine the trigger window (what sample numbers to check)
 		int  plotDomainSampleCount  = chart.sampleCountMode ? (int) ((chart.duration - 1) * zoomLevel) :
-		                                                      (int) Math.round(chart.duration * zoomLevel / 1000.0 * triggerChannel.connection.getSampleRate());
-		long plotDomainMilliseconds = chart.sampleCountMode ? Math.round((chart.duration - 1) * zoomLevel / triggerChannel.connection.getSampleRate() * 1000.0) :
+		                                                      (int) Math.round(chart.duration * zoomLevel / 1000.0 * dataset.connection.getSampleRate());
+		long plotDomainMilliseconds = chart.sampleCountMode ? Math.round((chart.duration - 1) * zoomLevel / dataset.connection.getSampleRate() * 1000.0) :
 		                                                      Math.round(chart.duration * zoomLevel);
 		if(plotDomainSampleCount < 1)
 			plotDomainSampleCount = 1;
 		if(plotDomainMilliseconds < 1)
 			plotDomainMilliseconds = 1;
-		double preTriggerPercent = prePostRatio.get() / 100.0;
+		double preTriggerPercent = prePostRatio.get() / 10000.0;
 		double postTriggerPercent = 1.0 - preTriggerPercent;
 		int maxSampleNumber = chart.sampleCountMode ? Integer.min(nonTriggeredEndSampleNumber, trueMaxSampleNumber) :
 		                                              datasets.getClosestSampleNumberAtOrBefore(nonTriggeredEndTimestamp, trueMaxSampleNumber);
@@ -281,19 +301,35 @@ public class WidgetTrigger implements Widget {
 		
 		boolean triggerOnRisingEdge  = type.is(Type.RISING_EDGE)  || type.is(Type.BOTH_EDGES);
 		boolean triggerOnFallingEdge = type.is(Type.FALLING_EDGE) || type.is(Type.BOTH_EDGES);
+		boolean triggerOnDataset = normalDataset != null; // false = trigger on a Bitfield State
+		float triggerLevel = triggerOnDataset ? level.get() : bitfieldState.value;
+		float risingEdgeArmingValue  = level.get() - hysteresis.get();
+		float fallingEdgeArmingValue = level.get() + hysteresis.get();
+		int LSBit   = triggerOnDataset ? 0 : bitfieldState.bitfield.LSBit;
+		int bitmask = triggerOnDataset ? 0 : bitfieldState.bitfield.bitmask;
 		
 		// if not triggered, search forwards through the trigger window for a new trigger
 		if(!triggered) {
 			boolean risingEdgeArmed  = false;
 			boolean fallingEdgeArmed = false;
-			FloatBuffer buffer = datasets.getSamplesBuffer(triggerChannel, minSampleNumber, maxSampleNumber);
+			FloatBuffer buffer = datasets.getSamplesBuffer(dataset, minSampleNumber, maxSampleNumber);
 			for(int sampleNumber = minSampleNumber; sampleNumber <= maxSampleNumber; sampleNumber++) {
 				float value = buffer.get(sampleNumber - minSampleNumber);
-				if(triggerOnRisingEdge && value < level.get() - hysteresis.get())
+				if(!triggerOnDataset)
+					value = ((int) value >> LSBit) & bitmask;
+				boolean belowThreshold = (triggerOnDataset && value < risingEdgeArmingValue) ||
+				                         (!triggerOnDataset && value != triggerLevel);
+				boolean aboveThreshold = (triggerOnDataset && value > fallingEdgeArmingValue) ||
+				                         (!triggerOnDataset && value == triggerLevel);
+				boolean risen  = (triggerOnDataset && value >= triggerLevel) ||
+				                 (!triggerOnDataset && value == triggerLevel);
+				boolean fallen = (triggerOnDataset && value <= triggerLevel) ||
+				                 (!triggerOnDataset && value != triggerLevel);
+				if(triggerOnRisingEdge && belowThreshold)
 					risingEdgeArmed = true;
-				if(triggerOnFallingEdge && value > level.get() + hysteresis.get())
+				if(triggerOnFallingEdge && aboveThreshold)
 					fallingEdgeArmed = true;
-				if((risingEdgeArmed && triggerOnRisingEdge && value >= level.get()) || (fallingEdgeArmed && triggerOnFallingEdge && value <= level.get())) {
+				if((risingEdgeArmed && triggerOnRisingEdge && risen) || (fallingEdgeArmed && triggerOnFallingEdge && fallen)) {
 					triggered = true;
 					triggeredSampleNumber = sampleNumber;
 					triggeredTimestamp = datasets.getTimestamp(sampleNumber);
@@ -312,14 +348,24 @@ public class WidgetTrigger implements Widget {
 			boolean risingEdgeArmed  = false;
 			boolean fallingEdgeArmed = false;
 			minSampleNumber = normalTriggerSearchFromSampleNumber;
-			FloatBuffer buffer = datasets.getSamplesBuffer(triggerChannel, minSampleNumber, maxSampleNumber);
+			FloatBuffer buffer = datasets.getSamplesBuffer(dataset, minSampleNumber, maxSampleNumber);
 			for(int sampleNumber = minSampleNumber; sampleNumber <= maxSampleNumber; sampleNumber++) {
 				float value = buffer.get(sampleNumber - minSampleNumber);
-				if(triggerOnRisingEdge && value < level.get() - hysteresis.get())
+				if(!triggerOnDataset)
+					value = ((int) value >> LSBit) & bitmask;
+				boolean belowThreshold = (triggerOnDataset && value < risingEdgeArmingValue) ||
+				                         (!triggerOnDataset && value != triggerLevel);
+				boolean aboveThreshold = (triggerOnDataset && value > fallingEdgeArmingValue) ||
+				                         (!triggerOnDataset && value == triggerLevel);
+				boolean risen  = (triggerOnDataset && value >= triggerLevel) ||
+				                 (!triggerOnDataset && value == triggerLevel);
+				boolean fallen = (triggerOnDataset && value <= triggerLevel) ||
+				                 (!triggerOnDataset && value != triggerLevel);
+				if(triggerOnRisingEdge && belowThreshold)
 					risingEdgeArmed = true;
-				if(triggerOnFallingEdge && value > level.get() + hysteresis.get())
+				if(triggerOnFallingEdge && aboveThreshold)
 					fallingEdgeArmed = true;
-				if((risingEdgeArmed && triggerOnRisingEdge && value >= level.get()) || (fallingEdgeArmed && triggerOnFallingEdge && value <= level.get())) {
+				if((risingEdgeArmed && triggerOnRisingEdge && risen) || (fallingEdgeArmed && triggerOnFallingEdge && fallen)) {
 					triggered = true;
 					triggeredSampleNumber = sampleNumber;
 					triggeredTimestamp = datasets.getTimestamp(sampleNumber);
@@ -348,19 +394,29 @@ public class WidgetTrigger implements Widget {
 				if(sampleNumber == maxSampleNumber || sampleNumber < firstSampleInBuffer) { // need to refill the buffer
 					int max = sampleNumber;
 					int min = Math.max(0, max - 8192); // buffer size is arbitrary
-					buffer = datasets.getSamplesBuffer(triggerChannel, min, max);
+					buffer = datasets.getSamplesBuffer(dataset, min, max);
 					firstSampleInBuffer = min;
 				}
 				float value = buffer.get(sampleNumber - firstSampleInBuffer);
-				if(triggerOnRisingEdge && value >= level.get()) {
+				if(!triggerOnDataset)
+					value = ((int) value >> LSBit) & bitmask;
+				boolean aboveThreshold = (triggerOnDataset && value >= triggerLevel) ||
+				                         (!triggerOnDataset && value == triggerLevel);
+				boolean belowThreshold = (triggerOnDataset && value <= triggerLevel) ||
+				                         (!triggerOnDataset && value != triggerLevel);
+				boolean risen  = (triggerOnDataset && value < risingEdgeArmingValue) ||
+				                 (!triggerOnDataset && value != triggerLevel);
+				boolean fallen = (triggerOnDataset && value > fallingEdgeArmingValue) ||
+				                 (!triggerOnDataset && value == triggerLevel);
+				if(triggerOnRisingEdge && aboveThreshold) {
 					risingEdgeArmed = true;
 					triggeredSampleNumber = sampleNumber;
 				}
-				if(triggerOnFallingEdge && value <= level.get()) {
+				if(triggerOnFallingEdge && belowThreshold) {
 					fallingEdgeArmed = true;
 					triggeredSampleNumber = sampleNumber;
 				}
-				if((risingEdgeArmed && triggerOnRisingEdge && value < level.get() - hysteresis.get()) || (fallingEdgeArmed && triggerOnFallingEdge && value > level.get() + hysteresis.get())) {
+				if((risingEdgeArmed && triggerOnRisingEdge && risen) || (fallingEdgeArmed && triggerOnFallingEdge && fallen)) {
 					triggered = true;
 					triggeredTimestamp = datasets.getTimestamp(triggeredSampleNumber);
 					

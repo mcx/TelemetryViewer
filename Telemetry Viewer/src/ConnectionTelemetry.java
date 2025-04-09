@@ -1731,7 +1731,19 @@ public abstract class ConnectionTelemetry extends Connection {
 		ChartsController.getCharts().stream().filter(chart -> chart.datasets.contains(field)).toList().forEach(chart -> ChartsController.removeChart(chart));
 		
 		// remove any charts triggering on the dataset
-		ChartsController.getCharts().stream().filter(chart -> chart.trigger != null && field == chart.trigger.triggerChannel).toList().forEach(chart -> ChartsController.removeChart(chart));
+		ChartsController.getCharts().stream()
+		                            .filter(chart -> {
+		                                 if(chart.trigger == null)
+		                                     return false;
+		                                 else if(chart.trigger.normalDataset != null && field == chart.trigger.normalDataset)
+		                                     return true;
+		                                 else if(chart.trigger.bitfieldState != null && field == chart.trigger.bitfieldState.dataset)
+		                                	 return true;
+		                                 else
+		                                	 return false;
+		                             })
+		                            .toList()
+		                            .forEach(chart -> ChartsController.removeChart(chart));
 		
 		// remove the dataset
 		fields.remove(location);
