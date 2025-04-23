@@ -27,11 +27,11 @@ public class SharedByteStream {
 	 * Creates a placeholder for sharing data between one reading thread and one writing thread.
 	 * Before data can be written or read, the setPacketSize() method must be called.
 	 */
-	public SharedByteStream(ConnectionTelemetry connection, Field.Type checksumProcessor) {
+	public SharedByteStream(ConnectionTelemetry connection) {
 		
 		ready = false;
 		this.connection = connection;
-		this.checksumProcessor = checksumProcessor;
+		this.checksumProcessor = connection.fields.values().stream().filter(Field::isChecksum).map(field -> field.type.get()).findFirst().orElse(null);
 		
 	}
 	
@@ -94,6 +94,9 @@ public class SharedByteStream {
 		if(packetByteCount != 0)
 			availableBufferSpace -= packetByteCount - 1;
 		while(occupiedSize[writeBuffer] + byteCount > availableBufferSpace) {
+			// throw an exception if the processorThread called disconnect()
+			if(!connection.isConnected())
+				throw new InterruptedException();
 			notifyAll();
 			wait(1);
 			writeBuffer = writeIntoA ? 0 : 1;
@@ -193,7 +196,7 @@ public class SharedByteStream {
 			
 			// show an error message if sync was lost, unless this is the first packet (because we may have connected in the middle of a packet)
 			if(lostSync && connection.getSampleCount() > 0)
-				NotificationsController.showFailureForMilliseconds("Lost sync with the telemetry packet stream.", 5000, true);
+				Notifications.showFailureForMilliseconds("Lost sync with the telemetry packet stream.", 5000, true);
 			
 			// test checksum if enabled
 			if(checksumProcessor != null && !checksumProcessor.testChecksum(buffer[readBuffer], readIndex[readBuffer], packetByteCount, syncWordByteCount)) {
@@ -201,7 +204,7 @@ public class SharedByteStream {
 				message.append("A corrupt telemetry packet was received:\n");
 				for(int i = 0; i < packetByteCount; i++)
 					message.append(String.format("%02X ", buffer[readBuffer][readIndex[readBuffer] + i]));
-				NotificationsController.showFailureForMilliseconds(message.toString(), 5000, false);
+				Notifications.showFailureForMilliseconds(message.toString(), 5000, false);
 				readIndex[readBuffer] = (readIndex[readBuffer] + packetByteCount) % bufferSize;
 				occupiedSize[readBuffer] -= packetByteCount;
 			} else {
@@ -250,7 +253,7 @@ public class SharedByteStream {
 		
 		// show an error message if sync was lost, unless this is the first packet (because we may have connected in the middle of a packet)
 		if(lostSync && connection.getSampleCount() > 0)
-			NotificationsController.showFailureForMilliseconds("Lost sync with the telemetry packet stream.", 5000, true);
+			Notifications.showFailureForMilliseconds("Lost sync with the telemetry packet stream.", 5000, true);
 		
 		// stop at the first loss of sync or failed checksum
 		int packetCount = occupiedSize[readBuffer] / packetByteCount;

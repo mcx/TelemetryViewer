@@ -8,11 +8,12 @@ import java.util.Date;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.BooleanSupplier;
-
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 
-public class NotificationsController {
+public class Notifications {
 	
 	private static final SimpleDateFormat timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
 	
@@ -37,7 +38,7 @@ public class NotificationsController {
 			Color color = level.equals("hint")    ? SettingsView.instance.hintsColorButton.get() :
 			              level.equals("warning") ? SettingsView.instance.warningsColorButton.get() :
 			              level.equals("failure") ? SettingsView.instance.failuresColorButton.get() :
-			                                        SettingsView.instance.verboseColorButton.get();
+			                                        SettingsView.instance.devicesColorButton.get();
 			notification.level = level;
 			notification.lines = message;
 			notification.glColor = new float[] {color.getRed() / 255f, color.getGreen() / 255f, color.getBlue() / 255f, 1.0f};
@@ -55,7 +56,7 @@ public class NotificationsController {
 			Color color = level.equals("hint")    ? SettingsView.instance.hintsColorButton.get() :
 			              level.equals("warning") ? SettingsView.instance.warningsColorButton.get() :
 			              level.equals("failure") ? SettingsView.instance.failuresColorButton.get() :
-			                                        SettingsView.instance.verboseColorButton.get();
+			                                        SettingsView.instance.devicesColorButton.get();
 			notification.level = level;
 			notification.lines = message;
 			notification.glColor = new float[] {color.getRed() / 255f, color.getGreen() / 255f, color.getBlue() / 255f, 1.0f};
@@ -73,7 +74,7 @@ public class NotificationsController {
 			Color color = level.equals("hint")    ? SettingsView.instance.hintsColorButton.get() :
 			              level.equals("warning") ? SettingsView.instance.warningsColorButton.get() :
 			              level.equals("failure") ? SettingsView.instance.failuresColorButton.get() :
-			                                        SettingsView.instance.verboseColorButton.get();
+			                                        SettingsView.instance.devicesColorButton.get();
 			notification.level = level;
 			notification.lines = message;
 			notification.glColor = new float[] {color.getRed() / 255f, color.getGreen() / 255f, color.getBlue() / 255f, 1.0f};
@@ -112,7 +113,7 @@ public class NotificationsController {
 				item.expirationTimestamp = System.currentTimeMillis() + 2000; // fade away 2 seconds after done
 				item.lines[0] += " Done";
 				item.isProgressBar = false;
-				NotificationsController.printDebugMessage(item.lines[0]);
+				Notifications.printInfo(item.lines[0]);
 			}
 		});
 		if(notifications.size() > 5) {
@@ -137,6 +138,22 @@ public class NotificationsController {
 	public static void removeIfConnectionRelated() {
 		
 		notifications.removeIf(item -> item.expiresOnConnection);
+		
+	}
+	
+	/**
+	 * Shows a hint message. It will be printed to the console, and if enabled, it will be shown in the GUI until an expiration condition is met.
+	 * This method is thread-safe.
+	 * 
+	 * @param message         The message to show.
+	 * @param milliseconds    How long to show this message for.
+	 * @param autoExpire      If this Notification should be expired when connecting or disconnecting.
+	 */
+	public static void showHintForMilliseconds(String message, long milliseconds, boolean autoExpire) {
+
+		System.out.println(timestamp.format(new Date()) + "   [HINT    ]   " + message);
+		if(SettingsView.instance.hintsCheckbox.get())
+			notifications.add(Notification.forMilliseconds("hint", message.split("\\R"), milliseconds, autoExpire));
 		
 	}
 	
@@ -183,8 +200,10 @@ public class NotificationsController {
 	public static void showFailureUntil(String message, BooleanSupplier isExpired, boolean autoExpire) {
 
 		System.out.println(timestamp.format(new Date()) + "   [FAILURE ]   " + message);
-		if(SettingsView.instance.failuresCheckbox.get())
+		if(SettingsView.instance.failuresCheckbox.get()) {
 			notifications.add(Notification.untilEvent("failure", message.split("\\R"), isExpired, autoExpire));
+			Toolkit.getDefaultToolkit().beep();
+		}
 		
 	}
 	
@@ -199,24 +218,24 @@ public class NotificationsController {
 	public static void showFailureForMilliseconds(String message, long milliseconds, boolean autoExpire) {
 
 		System.out.println(timestamp.format(new Date()) + "   [FAILURE ]   " + message);
-		if(SettingsView.instance.failuresCheckbox.get())
+		if(SettingsView.instance.failuresCheckbox.get()) {
 			notifications.add(Notification.forMilliseconds("failure", message.split("\\R"), milliseconds, autoExpire));
+			Toolkit.getDefaultToolkit().beep();
+		}
 		
 	}
 	
 	/**
-	 * Shows a verbose message. It will be printed to the console, and if enabled, it will be shown in the GUI for a number of seconds.
+	 * Shows a device availability message. It will be printed to the console, and if enabled, it will be shown in the GUI for 8 seconds.
 	 * This method is thread-safe.
 	 * 
-	 * @param message         The message to show.
-	 * @param milliseconds    How long to show this message for.
-	 * @param autoExpire      If this Notification should be expired when connecting or disconnecting.
+	 * @param message    The message to show.
 	 */
-	public static void showVerboseForMilliseconds(String message, long milliseconds, boolean autoExpire) {
+	public static void showDevice(String message) {
 
-		System.out.println(timestamp.format(new Date()) + "   [VERBOSE ]   " + message);
-		if(SettingsView.instance.verboseCheckbox.get())
-			notifications.add(Notification.forMilliseconds("verbose", message.split("\\R"), milliseconds, autoExpire));
+		System.out.println(timestamp.format(new Date()) + "   [DEVICE  ]   " + message);
+		if(SettingsView.instance.devicesCheckbox.get())
+			notifications.add(Notification.forMilliseconds("device", message.split("\\R"), 8000, false));
 		
 	}
 	
@@ -226,9 +245,23 @@ public class NotificationsController {
 	 * 
 	 * @param message    The message to print.
 	 */
-	public static void printDebugMessage(String message) {
+	public static void printInfo(String message) {
 
-		System.out.println(timestamp.format(new Date()) + "   [DEBUG   ]   " + message);
+		System.out.println(timestamp.format(new Date()) + "   [INFO    ]   " + message);
+		
+	}
+	
+	/**
+	 * Prints a message, and some data formatted as hex.
+	 * This method is thread-safe.
+	 * 
+	 * @param message    The message to print.
+	 * @param data       The data to print as hex bytes.
+	 */
+	public static void printInfo(String message, byte[] data) {
+
+		String hexString = IntStream.range(0, data.length).mapToObj(i -> String.format("%02X", data[i])).collect(Collectors.joining(" "));
+		System.out.println(timestamp.format(new Date()) + "   [INFO    ]   " + message + ": " + hexString);
 		
 	}
 	

@@ -11,7 +11,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import javax.swing.JFrame;
@@ -32,7 +31,7 @@ public class Main {
 		int dataStructureViewWidth = -1;
 		@Override public Dimension getPreferredSize() {
 			if(dataStructureViewWidth < 0)
-				dataStructureViewWidth = ConnectionsController.telemetryConnections.get(0).getDataStructureGui().getPreferredSize().width
+				dataStructureViewWidth = Connections.telemetryConnections.get(0).getDataStructureGui().getPreferredSize().width
 				                         + new JScrollBar().getPreferredSize().width
 				                         + Theme.padding;
 			
@@ -96,54 +95,42 @@ public class Main {
 						@SuppressWarnings("unchecked")
 						List<File> files = (List<File>) event.getTransferable().getTransferData(DataFlavor.javaFileListFlavor);
 						List<String> filepaths = files.stream().map(file -> file.getAbsolutePath()).toList();
-						ConnectionsController.importFiles(filepaths);
+						Connections.importFiles(filepaths);
 					} catch(Exception e) {
-						NotificationsController.showFailureUntil("Error while processing files: " + e.getMessage(), () -> false, true);
+						Notifications.showFailureUntil("Error while processing files: " + e.getMessage(), () -> false, true);
 						e.printStackTrace();
 					}
 				}
 			});
 			
-			// automatically import settings/CSV/camera files if their names start with "default" and are located in the current working directory
+			// automatically import settings/CSV/MKV files if their names start with "default" and are located in the current working directory
 			List<String> files = Stream.of(new File(".").list()).filter(file -> file.equals("default.txt") || 
 			                                                                   (file.startsWith("default - connection ") && file.endsWith(".csv")) ||
 			                                                                   (file.startsWith("default - connection ") && file.endsWith(".mkv"))).toList();
-			if(!files.contains("default.txt")) {
-				NotificationsController.showHintUntil("Start by connecting to a device or opening a file by using the buttons below.", () -> false, true);
-			} else {
-				ConnectionsController.importFiles(files);
-				SwingUtilities.invokeLater(() -> {
-					if(!ConnectionsController.telemetryPossible()) { // FIXME: have importFile return a boolean, because a camera may not IMMEDIATELY connect, so this test can fail when everything is fine
-						NotificationsController.showFailureUntil("Error while automatically importing files.", () -> false, true);
-						NotificationsController.showHintUntil("Start by connecting to a device or opening a file by using the buttons below.", () -> false, true);
-					} else {
-						String connectionNames = ConnectionsController.allConnections.stream().map(connection -> connection.name.get()).collect(Collectors.joining(" and "));
-						String successMessage  = (files.size() == 1 ? "Automatically connected to " : "Automatically imported ") + connectionNames;
-						long expirationTimestamp = System.currentTimeMillis() + 5000;
-						NotificationsController.showHintUntil(successMessage, () -> System.currentTimeMillis() > expirationTimestamp, true);		
-					}
-				});
-			}
+			if(!files.contains("default.txt"))
+				Notifications.showHintUntil("Start by connecting to a device or opening a file by using the buttons below.", () -> false, true);
+			else
+				Connections.importFiles(files);
 			
 			// handle window close events
 			window.addWindowListener(new WindowAdapter() {
 				@Override public void windowClosing(java.awt.event.WindowEvent windowEvent) {
 					
 					// cancel importing
-					if(ConnectionsController.importing)
-						ConnectionsController.cancelImporting();
+					if(Connections.importing)
+						Connections.cancelImporting();
 					
 					// cancel exporting if the user confirms it
-					if(ConnectionsController.exporting) {
+					if(Connections.exporting) {
 						int result = JOptionPane.showConfirmDialog(window, "Exporting in progress. Exit anyway?", "Confirm", JOptionPane.YES_NO_OPTION);
 						if(result == JOptionPane.YES_OPTION)
-							ConnectionsController.cancelExporting();
+							Connections.cancelExporting();
 						else
 							return; // don't close
 					}
 					
 					// close connections and remove their cache files
-					ConnectionsController.allConnections.forEach(connection -> connection.dispose());
+					Connections.allConnections.forEach(connection -> connection.dispose());
 					try { Files.deleteIfExists(cacheDir); } catch(Exception e) { }
 					
 					// die
@@ -165,14 +152,14 @@ public class Main {
 	 * Hides the charts and settings panels, then shows the data structure screen in the middle of the main window.
 	 * This method is thread-safe.
 	 */
-	public static void showConfigurationGui(JPanel gui) {
+	public static void showDataStructureGui(ConnectionTelemetry connection) {
 		
 		SwingUtilities.invokeLater(() -> {
 			OpenGLChartsView.instance.animator.pause();
 			CommunicationView.instance.showSettings(false);
 			ConfigureView.instance.close();
 			window.remove(OpenGLChartsView.instance);
-			window.add(gui, BorderLayout.CENTER);
+			window.add(connection.getDataStructureGui(), BorderLayout.CENTER);
 			window.revalidate();
 			window.repaint();
 		});
@@ -183,14 +170,18 @@ public class Main {
 	 * Hides the data structure screen and shows the charts in the middle of the main window.
 	 * This method is thread-safe.
 	 */
-	public static void hideConfigurationGui() {
+	public static void hideDataStructureGui(ConnectionTelemetry connection) {
 		
 		SwingUtilities.invokeLater(() -> {
-			ConnectionsController.telemetryConnections.forEach(connection -> window.remove(connection.getDataStructureGui()));
-			window.add(OpenGLChartsView.instance, BorderLayout.CENTER);
-			window.revalidate();
-			window.repaint();
-			OpenGLChartsView.instance.animator.resume();
+			JPanel dsGui = connection.getDataStructureGui();
+			boolean configGuiVisible = dsGui.getParent() != null;
+			if(configGuiVisible) {
+				window.remove(dsGui);
+				window.add(OpenGLChartsView.instance, BorderLayout.CENTER);
+				window.revalidate();
+				window.repaint();
+				OpenGLChartsView.instance.animator.resume();
+			}
 		});
 		
 	}

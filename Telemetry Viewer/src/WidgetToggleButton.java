@@ -138,9 +138,9 @@ public class WidgetToggleButton<T> implements Widget {
 			button.setBorder(Theme.narrowButtonBorder);
 			button.addActionListener(event -> {
 				if(changeHandler != null) {
-					changeHandlerCalled = true;
 					T oldValue = selectedValue;
 					selectedValue = value;
+					changeHandlerCalled = true;
 					boolean accepted = changeHandler.test(selectedValue, oldValue);
 					if(!accepted) {
 						selectedValue = oldValue;
@@ -193,6 +193,15 @@ public class WidgetToggleButton<T> implements Widget {
 		});
 		
 		return this;
+		
+	}
+	
+	public void callHandler() {
+		
+		if(changeHandler != null) {
+			changeHandlerCalled = true;
+			changeHandler.test(selectedValue, selectedValue);
+		}
 		
 	}
 	
@@ -299,7 +308,7 @@ public class WidgetToggleButton<T> implements Widget {
 		return !buttons.getFirst().isSelected();
 	}
 	
-	@Override public void importFrom(ConnectionsController.QueueOfLines lines) throws AssertionError {
+	@Override public void importFrom(Connections.QueueOfLines lines) throws AssertionError {
 		
 		if(values.size() == 1) {
 			// boolean mode

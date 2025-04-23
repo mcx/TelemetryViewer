@@ -8,6 +8,8 @@ import java.util.List;
 
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
+import javax.swing.SwingUtilities;
+
 import net.miginfocom.swing.MigLayout;
 
 /**
@@ -27,8 +29,9 @@ public class SettingsView extends JPanel {
 	public WidgetColorPicker          warningsColorButton;
 	public WidgetCheckbox             failuresCheckbox;
 	public WidgetColorPicker          failuresColorButton;
-	public WidgetCheckbox             verboseCheckbox;
-	public WidgetColorPicker          verboseColorButton;
+	public WidgetCheckbox             devicesCheckbox;
+	public WidgetColorPicker          devicesColorButton;
+	public WidgetCheckbox             autoReconnectCheckbox;
 	public WidgetTextfield<Integer>   tileColumnsTextfield;
 	public WidgetTextfield<Integer>   tileRowsTextfield;
 	public WidgetCombobox<TimeFormat> timeFormatCombobox;
@@ -37,15 +40,10 @@ public class SettingsView extends JPanel {
 	public WidgetCheckbox             benchmarkingCheckbox;
 	public WidgetSlider               antialiasingSlider;
 	
-	public void importFrom(ConnectionsController.QueueOfLines lines) throws AssertionError {
+	public void importFrom(Connections.QueueOfLines lines) throws AssertionError {
 		
-		lines.parseExact("GUI Settings:");
+		lines.parseExact("Settings:");
 		lines.parseExact("");
-		
-		tileColumnsTextfield.importFrom(lines);
-		tileRowsTextfield.importFrom(lines);
-		timeFormatCombobox.importFrom(lines);
-		timeFormat24hoursCheckbox.importFrom(lines);
 		
 		hintsCheckbox.importFrom(lines);
 		hintsColorButton.importFrom(lines);
@@ -53,9 +51,13 @@ public class SettingsView extends JPanel {
 		warningsColorButton.importFrom(lines);
 		failuresCheckbox.importFrom(lines);
 		failuresColorButton.importFrom(lines);
-		verboseCheckbox.importFrom(lines);
-		verboseColorButton.importFrom(lines);
-		
+		devicesCheckbox.importFrom(lines);
+		devicesColorButton.importFrom(lines);
+		autoReconnectCheckbox.importFrom(lines);
+		tileColumnsTextfield.importFrom(lines);
+		tileRowsTextfield.importFrom(lines);
+		timeFormatCombobox.importFrom(lines);
+		timeFormat24hoursCheckbox.importFrom(lines);
 		tooltipsVisibility.importFrom(lines);
 		benchmarkingCheckbox.importFrom(lines);
 		antialiasingSlider.importFrom(lines);
@@ -65,13 +67,8 @@ public class SettingsView extends JPanel {
 	
 	public void exportTo(PrintWriter file) {
 		
-		file.println("GUI Settings:");
+		file.println("Settings:");
 		file.println("");
-		
-		tileColumnsTextfield.exportTo(file);
-		tileRowsTextfield.exportTo(file);
-		timeFormatCombobox.exportTo(file);
-		timeFormat24hoursCheckbox.exportTo(file);
 		
 		hintsCheckbox.exportTo(file);
 		hintsColorButton.exportTo(file);
@@ -79,9 +76,13 @@ public class SettingsView extends JPanel {
 		warningsColorButton.exportTo(file);
 		failuresCheckbox.exportTo(file);
 		failuresColorButton.exportTo(file);
-		verboseCheckbox.exportTo(file);
-		verboseColorButton.exportTo(file);
-		
+		devicesCheckbox.exportTo(file);
+		devicesColorButton.exportTo(file);
+		autoReconnectCheckbox.exportTo(file);
+		tileColumnsTextfield.exportTo(file);
+		tileRowsTextfield.exportTo(file);
+		timeFormatCombobox.exportTo(file);
+		timeFormat24hoursCheckbox.exportTo(file);
 		tooltipsVisibility.exportTo(file);
 		benchmarkingCheckbox.exportTo(file);
 		antialiasingSlider.exportTo(file);
@@ -149,13 +150,13 @@ public class SettingsView extends JPanel {
 		                    .setExportLabel("show hint notifications")
 		                    .onChange(newVisibility -> {
 		                        if(!newVisibility)
-		                            NotificationsController.getNotifications().removeIf(note -> note.level.equals("hint"));
+		                            Notifications.getNotifications().removeIf(note -> note.level.equals("hint"));
 		                    });
 		
 		hintsColorButton = new WidgetColorPicker("Hint Notifications", Color.GREEN)
 		                       .setIndicateUsedColors(false)
 		                       .onEvent(newColor -> {
-		                           NotificationsController.getNotifications().forEach(note -> {
+		                           Notifications.getNotifications().forEach(note -> {
 		                               if(note.level.equals("hint")) note.glColor = new float[] {newColor.getRed() / 255f, newColor.getGreen() / 255f, newColor.getBlue() / 255f, 0.2f};
 		                           });
 		                       });
@@ -164,13 +165,13 @@ public class SettingsView extends JPanel {
 		                       .setExportLabel("show warning notifications")
 		                       .onChange(newVisibility -> {
 		                           if(!newVisibility)
-		                               NotificationsController.getNotifications().removeIf(note -> note.level.equals("warning"));
+		                               Notifications.getNotifications().removeIf(note -> note.level.equals("warning"));
 		                       });
 		
 		warningsColorButton = new WidgetColorPicker("Warning Notifications", Color.YELLOW)
 		                          .setIndicateUsedColors(false)
 		                          .onEvent(newColor -> {
-		                              NotificationsController.getNotifications().forEach(note -> {
+		                              Notifications.getNotifications().forEach(note -> {
 		                                  if(note.level.equals("warning"))
 		                                      note.glColor = new float[] {newColor.getRed() / 255f, newColor.getGreen() / 255f, newColor.getBlue() / 255f, 0.2f};
 		                              });
@@ -180,60 +181,46 @@ public class SettingsView extends JPanel {
 		                       .setExportLabel("show failure notifications")
 		                       .onChange(newVisibility -> {
 		                           if(!newVisibility)
-		                               NotificationsController.getNotifications().removeIf(note -> note.level.equals("failure"));
+		                               Notifications.getNotifications().removeIf(note -> note.level.equals("failure"));
 		                       });
 		
 		failuresColorButton = new WidgetColorPicker("Failure Notifications", Color.RED)
 		                          .setIndicateUsedColors(false)
 		                          .onEvent(newColor -> {
-		                              NotificationsController.getNotifications().forEach(note -> {
+		                              Notifications.getNotifications().forEach(note -> {
 		                                  if(note.level.equals("failure"))
 		                                      note.glColor = new float[] {newColor.getRed() / 255f, newColor.getGreen() / 255f, newColor.getBlue() / 255f, 0.2f};
 		                              });
 		                          });
 		
-		verboseCheckbox = new WidgetCheckbox("Show Verbose", false)
-		                      .setExportLabel("show verbose notifications")
+		devicesCheckbox = new WidgetCheckbox("Show Device Availability", true)
+		                      .setExportLabel("show device notifications")
 		                      .onChange(newVisibility -> {
 		                          if(!newVisibility)
-		                              NotificationsController.getNotifications().removeIf(note -> note.level.equals("verbose"));
+		                              Notifications.getNotifications().removeIf(note -> note.level.equals("verbose"));
 		                      });
 		
-		verboseColorButton = new WidgetColorPicker("Verbose Notifications", Color.CYAN)
+		devicesColorButton = new WidgetColorPicker("Device Notifications", Color.CYAN)
 		                         .setIndicateUsedColors(false)
 		                         .onEvent(newColor -> {
-		                             NotificationsController.getNotifications().forEach(note -> {
-		                                 if(note.level.equals("verbose"))
+		                             Notifications.getNotifications().forEach(note -> {
+		                                 if(note.level.equals("device"))
 		                                     note.glColor = new float[] {newColor.getRed() / 255f, newColor.getGreen() / 255f, newColor.getBlue() / 255f, 0.2f};
 		                             });
 		                         });
+		
+		autoReconnectCheckbox = new WidgetCheckbox("Automatically reconnect after failures", true);
 		
 		// widgets in the charts panel
 		tileColumnsTextfield = WidgetTextfield.ofInt(1, 15, 6)
 		                                      .setPrefix("Tile Columns")
 		                                      .setExportLabel("tile column count")
-		                                      .onChange((newNumber, oldNumber) -> {
-		                                          boolean chartsObscured = ChartsController.getCharts().stream().anyMatch(chart -> chart.regionOccupied(newNumber, 0, oldNumber, tileRowsTextfield.get()));
-		                                          if(chartsObscured) {
-		                                              return false;
-		                                          } else {
-		                                              OpenGLChartsView.instance.updateTileOccupancy(null);
-		                                              return true;
-		                                          }
-		                                      });
+		                                      .onChange((newNumber, oldNumber) -> Charts.stream().noneMatch(chart -> chart.intersects(newNumber, 0, oldNumber, tileRowsTextfield.get())));
 		
 		tileRowsTextfield = WidgetTextfield.ofInt(1, 15, 6)
 		                                   .setPrefix("Tile Rows")
 		                                   .setExportLabel("tile row count")
-		                                   .onChange((newNumber, oldNumber) -> {
-		                                       boolean chartsObscured = ChartsController.getCharts().stream().anyMatch(chart -> chart.regionOccupied(0, newNumber, tileColumnsTextfield.get(), oldNumber));
-		                                       if(chartsObscured) {
-		                                           return false;
-		                                       } else {
-		                                           OpenGLChartsView.instance.updateTileOccupancy(null);
-		                                           return true;
-		                                       }
-		                                   });
+		                                   .onChange((newNumber, oldNumber) -> Charts.stream().noneMatch(chart -> chart.intersects(0, newNumber, tileColumnsTextfield.get(), oldNumber)));
 		
 		timeFormatCombobox = new WidgetCombobox<TimeFormat>("Time Format", Arrays.asList(TimeFormat.values()), TimeFormat.ONLY_TIME)
 		                         .setExportLabel("time format")
@@ -309,20 +296,19 @@ public class SettingsView extends JPanel {
 		antialiasingSlider = new WidgetSlider("Antialiasing", 1, 16, 8) // MSAA levels
 		                         .setExportLabel("antialiasing level")
 		                         .setLog2Mode()
-		                         .onChange(null,
-		                                   newLevel -> OpenGLChartsView.regenerate(),
-		                                   null);
-
+		                         .onChange(newLevel -> OpenGLChartsView.regenerate());
+		
 		// populate with everything except the TX panels
-		panel.add(Theme.newWidgetsPanel("Notifications")
+		panel.add(Theme.newWidgetsPanel("Notifications and Connections")
 		               .with(hintsCheckbox, "split 2, grow x")
 		               .with(hintsColorButton)
 		               .with(warningsCheckbox, "split 2, grow x")
 		               .with(warningsColorButton)
 		               .with(failuresCheckbox, "split 2, grow x")
 		               .with(failuresColorButton)
-		               .with(verboseCheckbox, "split 2, grow x")
-		               .with(verboseColorButton)
+		               .with(devicesCheckbox, "split 2, grow x")
+		               .with(devicesColorButton)
+		               .with(autoReconnectCheckbox)
 		               .getPanel());
 		
 		panel.add(Theme.newWidgetsPanel("Charts")
@@ -354,7 +340,7 @@ public class SettingsView extends JPanel {
 		
 		// if visible, also repopulate the panel with transmit GUIs
 		if(visible)
-			ConnectionsController.telemetryConnections.forEach(connection -> {
+			Connections.allConnections.forEach(connection -> {
 				JPanel txGui = connection.getUpdatedTransmitGUI();
 				if(txGui != null) {
 					panel.add(txGui);
@@ -391,8 +377,16 @@ public class SettingsView extends JPanel {
 	 */
 	public void redraw() {
 		
-		if(isVisible())
-			setVisible(true);
+		Runnable task = () -> {
+			if(isVisible())
+				setVisible(true);
+		};
+		
+		// we can't assume we're on the EDT
+		if(SwingUtilities.isEventDispatchThread())
+			task.run();
+		else
+			SwingUtilities.invokeLater(task);
 		
 	}
 	

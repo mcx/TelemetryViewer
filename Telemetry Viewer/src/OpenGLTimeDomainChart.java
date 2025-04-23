@@ -5,7 +5,7 @@ import javax.swing.JPanel;
 import com.jogamp.opengl.GL2ES3;
 import com.jogamp.opengl.GL3;
 
-public class OpenGLTimeDomainChart extends PositionedChart {
+public class OpenGLTimeDomainChart extends Chart {
 	
 	AutoScale autoscale;
 	
@@ -40,13 +40,9 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 	private WidgetTextfield<Float> yAxisMaximum;
 	private WidgetCheckbox yAxisMaximumAutomatic;
 	
-	@Override public String toString() {
+	protected OpenGLTimeDomainChart(String name, int x1, int y1, int x2, int y2) {
 		
-		return "Time Domain";
-		
-	}
-	
-	public OpenGLTimeDomainChart() {
+		super(name, x1, y1, x2, y2);
 		
 		autoscale = new AutoScale(AutoScale.MODE_EXPONENTIAL, 30, 0.10f);
 		
@@ -135,7 +131,7 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		
 	}
 	
-	@Override public void getConfigurationGui(JPanel gui) {
+	@Override public void appendConfigurationWidgets(JPanel gui) {
 		
 		gui.add(Theme.newWidgetsPanel("Data")
 		             .with(datasetsAndDurationWidget)
@@ -527,7 +523,7 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		                mouseOverTriggerMarkers = false;
 		                if(trigger.isEnabled()) {
 		                    
-		                    float scalar = ChartsController.getDisplayScalingFactor();
+		                    float scalar = Charts.getDisplayScalingFactor();
 		                    float markerThickness = 3*scalar;
 		                    float markerLength = 5*scalar;
 		                    float yTriggerLevel = (trigger.level.get() - plotMinY) / (plotMaxY - plotMinY) * plot.height();
@@ -646,7 +642,7 @@ public class OpenGLTimeDomainChart extends PositionedChart {
 		                                                       .toList();
 		                for(int i = 0; i < activeLevels.size(); i++) {
 		                    // following 3 lines from ChartUtils.drawMarkers()
-		                    float padding = 6f * ChartsController.getDisplayScalingFactor();
+		                    float padding = 6f * Charts.getDisplayScalingFactor();
 		                    float yBottom = padding + ((activeLevels.size() - 1 - i) * (padding + OpenGL.smallTextHeight + padding));
 		                    float yTop    = yBottom + OpenGL.smallTextHeight + padding;
 		                    

@@ -1,7 +1,6 @@
 import java.awt.Color;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.List;
 import java.util.Map;
 
 import javax.swing.JFrame;
@@ -10,9 +9,9 @@ public class ConnectionTelemetryStressTest extends ConnectionTelemetry {
 	
 	public ConnectionTelemetryStressTest() {
 
-		widgetsList.add(name.set("Stress Test Mode"));
-		widgetsList.add(protocol.set(Protocol.BINARY).setEnabled(false));
-		widgetsList.add(sampleRate.disableWithMessage("Maximum"));
+		configWidgets.add(name.set("Stress Test Mode"));
+		configWidgets.add(protocol.set(Protocol.BINARY).forceDisabled(true));
+		configWidgets.add(sampleRate.disableWithMessage("Maximum").forceDisabled(true));
 		
 		new Field(this).setLocation(0).setType(Field.Type.UINT8_SYNC_WORD   ).setName("0xAA").insert();
 		new Field(this).setLocation(1).setType(Field.Type.INT16_LE          ).setName("a"   ).setColor(Color.RED  ).insert();
@@ -23,32 +22,19 @@ public class ConnectionTelemetryStressTest extends ConnectionTelemetry {
 		setFieldsDefined(true);
 		
 	}
+	
+	@Override public String getName() { return name.get(); }
 
-	@Override public void connectLive(boolean showGui) {
+	@Override public void connectToDevice(boolean showGui) {
 		
 		removeAllData();
-		previousSampleCountTimestamp = 0;
-		previousSampleCount = 0;
-		calculatedSamplesPerSecond = 0;
-		
-		ChartsController.removeAllCharts();
-		
+		Charts.removeAll();
 		SettingsView.instance.tileColumnsTextfield.set(6);
 		SettingsView.instance.tileRowsTextfield.set(6);
-		SettingsView.instance.timeFormatCombobox.set(SettingsView.TimeFormat.ONLY_TIME);
-		SettingsView.instance.timeFormat24hoursCheckbox.set(false);
 		SettingsView.instance.hintsCheckbox.set(true);
-		SettingsView.instance.hintsColorButton.set(Color.GREEN);
-		SettingsView.instance.warningsCheckbox.set(true);
-		SettingsView.instance.warningsColorButton.set(Color.YELLOW);
-		SettingsView.instance.failuresCheckbox.set(true);
-		SettingsView.instance.failuresColorButton.set(Color.RED);
-		SettingsView.instance.verboseCheckbox.set(true);
-		SettingsView.instance.verboseColorButton.set(Color.CYAN);
-		SettingsView.instance.tooltipsVisibility.set(true);
 		SettingsView.instance.antialiasingSlider.set(1);
 		
-		OpenGLTimeDomainChart chart = (OpenGLTimeDomainChart) ChartsController.createAndAddChart("Time Domain").setPosition(0, 0, 5, 5);
+		OpenGLTimeDomainChart chart = (OpenGLTimeDomainChart) Charts.Type.TIME_DOMAIN.createAt(0, 0, 5, 5);
 		chart.datasetsAndDurationWidget.datasets.get(getDatasetByLocation(1)).set(true);
 		chart.datasetsAndDurationWidget.durationUnit.set(DatasetsInterface.DurationUnit.SAMPLES);
 		chart.datasetsAndDurationWidget.duration.set("10000000");
@@ -56,75 +42,61 @@ public class ConnectionTelemetryStressTest extends ConnectionTelemetry {
 		
 		Main.window.setExtendedState(JFrame.NORMAL);
 		
-		// prepare the TX buffer
-		byte[] array = new byte[11 * 65536]; // 11 bytes per packet, 2^16 packets
-		ByteBuffer buffer = ByteBuffer.wrap(array);
-		buffer.order(ByteOrder.LITTLE_ENDIAN);
-		short a = 0;
-		short b = 1;
-		short c = 2;
-		short d = 3;
-		for(int i = 0; i < 65536; i++) {
-			buffer.put((byte) 0xAA);
-			buffer.putShort(a);
-			buffer.putShort(b);
-			buffer.putShort(c);
-			buffer.putShort(d);
-			buffer.putShort((short) (a+b+c+d));
-			a++;
-			b++;
-			c++;
-			d++;
-		}
-		
-		transmitterThread = new Thread(() -> {
+		receiverThread = new Thread(() -> {
+			
+			previousSampleCountTimestamp = 0;
+			previousSampleCount = 0;
+			calculatedSamplesPerSecond = 0;
+			
+			setStatus(Status.CONNECTING, false);
+			byte[] txBuffer = new byte[11 * 65536]; // 11 bytes per packet, 2^16 packets
+			ByteBuffer buffer = ByteBuffer.wrap(txBuffer).order(ByteOrder.LITTLE_ENDIAN);
+			short a = 0, b = 1, c = 2, d = 3;
+			for(int i = 0; i < 65536; i++) {
+				buffer.put((byte) 0xAA);
+				buffer.putShort(a);
+				buffer.putShort(b);
+				buffer.putShort(c);
+				buffer.putShort(d);
+				buffer.putShort((short) (a+b+c+d));
+				a++; b++; c++; d++;
+			}
 
-			Field.Type checksumProcessor = fields.values().stream().filter(Field::isChecksum).map(field -> field.type.get()).findFirst().orElse(null);
-			SharedByteStream stream = new SharedByteStream(ConnectionTelemetryStressTest.this, checksumProcessor);
-			setConnected(true);
+			setStatus(Status.CONNECTED, false);
+			SharedByteStream stream = new SharedByteStream(ConnectionTelemetryStressTest.this);
 			startProcessingTelemetry(stream);
 
 			long bytesSent = 0;
 			long start = System.currentTimeMillis();
 
-			while(true) {
-
-				try {
+			try {
+				while(true) {
 					
-					if(Thread.interrupted() || !isConnected())
-						throw new InterruptedException();
+					// stop if requested
+					if(!isConnected())
+						throw new Exception();
 					
-					stream.write(array, array.length);
-					bytesSent += array.length;
+					// "transmit" the waveforms
+					stream.write(txBuffer, txBuffer.length);
+					bytesSent += txBuffer.length;
 					long millisecondsElapsed = System.currentTimeMillis() - start;
 					if(millisecondsElapsed > 3000) {
 						String text = String.format("%1.1f Mbps (%1.1f Mpackets/sec)", (double) bytesSent / (double) millisecondsElapsed / 125.0,
 						                                                               (double) bytesSent / (double) millisecondsElapsed / 11000.0);
-						NotificationsController.showVerboseForMilliseconds(text, 3000 - Theme.animationMilliseconds, true);
+						Notifications.showHintForMilliseconds(text, 3000 - Theme.animationMilliseconds, true);
 						bytesSent = 0;
 						start = System.currentTimeMillis();
 					}
 					
-				}  catch(InterruptedException ie) {
-					
-					stopProcessingTelemetry();
-					return;
-					
 				}
-			
+			}  catch(Exception e) {
+				stopProcessingTelemetry();
 			}
 			
 		});
-		
-		transmitterThread.setPriority(Thread.MAX_PRIORITY);
-		transmitterThread.setName("Stress Test Simulator Thread");
-		transmitterThread.start();
-		
-	}
-	
-	@Override public List<Widget> getConfigurationWidgets() {
-		
-		return List.of(sampleRate, protocol); // both widgets were disabled in the constructor
+		receiverThread.setPriority(Thread.MAX_PRIORITY);
+		receiverThread.setName("Stress Test Simulator Thread");
+		receiverThread.start();
 		
 	}
 	

@@ -25,7 +25,7 @@ public class WidgetSlider implements Widget {
 	@SuppressWarnings("serial")
 	public WidgetSlider(String label, int min, int max, int selectedValue) {
 		
-		importExportLabel = label.toLowerCase();
+		importExportLabel = label == null ? "" : label.toLowerCase();
 		
 		if(label != null && !label.equals(""))
 			prefixLabel = new JLabel(label + ":");
@@ -125,15 +125,11 @@ public class WidgetSlider implements Widget {
 	}
 	
 	/**
-	 * @param dragStartedHandler    Will be called when the mouse is pressed. Can be null.
-	 * @param valueHandler          Will be called when the slider represents a new value. Can be null.
-	 * @param dragEndedHandler      Will be called when the mouse is released. Can be null.
+	 * @param valueHandler    Will be called when the slider represents a new value. Can be null.
 	 */
-	public WidgetSlider onChange(Consumer<Boolean> dragStartedHandler, Consumer<Integer> valueHandler, Consumer<Boolean> dragEndedHandler) {
+	public WidgetSlider onChange(Consumer<Integer> valueHandler) {
 		
-		mousePressedHandler = dragStartedHandler;
 		newValueHandler = valueHandler;
-		mouseReleasedHandler = dragEndedHandler;
 		
 		// call the value handler, but later, so the calling code can finish constructing things before the handler is triggered
 		SwingUtilities.invokeLater(() -> {
@@ -142,6 +138,25 @@ public class WidgetSlider implements Widget {
 		});
 		
 		return this;
+		
+	}
+	
+	/**
+	 * @param dragStartedHandler    Will be called when the mouse is pressed. Can be null.
+	 * @param dragEndedHandler      Will be called when the mouse is released. Can be null.
+	 */
+	public WidgetSlider onDrag(Consumer<Boolean> dragStartedHandler, Consumer<Boolean> dragEndedHandler) {
+		
+		mousePressedHandler = dragStartedHandler;
+		mouseReleasedHandler = dragEndedHandler;
+		return this;
+		
+	}
+	
+	public void callHandler() {
+		
+		if(newValueHandler != null)
+			newValueHandler.accept(isLog2Mode ? (int) Math.pow(2, slider.getValue()) : slider.getValue());
 		
 	}
 	
@@ -191,7 +206,7 @@ public class WidgetSlider implements Widget {
 		
 	}
 
-	@Override public void importFrom(ConnectionsController.QueueOfLines lines) throws AssertionError {
+	@Override public void importFrom(Connections.QueueOfLines lines) throws AssertionError {
 
 		int number = lines.parseInteger(importExportLabel + " = %d");
 		set(number);

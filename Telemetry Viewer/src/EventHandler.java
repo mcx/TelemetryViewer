@@ -10,7 +10,7 @@ public class EventHandler {
 	boolean forPressEvent = false;
 	boolean forDragEvent = false;
 	boolean dragInProgress = false;
-	PositionedChart chart = null;
+	Chart chart = null;
 	Cursor cursor = null;
 	
 	/**
@@ -75,7 +75,7 @@ public class EventHandler {
 	 * @param mouseLocationHandler    Will be called if the user clicks. The location is in pixels, relative to the chart, with (0,0) at the bottom-left.
 	 * @return                        The event handler.
 	 */
-	public static EventHandler onPress(PositionedChart chart, Consumer<Point> mouseLocationHandler) {
+	public static EventHandler onPress(Chart chart, Consumer<Point> mouseLocationHandler) {
 		
 		EventHandler obj = new EventHandler();
 		obj.mouseLocationHandler = mouseLocationHandler;
@@ -100,7 +100,7 @@ public class EventHandler {
 	 * @param cursor                  Mouse cursor to draw.
 	 * @return                        The event handler.
 	 */
-	public static EventHandler onPressOrDrag(Consumer<Boolean> dragStartedHandler, Consumer<Point> mouseLocationHandler, Consumer<Boolean> dragEndedHandler, PositionedChart chart, Cursor cursor) {
+	public static EventHandler onPressOrDrag(Consumer<Boolean> dragStartedHandler, Consumer<Point> mouseLocationHandler, Consumer<Boolean> dragEndedHandler, Chart chart, Cursor cursor) {
 		
 		EventHandler obj = new EventHandler();
 		obj.mouseLocationHandler = mouseLocationHandler;

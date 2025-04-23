@@ -3,7 +3,7 @@ import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 
 import com.jogamp.opengl.GL2ES3;
 
-public class OpenGLStatisticsChart extends PositionedChart {
+public class OpenGLStatisticsChart extends Chart {
 	
 	private DatasetsInterface.WidgetDatasets datasetsWidget;
 	private WidgetTextfield<Integer> sampleCountTextfield;
@@ -20,17 +20,13 @@ public class OpenGLStatisticsChart extends PositionedChart {
 	private long durationMilliseconds;
 	private String showAs;
 	
-	@Override public String toString() {
+	protected OpenGLStatisticsChart(String name, int x1, int y1, int x2, int y2) {
 		
-		return "Statistics";
-		
-	}
-	
-	public OpenGLStatisticsChart() {
+		super(name, x1, y1, x2, y2);
 		
 		datasetsWidget = datasets.getCheckboxesWidget(newDatasets -> {});
 		
-		sampleCountTextfield = WidgetTextfield.ofInt(1, Integer.MAX_VALUE / 16, ConnectionsController.getDefaultChartDuration())
+		sampleCountTextfield = WidgetTextfield.ofInt(1, Integer.MAX_VALUE / 16, Connections.getDefaultChartDuration())
 		                                      .setSuffix("Samples")
 		                                      .setExportLabel("duration");
 		
@@ -56,7 +52,7 @@ public class OpenGLStatisticsChart extends PositionedChart {
 		
 	}
 	
-	@Override public void getConfigurationGui(JPanel gui) {
+	@Override public void appendConfigurationWidgets(JPanel gui) {
 		
 		gui.add(Theme.newWidgetsPanel("Data")
 		             .with(datasetsWidget, "")

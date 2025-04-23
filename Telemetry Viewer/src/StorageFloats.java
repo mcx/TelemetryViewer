@@ -45,7 +45,7 @@ public class StorageFloats {
 			                                  StandardOpenOption.READ,
 			                                  StandardOpenOption.WRITE);
 		} catch (IOException e) {
-			NotificationsController.showCriticalFault("Unable to create the cache file for \"" + filePath.toString() + "\"");
+			Notifications.showCriticalFault("Unable to create the cache file for \"" + filePath.toString() + "\"");
 			e.printStackTrace();
 		}
 		file = temp;
@@ -232,7 +232,7 @@ public class StorageFloats {
 		try {
 			file.truncate(0);
 		} catch (IOException e) {
-			NotificationsController.showCriticalFault("Unable to clear the cache file at \"" + filePath.toString() + "\"");
+			Notifications.showCriticalFault("Unable to clear the cache file at \"" + filePath.toString() + "\"");
 			e.printStackTrace();
 		}
 		
@@ -270,7 +270,7 @@ public class StorageFloats {
 			file.close();
 			Files.deleteIfExists(filePath);
 		} catch (IOException e) {
-			NotificationsController.showCriticalFault("Unable to delete the cache file at \"" + filePath.toString() + "\"");
+			Notifications.showCriticalFault("Unable to delete the cache file at \"" + filePath.toString() + "\"");
 			e.printStackTrace();
 		}
 		
@@ -345,7 +345,7 @@ public class StorageFloats {
 						try {
 							file.read(buffer, offset);
 						} catch (IOException e) {
-							NotificationsController.showCriticalFault("Error while reading a value from the cache file at \"" + filePath.toString() + "\"");
+							Notifications.showCriticalFault("Error while reading a value from the cache file at \"" + filePath.toString() + "\"");
 							e.printStackTrace();
 						}
 						start += byteCount / BYTES_PER_VALUE;
@@ -381,7 +381,7 @@ public class StorageFloats {
 						try {
 							file.read(buffer, offset);
 						} catch (IOException e) {
-							NotificationsController.showCriticalFault("Error while reading a value from the cache file at \"" + filePath.toString() + "\"");
+							Notifications.showCriticalFault("Error while reading a value from the cache file at \"" + filePath.toString() + "\"");
 							e.printStackTrace();
 						}
 						buffer.rewind();
@@ -436,7 +436,7 @@ public class StorageFloats {
 					value = null;
 					flushing = false;
 				} catch(Exception e) {
-					NotificationsController.showCriticalFault("Error while moving values to the cache file at \"" + filePath.toString() + "\"");
+					Notifications.showCriticalFault("Error while moving values to the cache file at \"" + filePath.toString() + "\"");
 					e.printStackTrace();
 				}
 			}).start();

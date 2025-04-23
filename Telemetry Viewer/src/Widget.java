@@ -39,6 +39,13 @@ public interface Widget {
 	 * @param isVisible    If the widget should be shown on screen.
 	 */
 	public Widget setVisible(boolean isVisible);
+	
+	/**
+	 * Enables or disables interaction with this widget.
+	 * 
+	 * @param isEnabled    If the widget can be interacted with.
+	 */
+	public void setEnabled(boolean isEnabled);
 
 	/**
 	 * Updates the widget based on a settings file.
@@ -46,7 +53,7 @@ public interface Widget {
 	 * @param lines              A queue of remaining lines from the settings file.
 	 * @throws AssertionError    If one or more lines are not formatted correctly, or contain a setting that is outside the allowed range.
 	 */
-	public void importFrom(ConnectionsController.QueueOfLines lines) throws AssertionError;
+	public void importFrom(Connections.QueueOfLines lines) throws AssertionError;
 	
 	/**
 	 * Saves the current state to a settings file.

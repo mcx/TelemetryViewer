@@ -121,7 +121,7 @@ public class WidgetCheckbox implements Widget {
 		
 	}
 	
-	@Override public void importFrom(ConnectionsController.QueueOfLines lines) throws AssertionError {
+	@Override public void importFrom(Connections.QueueOfLines lines) throws AssertionError {
 
 		set(lines.parseBoolean(importExportLabel + " = %b"));
 		

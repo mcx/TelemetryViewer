@@ -3,7 +3,7 @@ import javax.swing.JPanel;
 import com.jogamp.opengl.GL;
 import com.jogamp.opengl.GL2ES3;
 
-public class OpenGLTimelineChart extends PositionedChart {
+public class OpenGLTimelineChart extends Chart {
 	
 	private WidgetCheckbox showControls;
 	private WidgetCheckbox showTime;
@@ -16,13 +16,9 @@ public class OpenGLTimelineChart extends PositionedChart {
 	long maxTimestamp;
 	long plotDomain;
 	
-	@Override public String toString() {
+	protected OpenGLTimelineChart(String name, int x1, int y1, int x2, int y2) {
 		
-		return "Timeline";
-		
-	}
-	
-	public OpenGLTimelineChart() {
+		super(name, x1, y1, x2, y2);
 		
 		datasetsWidget = datasets.getButtonsWidget(newEdge   -> {},
 		                                           newLevels -> {});
@@ -41,7 +37,7 @@ public class OpenGLTimelineChart extends PositionedChart {
 		
 	}
 	
-	@Override public void getConfigurationGui(JPanel gui) {
+	@Override public void appendConfigurationWidgets(JPanel gui) {
 		
 		gui.add(Theme.newWidgetsPanel("Settings")
 		             .with(showControls)
@@ -57,9 +53,9 @@ public class OpenGLTimelineChart extends PositionedChart {
 		WidgetTrigger.Result triggerDetails = OpenGLChartsView.instance.triggerDetails;
 
 		// determine the x-axis range
-		boolean haveTelemetry = ConnectionsController.telemetryExists();
-		minTimestamp = haveTelemetry ? ConnectionsController.getFirstTimestamp() : 0;
-		maxTimestamp = haveTelemetry ? ConnectionsController.getLastTimestamp()  : 0;
+		boolean haveTelemetry = Connections.telemetryExists();
+		minTimestamp = haveTelemetry ? Connections.getFirstTimestamp() : 0;
+		maxTimestamp = haveTelemetry ? Connections.getLastTimestamp()  : 0;
 		plotDomain = maxTimestamp - minTimestamp;
 		
 		float timelineThickness = Theme.lineWidth*2;
@@ -145,7 +141,7 @@ public class OpenGLTimelineChart extends PositionedChart {
 		                               // outline a button if the mouse is over it
 		                               if(plot.mouseX() >= xBeginButtonLeft && plot.mouseX() <= xBeginButtonRight && plot.mouseY() >= yButtonsBottom && plot.mouseY() <= yButtonsTop) {
 		                                   OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xBeginButtonLeft, yButtonsBottom, buttonSize, buttonSize);
-		                                   handler = EventHandler.onPress(event -> OpenGLChartsView.instance.setPaused(ConnectionsController.getFirstTimestamp(), null, 0));
+		                                   handler = EventHandler.onPress(event -> OpenGLChartsView.instance.setPaused(Connections.getFirstTimestamp(), null, 0));
 		                               } else if(plot.mouseX() >= xRewindButtonLeft && plot.mouseX() <= xRewindButtonRight && plot.mouseY() >= yButtonsBottom && plot.mouseY() <= yButtonsTop) {
 		                                   OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xRewindButtonLeft, yButtonsBottom, buttonSize, buttonSize);
 		                                   handler = EventHandler.onPress(event -> OpenGLChartsView.instance.setPlayBackwards());
@@ -166,7 +162,7 @@ public class OpenGLTimelineChart extends PositionedChart {
 		                                       case REWINDING    -> OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xRewindButtonLeft, yButtonsBottom, buttonSize, buttonSize);
 		                                       case PLAYING      -> OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xPlayButtonLeft,   yButtonsBottom, buttonSize, buttonSize);
 		                                       case PLAYING_LIVE -> OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xEndButtonLeft,    yButtonsBottom, buttonSize, buttonSize);
-		                                       case PAUSED       -> { if(nowTimestamp == ConnectionsController.getFirstTimestamp())
+		                                       case PAUSED       -> { if(nowTimestamp == Connections.getFirstTimestamp())
 		                                                                  OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xBeginButtonLeft, yButtonsBottom, buttonSize, buttonSize);
 		                                                              else
 		                                                                  OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xPauseButtonLeft,  yButtonsBottom, buttonSize, buttonSize);}
@@ -204,7 +200,7 @@ public class OpenGLTimelineChart extends PositionedChart {
 		                               OpenGL.drawBox(gl, Theme.tickLinesColor, 0, 0, plot.width(), timelineThickness);
 		                               
 		                               // draw a marker at the current (non-triggered) timestamp
-		                               float markerWidth = 6 * ChartsController.getDisplayScalingFactor();
+		                               float markerWidth = 6 * Charts.getDisplayScalingFactor();
 		                               float x = (float) (triggerDetails.nonTriggeredEndTimestamp() - minTimestamp) / (float) plotDomain * plot.width();
 		                               float y = timelineThickness;
 		                               OpenGL.drawTriangle2D(gl, Theme.tickLinesColor, x, y, x + markerWidth/2, y+markerWidth, x - markerWidth/2, y+markerWidth);
@@ -236,11 +232,11 @@ public class OpenGLTimelineChart extends PositionedChart {
 		                           long mouseTimestamp = minTimestamp + (long) (mousePercentage * (double) plotDomain);
 		                           float yAnchor = timelineThickness / 2;
 		                           
-		                           if(!ConnectionsController.telemetryConnections.isEmpty() && ConnectionsController.cameraConnections.isEmpty()) {
+		                           if(!Connections.telemetryConnections.isEmpty() && Connections.cameraConnections.isEmpty()) {
 		                               // only telemetry connections exist, so find the closest sample number
-		                               ConnectionsController.SampleDetails details = ConnectionsController.getClosestSampleDetailsFor(mouseTimestamp);
-		                               float xAnchor = (float) (details.timestamp - minTimestamp) / (float) plotDomain * plot.width();
-		                               Tooltip tooltip = new Tooltip(details.sampleNumber, details.timestamp, xAnchor, yAnchor);
+		                               var details = Connections.getClosestSampleDetailsFor(mouseTimestamp);
+		                               float xAnchor = (float) (details.timestamp() - minTimestamp) / (float) plotDomain * plot.width();
+		                               Tooltip tooltip = new Tooltip(details.sampleNumber(), details.timestamp(), xAnchor, yAnchor);
 		                               tooltip.draw(gl, plot.mouseX(), plot.mouseY(), plot.width(), plot.height());
 		                           } else {
 		                               // cameras exist, so find the closest timestamp
@@ -254,10 +250,10 @@ public class OpenGLTimelineChart extends PositionedChart {
 		                                   double newMousePercentage = newMouseX / plot.width();
 		                                   long newMouseTimestamp = minTimestamp + (long) (newMousePercentage * (double) plotDomain);
 		                                   
-		                                   if(!ConnectionsController.telemetryConnections.isEmpty() && ConnectionsController.cameraConnections.isEmpty()) {
+		                                   if(!Connections.telemetryConnections.isEmpty() && Connections.cameraConnections.isEmpty()) {
 		                                       // only telemetry connections exist, so find the closest sample number
-		                                       ConnectionsController.SampleDetails details = ConnectionsController.getClosestSampleDetailsFor(newMouseTimestamp);
-		                                       OpenGLChartsView.instance.setPaused(details.timestamp, details.connection, details.sampleNumber);
+		                                       var details = Connections.getClosestSampleDetailsFor(newMouseTimestamp);
+		                                       OpenGLChartsView.instance.setPaused(details.timestamp(), details.connection(), details.sampleNumber());
 		                                   } else {
 		                                       // cameras exist, so use the timestamp
 		                                       OpenGLChartsView.instance.setPaused(newMouseTimestamp, null, 0);

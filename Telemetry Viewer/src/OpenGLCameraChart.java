@@ -4,7 +4,7 @@ import javax.swing.JPanel;
 import com.jogamp.opengl.GL2ES3;
 import com.jogamp.opengl.GL3;
 
-public class OpenGLCameraChart extends PositionedChart {
+public class OpenGLCameraChart extends Chart {
 	
 	long previousFrameTimestamp = 0;
 	int[] texHandle;
@@ -17,17 +17,13 @@ public class OpenGLCameraChart extends PositionedChart {
 	
 	public ConnectionCamera connection = null;
 	
-	@Override public String toString() {
+	protected OpenGLCameraChart(String name, int x1, int y1, int x2, int y2) {
 		
-		return "Camera";
-		
-	}
-	
-	public OpenGLCameraChart() {
+		super(name, x1, y1, x2, y2);
 		
 		// important: this constructor allows *any* camera to be selected, even if not it's connected and has no images
 		// this is required so a settings file can be imported even if it references a camera that does not exist on this computer
-		List<String> cameraNames = ConnectionsController.cameraConnections.stream().map(connection -> connection.getName()).toList();
+		List<String> cameraNames = Connections.cameraConnections.stream().map(connection -> connection.getName()).toList();
 		
 		if(cameraNames.isEmpty())
 			cameraNames = List.of("[No cameras available]");
@@ -35,7 +31,7 @@ public class OpenGLCameraChart extends PositionedChart {
 		cameraName = new WidgetCombobox<String>(null, cameraNames, cameraNames.get(0))
 		                 .setExportLabel("camera name")
 		                 .onChange((newName, oldName) -> {
-		                               connection = ConnectionsController.cameraConnections.stream().filter(connection -> connection.getName().equals(newName)).findFirst().orElse(null);
+		                               connection = Connections.cameraConnections.stream().filter(connection -> connection.getName().equals(newName)).findFirst().orElse(null);
 		                               return true;
 		                           });
 		mirrorX = new WidgetCheckbox("Mirror X-Axis \u2194", false);
@@ -51,14 +47,14 @@ public class OpenGLCameraChart extends PositionedChart {
 		
 	}
 	
-	@Override public void getConfigurationGui(JPanel gui) {
+	@Override public void appendConfigurationWidgets(JPanel gui) {
 		
 		// regenerate the camera list because the available cameras may have changed
 		// and only allow the user to select a camera that is actually connected or has images
-		List<String> cameraNames = ConnectionsController.cameraConnections.stream()
-		                                                .filter(connection -> connection.isConnected() || connection.getSampleCount() > 0)
-		                                                .map(connection -> connection.getName())
-		                                                .toList();
+		List<String> cameraNames = Connections.cameraConnections.stream()
+		                                      .filter(connection -> connection.isConnected() || connection.getSampleCount() > 0)
+		                                      .map(connection -> connection.getName())
+		                                      .toList();
 		boolean noCameras = false;
 		if(cameraNames.isEmpty()) {
 			cameraNames = List.of("[No cameras available]");
@@ -68,7 +64,7 @@ public class OpenGLCameraChart extends PositionedChart {
 		cameraName = new WidgetCombobox<String>(null, cameraNames, (connection == null) ? cameraNames.get(0) : connection.getName())
 		             .setExportLabel("camera name")
 		             .onChange((newName, oldName) -> {
-		                           connection = ConnectionsController.cameraConnections.stream().filter(connection -> connection.getName().equals(newName)).findFirst().orElse(null);
+		                           connection = Connections.cameraConnections.stream().filter(connection -> connection.getName().equals(newName)).findFirst().orElse(null);
 		                           return true;
 		                       });
 		cameraName.setEnabled(!noCameras);

@@ -282,7 +282,7 @@ public class WidgetTextfield<T> implements Widget {
 				
 				// reject insertion of prohibited characters
 				if(!string.matches((mode == Mode.HEX) ? "[0-9A-F ]*" : "[0-1 ]*")) {
-					NotificationsController.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
+					Notifications.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
 					notifyIncompleteHandler();
 					return;
 				}
@@ -304,7 +304,7 @@ public class WidgetTextfield<T> implements Widget {
 						notifyIncompleteHandler();
 						return;
 					} else {
-						NotificationsController.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
+						Notifications.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
 						notifyIncompleteHandler();
 						return;
 					}
@@ -334,7 +334,7 @@ public class WidgetTextfield<T> implements Widget {
 				
 				// reject if modifying the prefix or suffix
 				if(offset < prefixLength || offset + length > textfield.getText().length() - suffixLength) {
-					NotificationsController.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
+					Notifications.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
 					notifyIncompleteHandler();
 					return;
 				}
@@ -382,7 +382,7 @@ public class WidgetTextfield<T> implements Widget {
 				
 				// reject if modifying the prefix or suffix
 				if(offset < prefixLength || offset + length > textfield.getText().length() - suffixLength) {
-					NotificationsController.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
+					Notifications.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
 					notifyIncompleteHandler();
 					return;
 				}
@@ -433,7 +433,7 @@ public class WidgetTextfield<T> implements Widget {
 					if(textfield.isEnabled() && !newText.endsWith(suffix) && checkForSentinel && !newText.endsWith(sentinelText)) // exited sentinel mode
 						textfield.setText(textfield.getText() + suffix);
 				} else {
-					NotificationsController.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
+					Notifications.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
 				}
 			}
 			
@@ -444,7 +444,7 @@ public class WidgetTextfield<T> implements Widget {
 					if(textfield.isEnabled() && !newText.endsWith(suffix) && checkForSentinel && !newText.endsWith(sentinelText)) // exited sentinel mode
 						textfield.setText(textfield.getText() + suffix);
 				} else {
-					NotificationsController.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
+					Notifications.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
 				}
 			}
 			
@@ -455,7 +455,7 @@ public class WidgetTextfield<T> implements Widget {
 					if(textfield.isEnabled() && !newText.endsWith(suffix) && checkForSentinel && !newText.endsWith(sentinelText)) // exited sentinel mode
 						textfield.setText(textfield.getText() + suffix);
 				} else {
-					NotificationsController.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
+					Notifications.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
 				}
 			}
 			
@@ -554,7 +554,7 @@ public class WidgetTextfield<T> implements Widget {
 					if(textfield.isEnabled() && !newText.endsWith(suffix) && checkForSentinel && !newText.endsWith(sentinelText))
 						textfield.setText(textfield.getText() + suffix);
 				} else {
-					NotificationsController.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
+					Notifications.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
 				}
 			}
 			
@@ -565,7 +565,7 @@ public class WidgetTextfield<T> implements Widget {
 					if(textfield.isEnabled() && !newText.endsWith(suffix) && checkForSentinel && !newText.endsWith(sentinelText))
 						textfield.setText(textfield.getText() + suffix);
 				} else {
-					NotificationsController.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
+					Notifications.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
 				}
 			}
 			
@@ -576,7 +576,7 @@ public class WidgetTextfield<T> implements Widget {
 					if(textfield.isEnabled() && !newText.endsWith(suffix) && checkForSentinel && !newText.endsWith(sentinelText))
 						textfield.setText(textfield.getText() + suffix);
 				} else {
-					NotificationsController.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
+					Notifications.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
 				}
 			}
 			
@@ -818,6 +818,7 @@ public class WidgetTextfield<T> implements Widget {
 	}
 	
 	private String disabledMessage = null;
+	private boolean forcedDisabled = false;
 	
 	/**
 	 * Disables the textfield and displays a message without validating it.
@@ -988,13 +989,26 @@ public class WidgetTextfield<T> implements Widget {
 		
 	}
 	
-	public WidgetTextfield<T> setEnabled(boolean enabled) {
+	@Override public void setEnabled(boolean enabled) {
+		
+		if(forcedDisabled)
+			return;
 		
 		if(enabled && disabledMessage != null) {
 			disabledMessage = null;
 			textfield.setText(prefix + userText + suffix);
 		}
 		textfield.setEnabled(enabled);
+		
+	}
+	
+	public WidgetTextfield<T> forceDisabled(boolean isDisabled) {
+		
+		if(isDisabled)
+			setEnabled(false);
+		forcedDisabled = isDisabled;
+		if(!isDisabled)
+			setEnabled(true);
 		return this;
 		
 	}
@@ -1054,7 +1068,7 @@ public class WidgetTextfield<T> implements Widget {
 					rejected = true; // missing space between bytes
 			if(rejected) {
 				textfield.setText(oldText);
-				NotificationsController.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
+				Notifications.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
 				return;
 			}
 			if(!text.isEmpty() && (text.length() - 2) % 3 != 0)
@@ -1070,7 +1084,7 @@ public class WidgetTextfield<T> implements Widget {
 					rejected = true; // missing space between bytes
 			if(rejected){
 				textfield.setText(oldText);
-				NotificationsController.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
+				Notifications.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
 				return;
 			}
 			if(!text.isEmpty())
@@ -1093,7 +1107,7 @@ public class WidgetTextfield<T> implements Widget {
 				}
 			} catch(Exception e) {
 				textfield.setText(oldText);
-				NotificationsController.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
+				Notifications.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
 				return;
 			}
 		}
@@ -1114,7 +1128,7 @@ public class WidgetTextfield<T> implements Widget {
 				}
 			} catch(Exception e) {
 				textfield.setText(oldText);
-				NotificationsController.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
+				Notifications.printDebugMessageAndBeep(this.getClass().getName() + " rejected text: \"" + newText + "\"");
 				return;
 			}
 		}
@@ -1138,7 +1152,7 @@ public class WidgetTextfield<T> implements Widget {
 			};
 			if(!changeHandler.test(newValue, oldValue)) {
 				userText = oldUserText;
-				NotificationsController.printDebugMessageAndBeep(this.getClass().getName() + " onChange() handler rejected text: \"" + newText + "\"");
+				Notifications.printDebugMessageAndBeep(this.getClass().getName() + " onChange() handler rejected text: \"" + newText + "\"");
 			}
 		}
 		
@@ -1157,7 +1171,7 @@ public class WidgetTextfield<T> implements Widget {
 	}
 
 	@SuppressWarnings("unchecked")
-	@Override public void importFrom(ConnectionsController.QueueOfLines lines) throws AssertionError {
+	@Override public void importFrom(Connections.QueueOfLines lines) throws AssertionError {
 
 		String text = lines.parseString(importExportLabel + " = %s");
 		set(switch(mode) {

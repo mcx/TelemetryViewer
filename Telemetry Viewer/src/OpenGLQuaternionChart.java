@@ -19,20 +19,16 @@ import com.jogamp.opengl.math.Quaternion;
  *     Four quaternion datasets.
  *     The quaternion (as text) can be displayed.
  */
-public class OpenGLQuaternionChart extends PositionedChart {
+public class OpenGLQuaternionChart extends Chart {
 
 	FloatBuffer shape; // triangles: x1,y1,z1,u1,v1,w1,...
 	
 	private DatasetsInterface.WidgetDatasets datasetsWidget;
 	private WidgetCheckbox quatLabelEnabled;
 	
-	@Override public String toString() {
+	protected OpenGLQuaternionChart(String name, int x1, int y1, int x2, int y2) {
 		
-		return "Quaternion";
-		
-	}
-	
-	public OpenGLQuaternionChart() {
+		super(name, x1, y1, x2, y2);
 		
 		duration = 1;
 		
@@ -48,7 +44,7 @@ public class OpenGLQuaternionChart extends PositionedChart {
 		
 	}
 	
-	@Override public void getConfigurationGui(JPanel gui) {
+	@Override public void appendConfigurationWidgets(JPanel gui) {
 		
 		gui.add(Theme.newWidgetsPanel("Data")
 		             .with(datasetsWidget)

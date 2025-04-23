@@ -40,7 +40,6 @@ import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
-import javax.swing.BorderFactory;
 import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
@@ -52,6 +51,7 @@ import javax.swing.JTextArea;
 import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
+import javax.swing.border.TitledBorder;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.TableCellRenderer;
 
@@ -64,6 +64,10 @@ public abstract class ConnectionTelemetry extends Connection {
 		BINARY { @Override public String toString() { return "Binary Mode"; } },
 		TC66   { @Override public String toString() { return "TC66 Mode";   } };
 	};
+	
+	private volatile String tc66firmwareVersion = "Firmware version: unknown";
+	private volatile String tc66serialNumber = "Serial number: unknown";
+	private volatile String tc66powerOnCount = "Power on count: unknown";
 	
 	protected Map<Integer, Field> fields = new TreeMap<Integer, Field>(); // <location, field>
 	private volatile boolean fieldsDefined = false;
@@ -84,9 +88,9 @@ public abstract class ConnectionTelemetry extends Connection {
 	protected WidgetTextfield<Integer> portNumber; // for TCP/UDP modes
 	
 	private Timer sampleRateCalculator;
-	protected long previousSampleCountTimestamp = 0;
-	protected int  previousSampleCount = 0;
-	protected int  calculatedSamplesPerSecond = 0;
+	protected volatile long previousSampleCountTimestamp = 0;
+	protected volatile int  previousSampleCount = 0;
+	protected volatile int  calculatedSamplesPerSecond = 0;
 	
 	public int getSampleRate() {
 		int rate = sampleRate.get();
@@ -129,9 +133,6 @@ public abstract class ConnectionTelemetry extends Connection {
 	 */
 	public ConnectionTelemetry() {
 		
-		// subclass constructors must select a name by calling name.set()
-		name = ConnectionsController.getNamesCombobox(this);
-		
 		// sample rate defaults to 0 (automatic mode)
 		sampleRate = WidgetTextfield.ofInt(1, Integer.MAX_VALUE, 0, 0, "Automatic")
 		                            .setPrefix("Sample Rate")
@@ -146,13 +147,11 @@ public abstract class ConnectionTelemetry extends Connection {
 				return;
 			} else if(previousSampleCountTimestamp == 0) {
 				// initialize automatic sample rate mode
-				previousSampleCountTimestamp = ConnectionsController.importing ? ConnectionsController.getFirstTimestamp() :
-				                                                                 System.currentTimeMillis();
+				previousSampleCountTimestamp = Connections.importing ? Connections.getFirstTimestamp() : System.currentTimeMillis();
 				previousSampleCount = getSampleCount();
 			} else {
 				// calculate the sample rate
-				long currentTimestamp = ConnectionsController.importing ? ConnectionsController.getLastTimestamp() :
-				                                                          System.currentTimeMillis();
+				long currentTimestamp = Connections.importing ? Connections.getLastTimestamp() : System.currentTimeMillis();
 				int  currentSampleCount = getSampleCount();
 				long millisecondsDelta = currentTimestamp - previousSampleCountTimestamp;
 				int sampleCountDelta = currentSampleCount - previousSampleCount;
@@ -203,12 +202,12 @@ public abstract class ConnectionTelemetry extends Connection {
 		                            .setFixedWidth(9)
 		                            .onChange((newValue, oldValue) -> {
 		                            	// the port number must be unique among all connections
-		                                List<Integer> usedPorts = ConnectionsController.telemetryConnections
-		                                                                               .stream()
-		                                                                               .filter(connection -> connection != this)
-		                                                                               .filter(connection -> connection.name.get().equals("TCP") || connection.name.get().equals("UDP"))
-		                                                                               .map(connection -> connection.portNumber.get())
-		                                                                               .toList();
+		                                List<Integer> usedPorts = Connections.telemetryConnections
+		                                                                     .stream()
+		                                                                     .filter(connection -> connection != this)
+		                                                                     .filter(connection -> connection.name.is("TCP") || connection.name.is("UDP"))
+		                                                                     .map(connection -> connection.portNumber.get())
+		                                                                     .toList();
 		                                if(!usedPorts.contains(newValue)) {
 		                                    return true;
 		                                } else {
@@ -247,23 +246,23 @@ public abstract class ConnectionTelemetry extends Connection {
 		
 		// data provided by the user
 		transmitData = WidgetTextfield.ofText("")
-		                   .setExportLabel("transmit data")
-		                   .onEnter(event -> transmitTransmitButton.doClick())
-		                   .onChange((newText, oldText) -> {
-		                        boolean haveData = transmitAppendCR.get() || transmitAppendLF.get() || !newText.isEmpty();
-		                        transmitRepeatedly.setEnabled(haveData);
-		                        transmitRepeatedlyMilliseconds.setEnabled(haveData);
-		                        transmitSaveButton.setEnabled(haveData);
-		                        transmitTransmitButton.setEnabled(haveData);
-		                        return true;
-		                   })
-		                   .onIncompleteChange(text -> {
-		                       boolean haveData = transmitAppendCR.get() || transmitAppendLF.get() || !text.isEmpty();
-		                       transmitRepeatedly.setEnabled(haveData);
-		                       transmitRepeatedlyMilliseconds.setEnabled(haveData);
-		                       transmitSaveButton.setEnabled(haveData);
-		                       transmitTransmitButton.setEnabled(haveData);
-		                   });
+		                              .setExportLabel("transmit data")
+		                              .onEnter(event -> transmitTransmitButton.doClick())
+		                              .onChange((newText, oldText) -> {
+		                                   boolean haveData = transmitAppendCR.get() || transmitAppendLF.get() || !newText.isEmpty();
+		                                   transmitRepeatedly.setEnabled(haveData);
+		                                   transmitRepeatedlyMilliseconds.setEnabled(haveData);
+		                                   transmitSaveButton.setEnabled(haveData);
+		                                   transmitTransmitButton.setEnabled(haveData);
+		                                   return true;
+		                              })
+		                              .onIncompleteChange(text -> {
+		                                  boolean haveData = transmitAppendCR.get() || transmitAppendLF.get() || !text.isEmpty();
+		                                  transmitRepeatedly.setEnabled(haveData);
+		                                  transmitRepeatedlyMilliseconds.setEnabled(haveData);
+		                                  transmitSaveButton.setEnabled(haveData);
+		                                  transmitTransmitButton.setEnabled(haveData);
+		                              });
 		
 		// for text mode, \r or \n can be automatically appended
 		transmitAppendCR = new WidgetCheckbox("CR", false)
@@ -345,8 +344,8 @@ public abstract class ConnectionTelemetry extends Connection {
 		                       new Field(this).setLocation(9 ).setName("D+ Voltage"      ).setColor(new Color(0x8000FF)).setUnit("V"      ).insert();
 		                       new Field(this).setLocation(10).setName("D- Voltage"      ).setColor(new Color(0x0000FF)).setUnit("V"      ).insert();
 		                       setFieldsDefined(true);
-		                       sampleRate.set(2);
-		                       baudRate.set("9600 Baud");
+		                       sampleRate.set(2).forceDisabled(true);
+		                       baudRate.set("9600 Baud").forceDisabled(true);
 		                       transmitData.set("getva");
 		                       transmitRepeatedly.set(true);
 		                       transmitRepeatedlyMilliseconds.set(200);
@@ -354,14 +353,14 @@ public abstract class ConnectionTelemetry extends Connection {
 		                       transmitSavedPackets.add(new Packet("Previous Screen", "lastp".getBytes(), "6C 61 73 74 70"));
 		                       transmitSavedPackets.add(new Packet("Next Screen",     "nextp".getBytes(), "6E 65 78 74 70"));
 		                   } else {
-		                       sampleRate.set(0);
+		                       sampleRate.set(0).forceDisabled(false);
+		                       baudRate.forceDisabled(false);
 		                       transmitData.set("");
 		                       transmitRepeatedly.set(false);
 		                       transmitRepeatedlyMilliseconds.set(1000);
 		                   }
 		                   
-		                   CommunicationView.instance.redraw(); // because the sampleRate textfield may need to be enabled/disabled
-		                   SettingsView.instance.redraw(); // redraw the TX GUI
+		                   SettingsView.instance.redraw(); // because the TX GUI is different for TC66 and non-TC66 protocols
 		                   return true;
 		               });
 		
@@ -609,23 +608,13 @@ public abstract class ConnectionTelemetry extends Connection {
 		
 	}
 	
-	/**
-	 * Reads CSV samples from a file, instead of a live connection.
-	 * 
-	 * @param path                       Path to the file.
-	 * @param firstTimestamp             Timestamp when the first sample from ANY connection was acquired. This is used to allow importing to happen in real time.
-	 * @param beginImportingTimestamp    Timestamp when all import threads should begin importing.
-	 * @param completedByteCount         Variable to increment as progress is made (this is periodically queried by a progress bar.)
-	 */
-	@Override public void importDataFile(String path, long firstTimestamp, long beginImportingTimestamp, AtomicLong completedByteCount) {
-
-		removeAllData();
+	@Override public void connectToFile(String path, long firstTimestamp, long beginImportingTimestamp, AtomicLong completedByteCount) {
 		
 		receiverThread = new Thread(() -> {
 			
 			try (FileReader file = new FileReader(path, StandardCharsets.UTF_8); BufferedReader buffer = new BufferedReader(file)) {
 				
-				setConnected(true);
+				setStatus(Status.CONNECTED, false);
 				previousSampleCountTimestamp = 0;
 				previousSampleCount = 0;
 				int sampleNumber = getSampleCount();
@@ -635,13 +624,13 @@ public abstract class ConnectionTelemetry extends Connection {
 				// sanity checks
 				String line = buffer.readLine();
 				if(line == null) {
-					SwingUtilities.invokeLater(() -> disconnect("The CSV file is empty."));
+					disconnect("The CSV file is empty.", false);
 					return;
 				}
 				
 				String[] columns = line.split(",");
 				if(columns.length != datasetsCount + 2) {
-					SwingUtilities.invokeLater(() -> disconnect("The CSV file header does not match the current data structure."));
+					disconnect("The CSV file header does not match the current data structure.", false);
 					return;
 				}
 				
@@ -654,7 +643,7 @@ public abstract class ConnectionTelemetry extends Connection {
 						correctColumnLabels = false;
 				}
 				if(!correctColumnLabels) {
-					SwingUtilities.invokeLater(() -> disconnect("The CSV file header does not match the current data structure."));
+					disconnect("The CSV file header does not match the current data structure.", false);
 					return;
 				}
 				completedByteCount.addAndGet((long) (line.length() + 2)); // assuming each char is 1 byte, and EOL is 2 bytes
@@ -686,7 +675,7 @@ public abstract class ConnectionTelemetry extends Connection {
 						for(int packetN = 0; packetN < data.packetCount; packetN++) {
 							if(sampleNumber == Integer.MAX_VALUE)
 								throw new Exception();
-							if(ConnectionsController.realtimeImporting) {
+							if(Connections.realtimeImporting) {
 								long delay = (data.timestamps[packetN] - firstTimestamp) - (System.currentTimeMillis() - beginImportingTimestamp);
 								if(delay > 0)
 									try { Thread.sleep(delay); } catch(Exception e) { }
@@ -707,14 +696,14 @@ public abstract class ConnectionTelemetry extends Connection {
 				}
 				
 				// done
-				SwingUtilities.invokeLater(() -> disconnect(null));
+				disconnect(null, false);
 				
 			} catch (IOException e) {
-				SwingUtilities.invokeLater(() -> disconnect("Unable to open the CSV Log file."));
+				disconnect("Unable to open the CSV Log file.", false);
 			} catch (InterruptedException e) {
-				SwingUtilities.invokeLater(() -> disconnect(null));
+				disconnect(null, false);
 			} catch (Exception e) {
-				SwingUtilities.invokeLater(() -> disconnect("Error while parsing the CSV Log file."));
+				disconnect("Error while parsing the CSV Log file.", false);
 			}
 			
 		});
@@ -857,8 +846,8 @@ public abstract class ConnectionTelemetry extends Connection {
 	
 	@Override public void dispose() {
 		
-		if(isConnected())
-			disconnect(null);
+		if(!isDisconnected())
+			disconnect(null, true);
 		
 		Main.window.remove(getDataStructureGui()); // ensure the DS GUI is no longer on screen
 		
@@ -867,8 +856,8 @@ public abstract class ConnectionTelemetry extends Connection {
 		timestamps.dispose();
 		
 		// if this is the only connection, remove all charts, because there may be a timeline chart
-		if(ConnectionsController.allConnections.size() == 1)
-			ChartsController.removeAllCharts();
+		if(Connections.allConnections.size() == 1)
+			Charts.removeAll();
 		
 	}
 	
@@ -910,9 +899,9 @@ public abstract class ConnectionTelemetry extends Connection {
 				
 				if(isConnected()) {
 					if(getSampleCount() == oldSampleCount)
-						NotificationsController.showHintUntil(waitingForTelemetry, () -> getSampleCount() > oldSampleCount, true);
+						Notifications.showHintUntil(waitingForTelemetry, () -> getSampleCount() > oldSampleCount, true);
 					else
-						NotificationsController.showVerboseForMilliseconds(receivingTelemetry, 5000, true);
+						Notifications.printInfo(receivingTelemetry);
 				}
 				
 			});
@@ -945,7 +934,7 @@ public abstract class ConnectionTelemetry extends Connection {
 
 						int sampleNumber = getSampleCount();
 						if(sampleNumber == Integer.MAX_VALUE) {
-							SwingUtilities.invokeLater(() -> disconnect("Reached maximum sample count. Disconnected.")); // invokeLater to prevent deadlock
+							disconnect(maxSampleCountErrorMessage, false);
 							throw new InterruptedException();
 						}
 						
@@ -955,7 +944,7 @@ public abstract class ConnectionTelemetry extends Connection {
 						
 					} catch(NumberFormatException | NullPointerException | ArrayIndexOutOfBoundsException e1) {
 						
-						NotificationsController.showFailureForMilliseconds("A corrupt or incomplete telemetry packet was received:\n\"" + line + "\"", 5000, false);
+						Notifications.showFailureForMilliseconds("A corrupt or incomplete telemetry packet was received:\n\"" + line + "\"", 5000, false);
 						
 					} catch(InterruptedException e2) {
 						
@@ -1012,7 +1001,7 @@ public abstract class ConnectionTelemetry extends Connection {
 						int receivedPacketCount = (data.end - data.offset + 1) / packetByteCount;
 						int packetCount = Integer.min(receivedPacketCount, maxAllowedPacketCount);
 						if(sampleNumber == Integer.MAX_VALUE) {
-							SwingUtilities.invokeLater(() -> disconnect("Reached maximum sample count. Disconnected.")); // invokeLater to prevent deadlock
+							disconnect(maxSampleCountErrorMessage, false);
 							throw new InterruptedException();
 						}
 						
@@ -1121,7 +1110,7 @@ public abstract class ConnectionTelemetry extends Connection {
 				stream.setPacketSize(packetLength, 0, (byte) 0);
 				
 				// for some reason the TC66/TC66C uses AES encryption when sending measurements to the PC
-				// this key is NOT a secret and IS intentionally in this publicly accessible source code
+				// this key is NOT a secret and is intentionally in this publicly accessible source code
 				byte[] tc66key = new byte[] {
 					(byte) 0x58, (byte) 0x21, (byte) 0xfa, (byte) 0x56, (byte) 0x01, (byte) 0xb2, (byte) 0xf0, (byte) 0x26, (byte) 0x87, (byte) 0xff, (byte) 0x12, (byte) 0x04, (byte) 0x62, (byte) 0x2a, (byte) 0x4f, (byte) 0xb0,
 					(byte) 0x86, (byte) 0xf4, (byte) 0x02, (byte) 0x60, (byte) 0x81, (byte) 0x6f, (byte) 0x9a, (byte) 0x0b, (byte) 0xa7, (byte) 0xf1, (byte) 0x06, (byte) 0x61, (byte) 0x9a, (byte) 0xb8, (byte) 0x72, (byte) 0x88
@@ -1132,7 +1121,7 @@ public abstract class ConnectionTelemetry extends Connection {
 					aes = Cipher.getInstance("AES/ECB/NoPadding");
 					aes.init(Cipher.DECRYPT_MODE, key);
 				} catch(Exception e) {
-					SwingUtilities.invokeLater(() -> disconnect("Unable to prepare TC66 decryption logic.")); // invokeLater to prevent a deadlock
+					disconnect("Unable to prepare TC66 decryption logic.", false);
 					e.printStackTrace();
 					return;
 				}
@@ -1194,11 +1183,15 @@ public abstract class ConnectionTelemetry extends Connection {
 								// log some info to the terminal
 								if(firstPacket) {
 									firstPacket = false;
-									String device          = new String(new char[] {(char) currentPacket[4], (char) currentPacket[5], (char) currentPacket[6],  (char) currentPacket[7]});
+//									String device          = new String(new char[] {(char) currentPacket[4], (char) currentPacket[5], (char) currentPacket[6],  (char) currentPacket[7]});
 									String firmwareVersion = new String(new char[] {(char) currentPacket[8], (char) currentPacket[9], (char) currentPacket[10], (char) currentPacket[11]});
 									long serialNumber      = getUint32.apply(currentPacket, 12);
 									long powerOnCount      = getUint32.apply(currentPacket, 44);
-									NotificationsController.showVerboseForMilliseconds(String.format("Device: %s, Firmware Version: %s, Serial Number: %d, Power On Count: %d", device, firmwareVersion, serialNumber, powerOnCount), 5000, true);
+									tc66firmwareVersion = "Firmware version: " + firmwareVersion;
+									tc66serialNumber = "Serial number: " + serialNumber;
+									tc66powerOnCount = "Power on count: " + powerOnCount;
+									SettingsView.instance.redraw();
+//									Notifications.printInfo(String.format("Device: %s, Firmware Version: %s, Serial Number: %d, Power On Count: %d", device, firmwareVersion, serialNumber, powerOnCount));
 								}
 								
 								// extract data
@@ -1218,7 +1211,7 @@ public abstract class ConnectionTelemetry extends Connection {
 								// populate the datasets
 								int sampleNumber = getSampleCount();
 								if(sampleNumber == Integer.MAX_VALUE) {
-									SwingUtilities.invokeLater(() -> disconnect("Reached maximum sample count. Disconnected.")); // invokeLater to prevent deadlock
+									disconnect(maxSampleCountErrorMessage, false);
 									throw new InterruptedException();
 								}
 								
@@ -1245,7 +1238,7 @@ public abstract class ConnectionTelemetry extends Connection {
 						
 					} catch (BadPaddingException | IllegalBlockSizeException e) {
 					
-						NotificationsController.showFailureForMilliseconds("Error while decrypting a packet from the TC66.", 5000, true);
+						Notifications.showFailureForMilliseconds("Error while decrypting a packet from the TC66.", 5000, true);
 						e.printStackTrace();
 						continue;
 						
@@ -1727,23 +1720,8 @@ public abstract class ConnectionTelemetry extends Connection {
 		// ensure the configure panel isn't open
 		ConfigureView.instance.close();
 		
-		// remove charts containing the dataset
-		ChartsController.getCharts().stream().filter(chart -> chart.datasets.contains(field)).toList().forEach(chart -> ChartsController.removeChart(chart));
-		
-		// remove any charts triggering on the dataset
-		ChartsController.getCharts().stream()
-		                            .filter(chart -> {
-		                                 if(chart.trigger == null)
-		                                     return false;
-		                                 else if(chart.trigger.normalDataset != null && field == chart.trigger.normalDataset)
-		                                     return true;
-		                                 else if(chart.trigger.bitfieldState != null && field == chart.trigger.bitfieldState.dataset)
-		                                	 return true;
-		                                 else
-		                                	 return false;
-		                             })
-		                            .toList()
-		                            .forEach(chart -> ChartsController.removeChart(chart));
+		// remove any charts referencing the dataset
+		Charts.removeIf(chart -> chart.datasets.contains(field) || (chart.trigger != null && chart.trigger.datasets.contains(field)));
 		
 		// remove the dataset
 		fields.remove(location);
@@ -1751,16 +1729,14 @@ public abstract class ConnectionTelemetry extends Connection {
 			field.floats.dispose();
 		
 		// remove timestamps if no other datasets are left
-		if(fields.values().stream().filter(Field::isDataset).count() == 0) {
-
+		if(fields.isEmpty()) {
 			clearTimestamps();
-			
 			CommunicationView.instance.redraw();
 			OpenGLChartsView.instance.setPlayLive();
 			
 			// if this is the only connection, also remove all charts because a timeline chart may still exist
-			if(ConnectionsController.allConnections.size() == 1)
-				ChartsController.removeAllCharts();
+			if(Connections.allConnections.size() == 1)
+				Charts.removeAll();
 		}
 		
 		return null; // success
@@ -1791,14 +1767,12 @@ public abstract class ConnectionTelemetry extends Connection {
 		
 	}
 	
-	List<Widget> widgetsList = new ArrayList<Widget>();
-	
 	abstract protected boolean supportsTransmitting();
 	abstract protected boolean supportsUserDefinedDataStructure();
 
-	@Override public void importSettings(ConnectionsController.QueueOfLines lines) throws AssertionError {
+	@Override public void importFrom(Connections.QueueOfLines lines) throws AssertionError {
 		
-		widgetsList.stream().skip(1).forEach(widget -> widget.importFrom(lines));
+		configWidgets.stream().skip(1).forEach(widget -> widget.importFrom(lines));
 
 		if(supportsTransmitting() && !protocol.is(Protocol.TC66)) {
 			transmitDatatype.importFrom(lines);
@@ -1829,7 +1803,7 @@ public abstract class ConnectionTelemetry extends Connection {
 			}
 		}
 		
-		if(supportsUserDefinedDataStructure()) {
+		if(supportsUserDefinedDataStructure() && !protocol.is(Protocol.TC66)) {
 			int fieldCount = lines.parseInteger("field count = %d");
 			if(fieldCount < 1)
 				throw new AssertionError("Invalid datasets count.");
@@ -1841,9 +1815,9 @@ public abstract class ConnectionTelemetry extends Connection {
 
 	}
 
-	@Override public void exportSettings(PrintWriter file) {
+	@Override public void exportTo(PrintWriter file) {
 		
-		widgetsList.forEach(widget -> widget.exportTo(file));
+		configWidgets.forEach(widget -> widget.exportTo(file));
 		
 		if(supportsTransmitting() && !protocol.is(Protocol.TC66)) {
 			transmitDatatype.exportTo(file);
@@ -1860,7 +1834,7 @@ public abstract class ConnectionTelemetry extends Connection {
 			});
 		}
 		
-		if(supportsUserDefinedDataStructure()) {
+		if(supportsUserDefinedDataStructure() && !protocol.is(Protocol.TC66)) {
 			file.println("\tfield count = " + fields.size());
 			fields.values().stream().forEach(dataset -> dataset.exportTo(file));
 		}
@@ -1869,17 +1843,23 @@ public abstract class ConnectionTelemetry extends Connection {
 
 	}
 	
-	final public JPanel getUpdatedTransmitGUI() {
+	@Override public JPanel getUpdatedTransmitGUI() {
 		
-		if(!supportsTransmitting() || ConnectionsController.importing)
+		if(Connections.importing || !supportsTransmitting())
 			return null;
+		
+		JPanel gui = new JPanel(new MigLayout("hidemode 3, fillx, wrap 1, insets " + Theme.padding + ", gap " + Theme.padding, "[fill,grow]"));
+		String title = protocol.is(Protocol.TC66) ? "TC66 (" + getName() + (isConnected() ? "" : " - disconnected") + ")" :
+		                                            "Transmit to " + getName() + (isConnected() ? "" : " (disconnected)");
+		gui.setBorder(new TitledBorder(title));
 		
 		if(protocol.is(Protocol.TC66)) {
 			
-			// special case: for the TC66, the user can only send some pre-defined packets
-			JPanel gui = new JPanel(new MigLayout("hidemode 3, fillx, wrap 1, insets " + Theme.padding + ", gap " + Theme.padding, "[fill,grow]"));
-			gui.setBorder(BorderFactory.createTitledBorder("TC66 (" + name.get() + (isConnected() ? "" : " - disconnected") + ")"));
+			gui.add(new JLabel(tc66firmwareVersion, SwingConstants.CENTER));
+			gui.add(new JLabel(tc66serialNumber, SwingConstants.CENTER));
+			gui.add(new JLabel(tc66powerOnCount, SwingConstants.CENTER));
 			
+			// for the TC66, the user can only send some pre-defined packets
 			transmitSavedPackets.forEach(packet -> {
 				JButton packetButton = new JButton(packet.label());
 				packetButton.setHorizontalAlignment(SwingConstants.LEFT);
@@ -1888,25 +1868,20 @@ public abstract class ConnectionTelemetry extends Connection {
 				gui.add(packetButton);
 			});
 			
-			return gui;
-			
 		} else {
 			
-			boolean haveData = transmitAppendCR.get() || transmitAppendLF.get() || !transmitData.get().isEmpty();
+			transmitDatatype.appendTo(gui, "split 2");
+			transmitData.appendTo(gui, "grow x, width 1:1:"); // min/pref width = 1px, so this doesn't widen the panel
 			
-			// show all of the widgets and saved packets
-			JPanel gui = new JPanel(new MigLayout("hidemode 3, fillx, wrap 2, insets " + Theme.padding + ", gap " + Theme.padding));
-			gui.setBorder(BorderFactory.createTitledBorder("Transmit to " + name.get() + (isConnected() ? "" : " (disconnected)")));
-			
-			transmitDatatype.appendTo(gui, "grow x");
-			transmitData.appendTo(gui, "grow x");
-			transmitAppendCR.appendTo(gui, "span 2, split 4");
+			transmitAppendCR.appendTo(gui, "split 4");
 			transmitAppendLF.appendTo(gui, "");
 			transmitRepeatedly.appendTo(gui, "");
-			transmitRepeatedlyMilliseconds.appendTo(gui, "grow x");
-			gui.add(transmitSaveButton, "span 2, split 2, grow x");
+			transmitRepeatedlyMilliseconds.appendTo(gui, "grow x, width 1:1:"); // min/pref width = 1px, so this doesn't widen the panel
+			
+			gui.add(transmitSaveButton, "split 2, grow x");
 			gui.add(transmitTransmitButton, "grow x");
 			
+			boolean haveData = transmitAppendCR.get() || transmitAppendLF.get() || !transmitData.get().isEmpty();
 			transmitDatatype.setEnabled(isConnected());
 			transmitData.setEnabled(isConnected());
 			transmitAppendCR.setEnabled(isConnected() && transmitDatatype.is(WidgetTextfield.Mode.TEXT));
@@ -1928,13 +1903,13 @@ public abstract class ConnectionTelemetry extends Connection {
 					SettingsView.instance.redraw(); // so this TX GUI gets redrawn
 				});
 				removeButton.setEnabled(isConnected());
-				gui.add(sendButton, "span 2, split 2, grow x, width 1:1:"); // setting min/pref width to 1px to ensure this button doesn't widen the panel
+				gui.add(sendButton, "split 2, grow x, width 1:1:"); // min/pref width = 1px, so this doesn't widen the panel
 				gui.add(removeButton);
 			});
 			
-			return gui;
-			
 		}
+			
+		return gui;
 		
 	}
 

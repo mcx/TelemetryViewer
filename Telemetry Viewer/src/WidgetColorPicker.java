@@ -32,6 +32,7 @@ import javax.swing.SwingUtilities;
 public class WidgetColorPicker implements Widget {
 	
 	private String importExportLabel;
+	private String title;
 	private JButton button;
 	private volatile Color   selectedColor;
 	private volatile float[] selectedColorGl;
@@ -47,6 +48,7 @@ public class WidgetColorPicker implements Widget {
 	public WidgetColorPicker(String titlebarText, Color color) {
 		
 		importExportLabel = titlebarText.toLowerCase() + " color";
+		title = titlebarText.toLowerCase();
 		handler = null;
 		
 		button = new JButton() {
@@ -56,7 +58,7 @@ public class WidgetColorPicker implements Widget {
 		};
 		button.setBorder(Theme.narrowButtonBorder);
 		button.setHorizontalAlignment(SwingConstants.LEFT);
-		button.addActionListener(event -> set(ColorPickerView.getColor(titlebarText, selectedColor, true)));
+		button.addActionListener(event -> set(ColorPickerView.getColor(title, selectedColor, true)));
 		set(color);
 		
 	}
@@ -78,7 +80,7 @@ public class WidgetColorPicker implements Widget {
 		
 		for(ActionListener listener : button.getActionListeners())
 			button.removeActionListener(listener);
-		button.addActionListener(event -> set(ColorPickerView.getColor(importExportLabel, selectedColor, isIndicated)));
+		button.addActionListener(event -> set(ColorPickerView.getColor(title, selectedColor, isIndicated)));
 		return this;
 		
 	}
@@ -145,7 +147,7 @@ public class WidgetColorPicker implements Widget {
 		
 	}
 	
-	@Override public void importFrom(ConnectionsController.QueueOfLines lines) throws AssertionError {
+	@Override public void importFrom(Connections.QueueOfLines lines) throws AssertionError {
 		
 		String colorText = lines.parseString(importExportLabel + " = 0x%s");
 		set(new Color(Integer.parseInt(colorText, 16)));
@@ -211,8 +213,8 @@ public class WidgetColorPicker implements Widget {
 			mouseOverColor = null;
 			this.indicateUsedColors = indicateUsedColors;
 			
-			setSize((int) (600 * ChartsController.getDisplayScalingFactorForGUI()), (int) (400 * ChartsController.getDisplayScalingFactorForGUI()));
-			setTitle("Pick a Color for " + name);
+			setSize((int) (600 * Charts.getDisplayScalingFactorForGUI()), (int) (400 * Charts.getDisplayScalingFactorForGUI()));
+			setTitle("Pick a color for " + name);
 			setLayout(new BorderLayout());
 			add(new Palette(), BorderLayout.CENTER);
 			
@@ -520,7 +522,7 @@ public class WidgetColorPicker implements Widget {
 					// draw a dot if this color is used by any dataset or bitfield state
 					boolean colorUsed = false;
 					if(indicateUsedColors)
-						for(ConnectionTelemetry connection : ConnectionsController.telemetryConnections)
+						for(ConnectionTelemetry connection : Connections.telemetryConnections)
 							for(Field dataset : connection.getDatasetsList()) {
 								if(dataset.color.get().equals(c))
 									colorUsed = true;
@@ -561,13 +563,13 @@ public class WidgetColorPicker implements Widget {
 					// draw a thick outline if mouseOver a swatch
 					Stroke originalStroke = g2.getStroke();
 					g2.setColor(outlineColor);
-					g2.setStroke(new BasicStroke(2*ChartsController.getDisplayScalingFactorForGUI()));
+					g2.setStroke(new BasicStroke(2*Charts.getDisplayScalingFactorForGUI()));
 					g2.drawOval(outlineX, outlineY, swatchDiameter, swatchDiameter);
 					
 					// draw a tooltip if any datasets or bitfield states use this color
 					List<String> datasetNames = new ArrayList<String>();
 					if(indicateUsedColors)
-						for(ConnectionTelemetry connection : ConnectionsController.telemetryConnections)
+						for(ConnectionTelemetry connection : Connections.telemetryConnections)
 							for(Field dataset : connection.getDatasetsList()) {
 								
 								if(dataset.color.get().equals(mouseOverColor))
@@ -598,7 +600,7 @@ public class WidgetColorPicker implements Widget {
 						int boxHeight = textHeight*datasetNames.size() + gap;
 						int xBoxLeft = outlineX + swatchDiameter/2 - boxWidth/2;
 						if(xBoxLeft + boxWidth > width)
-							xBoxLeft = width - boxWidth - (int) ChartsController.getDisplayScalingFactorForGUI();
+							xBoxLeft = width - boxWidth - (int) Charts.getDisplayScalingFactorForGUI();
 						if(xBoxLeft < 0)
 							xBoxLeft = 0;
 						int yBoxTop = outlineY - boxHeight;

@@ -1,4 +1,3 @@
-import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.SocketTimeoutException;
@@ -7,33 +6,28 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import javax.swing.SwingUtilities;
-
 public class ConnectionTelemetryUDP extends ConnectionTelemetry {
 	
 	public ConnectionTelemetryUDP() {
 		
-		widgetsList.add(name.set("UDP"));
-		widgetsList.add(portNumber);
-		widgetsList.add(protocol.removeValue(Protocol.TC66));
-		widgetsList.add(sampleRate);
+		configWidgets.add(name.set("UDP"));
+		configWidgets.add(portNumber);
+		configWidgets.add(protocol.removeValue(Protocol.TC66));
+		configWidgets.add(sampleRate);
 		
 	}
+	
+	@Override public String getName() { return "UDP Port " + portNumber.get(); }
 
-	@Override public void connectLive(boolean showGui) {
-		
-		previousSampleCountTimestamp = 0;
-		previousSampleCount = 0;
-		calculatedSamplesPerSecond = 0;
-		
-		if(showGui)
-			setFieldsDefined(false);
+	@Override public void connectToDevice(boolean showGui) {
 		
 		receiverThread = new Thread(() -> {
+		
+			previousSampleCountTimestamp = 0;
+			previousSampleCount = 0;
+			calculatedSamplesPerSecond = 0;
 			
 			DatagramSocket udpListener = null;
-			Field.Type checksumProcessor = fields.values().stream().filter(Field::isChecksum).map(field -> field.type.get()).findFirst().orElse(null);
-			SharedByteStream stream = new SharedByteStream(ConnectionTelemetryUDP.this, checksumProcessor);
 			
 			// start the UDP listener
 			try {
@@ -42,15 +36,12 @@ public class ConnectionTelemetryUDP extends ConnectionTelemetry {
 				udpListener.setReceiveBufferSize(67108864); // 64MB
 			} catch (Exception e) {
 				try { udpListener.close(); } catch(Exception e2) {}
-				SwingUtilities.invokeLater(() -> disconnect("Unable to start the UDP listener. Make sure another program is not already using port " + portNumber.get() + "."));
+				disconnect("Unable to start the UDP listener. Make sure another program is not already using port " + portNumber.get() + ".", false);
 				return;
 			}
 			
-			setConnected(true);
-			
-			if(showGui)
-				Main.showConfigurationGui(getDataStructureGui());
-			
+			setStatus(Status.CONNECTED, showGui);
+			SharedByteStream stream = new SharedByteStream(ConnectionTelemetryUDP.this);
 			startProcessingTelemetry(stream);
 			
 			// listen for packets
@@ -60,8 +51,9 @@ public class ConnectionTelemetryUDP extends ConnectionTelemetry {
 
 				try {
 					
-					if(Thread.interrupted() || !isConnected())
-						throw new InterruptedException();
+					// stop if requested
+					if(!isConnected())
+						throw new Exception();
 					
 					udpListener.receive(udpPacket);
 					stream.write(buffer, udpPacket.getLength());
@@ -69,25 +61,13 @@ public class ConnectionTelemetryUDP extends ConnectionTelemetry {
 				} catch(SocketTimeoutException ste) {
 					
 					// a client never sent a packet, so do nothing and let the loop try again.
-					NotificationsController.printDebugMessage("UDP socket timed out while waiting for a packet.");
 					
-				} catch(IOException ioe) {
-					
-					// an IOException can occur if an InterruptedException occurs while receiving data
-					// let this be detected by the connection test in the loop
-					if(!isConnected())
-						continue;
-					
-					// problem while reading from the socket
-					stopProcessingTelemetry();
-					try { udpListener.close(); }   catch(Exception e) {}
-					SwingUtilities.invokeLater(() -> disconnect("UDP packet error."));
-					return;
-					
-				}  catch(InterruptedException ie) {
+				} catch(Exception e) {
 					
 					stopProcessingTelemetry();
-					try { udpListener.close(); }   catch(Exception e) {}
+					try { udpListener.close(); } catch(Exception e2) {}
+					if(isConnected())
+						disconnect("Error while reading from " + getName() + ".", false);
 					return;
 					
 				}
@@ -95,30 +75,19 @@ public class ConnectionTelemetryUDP extends ConnectionTelemetry {
 			}
 			
 		});
-		
 		receiverThread.setPriority(Thread.MAX_PRIORITY);
 		receiverThread.setName("UDP Listener Thread");
 		receiverThread.start();
 		
 	}
 	
-	@Override public List<Widget> getConfigurationWidgets() {
-		
-		boolean isEnabled = !isConnected() && !ConnectionsController.importing && !ConnectionsController.exporting;
-		
-		return List.of(sampleRate.setEnabled(isEnabled),
-		               protocol.setEnabled(isEnabled),
-		               portNumber.setEnabled(isEnabled));
-		
-	}
-	
 	@Override public Map<String, String> getExampleCode() {
 		
-		if(protocol.get() == Protocol.CSV && getDatasetCount() == 0) {
+		if(protocol.is(Protocol.CSV) && getDatasetCount() == 0) {
 			
 			return Map.of("Arduino/ESP8266 Firmware", "[ Define at least one CSV column to see example firmware. ]");
 			
-		} else if (protocol.get() == Protocol.CSV && getDatasetCount() > 0) {
+		} else if (protocol.is(Protocol.CSV) && getDatasetCount() > 0) {
 		
 			int baudRate                   = 9600;
 			List<Field> datasets           = getDatasetsList();
@@ -323,7 +292,7 @@ public class ConnectionTelemetryUDP extends ConnectionTelemetry {
 							
 								// enter another infinite loop that sends packets of telemetry
 								while(true) {
-								%s
+				%s
 									byte[] buffer = String.format("%s\\n", %s).getBytes();
 									DatagramPacket packet = new DatagramPacket(buffer, 0, buffer.length, InetAddress.getByName("%s"), %d); // EDIT THIS LINE
 									socket.send(packet);
@@ -348,11 +317,11 @@ public class ConnectionTelemetryUDP extends ConnectionTelemetry {
 				              portNumber.get(),
 				              Math.round(1000.0 / getSampleRate())));
 		
-		} else if(protocol.get() == Protocol.BINARY && getDatasetCount() == 0) {
+		} else if(protocol.is(Protocol.BINARY) && getDatasetCount() == 0) {
 			
 			return Map.of("Java Software", "[ Define at least one dataset to see example software. ]");
 			
-		} else if (protocol.get() == Protocol.BINARY && getDatasetCount() > 0) {
+		} else if (protocol.is(Protocol.BINARY) && getDatasetCount() > 0) {
 			
 			int datasetsCount = getDatasetCount();
 			int byteCount = (datasetsCount > 0) ? getDatasetByIndex(datasetsCount - 1).location.get() + getDatasetByIndex(datasetsCount - 1).type.get().getByteCount() :

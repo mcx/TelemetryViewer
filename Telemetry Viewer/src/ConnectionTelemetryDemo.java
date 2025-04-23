@@ -4,16 +4,14 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import javax.swing.SwingUtilities;
-
 public class ConnectionTelemetryDemo extends ConnectionTelemetry {
 	
 	public ConnectionTelemetryDemo() {
 		
-		widgetsList.add(name.set("Demo Mode"));
-		widgetsList.add(baudRate.setEnabled(false));
-		widgetsList.add(protocol.set(Protocol.CSV).setEnabled(false));
-		widgetsList.add(sampleRate.set(10000).setEnabled(false));
+		configWidgets.add(name.set("Demo Mode"));
+		configWidgets.add(baudRate.forceDisabled(true));
+		configWidgets.add(protocol.set(Protocol.CSV).forceDisabled(true));
+		configWidgets.add(sampleRate.set(10000).forceDisabled(true));
 		
 		new Field(this).setLocation(0).setName("Low Quality Noise"               ).setColor(Color.RED  ).setUnit("Volts").insert();
 		new Field(this).setLocation(1).setName("Noisey Sine Wave 100-500Hz"      ).setColor(Color.GREEN).setUnit("Volts").insert();
@@ -22,30 +20,25 @@ public class ConnectionTelemetryDemo extends ConnectionTelemetry {
 		setFieldsDefined(true);
 		
 	}
+	
+	@Override public String getName() { return name.get(); }
 
-	@Override public void connectLive(boolean showGui) {
-		
-		previousSampleCountTimestamp = 0;
-		previousSampleCount = 0;
-		calculatedSamplesPerSecond = 0;
-		
-		if(showGui)
-			setFieldsDefined(false);
-		
-		setConnected(true);
-		
-		if(showGui)
-			Main.showConfigurationGui(getDataStructureGui());
+	@Override public void connectToDevice(boolean showGui) {
 
 		// simulate the transmission of a telemetry packet every 100us.
-		transmitterThread = new Thread(() -> {
+		receiverThread = new Thread(() -> {
+		
+			previousSampleCountTimestamp = 0;
+			previousSampleCount = 0;
+			calculatedSamplesPerSecond = 0;
+			
+			setStatus(Status.CONNECTED, showGui);
 			
 			long startTime = System.currentTimeMillis();
 			int startSampleNumber = getSampleCount();
 			int sampleNumber = startSampleNumber;
-			
 			if(sampleNumber == Integer.MAX_VALUE) {
-				SwingUtilities.invokeLater(() -> disconnect("Reached maximum sample count. Disconnected.")); // invokeLater to prevent deadlock
+				disconnect(maxSampleCountErrorMessage, false);
 				return;
 			}
 			
@@ -55,6 +48,12 @@ public class ConnectionTelemetryDemo extends ConnectionTelemetry {
 			int currentFrequencySampleCount = 0;
 			
 			while(true) {
+				
+				// stop if requested
+				if(!isConnected())
+					break;
+				
+				// generate 10 samples for each waveform
 				float scalar = ((System.currentTimeMillis() % 30000) - 15000) / 100.0f;
 				float lowQualityNoise = (System.nanoTime() / 100 % 100) * scalar * 1.0f / 14000f;
 				for(int i = 0; i < 10; i++) {
@@ -62,12 +61,10 @@ public class ConnectionTelemetryDemo extends ConnectionTelemetry {
 					getDatasetByIndex(1).setSample(sampleNumber, (float) (Math.sin(2 * Math.PI * oscillatingFrequency * currentFrequencySampleCount / 10000.0) + 0.07*(Math.random()-0.5)));
 					getDatasetByIndex(2).setSample(sampleNumber, (sampleNumber % 10000 < 1000) ? (sampleNumber % 100) / 100f : 0);
 					getDatasetByIndex(3).setSample(sampleNumber, (float) Math.sin(2 * Math.PI * 1000 * sampleNumber / 10000.0));
-					
 					sampleNumber++;
 					incrementSampleCount(1);
-					
 					if(sampleNumber == Integer.MAX_VALUE) {
-						SwingUtilities.invokeLater(() -> disconnect("Reached maximum sample count. Disconnected.")); // invokeLater to prevent deadlock
+						disconnect(maxSampleCountErrorMessage, false);
 						return;
 					}
 
@@ -83,39 +80,29 @@ public class ConnectionTelemetryDemo extends ConnectionTelemetry {
 					}
 				}
 				
-				try {
-					long actualMilliseconds = System.currentTimeMillis() - startTime;
-					long expectedMilliseconds = Math.round((sampleNumber - startSampleNumber) / 10.0);
-					long sleepMilliseconds = expectedMilliseconds - actualMilliseconds;
-					if(sleepMilliseconds >= 1)
-						Thread.sleep(sleepMilliseconds);
-				} catch(InterruptedException e) {
-					return;
-				}
+				long actualMilliseconds = System.currentTimeMillis() - startTime;
+				long expectedMilliseconds = Math.round((sampleNumber - startSampleNumber) / 10.0);
+				long sleepMilliseconds = expectedMilliseconds - actualMilliseconds;
+				if(sleepMilliseconds >= 1)
+					try { Thread.sleep(sleepMilliseconds); } catch(Exception e) {}
+				
 			}
 			
 		});
-		
-		transmitterThread.setPriority(Thread.MAX_PRIORITY);
-		transmitterThread.setName("Demo Waveform Simulator Thread");
-		transmitterThread.start();
-		
-	}
-	
-	@Override public List<Widget> getConfigurationWidgets() {
-		
-		return List.of(sampleRate, protocol, baudRate); // widgets were already disabled in the constructor
+		receiverThread.setPriority(Thread.MAX_PRIORITY);
+		receiverThread.setName("Demo Waveform Simulator Thread");
+		receiverThread.start();
 		
 	}
 	
 	// same as ConnectionTelemetryUART
 	@Override public Map<String, String> getExampleCode() {
 		
-		if(protocol.get() == Protocol.CSV && getDatasetCount() == 0) {
+		if(protocol.is(Protocol.CSV) && getDatasetCount() == 0) {
 			
 			return Map.of("Arduino Firmware", "[ Define at least one CSV column to see example firmware. ]");
 			
-		} else if (protocol.get() == Protocol.CSV && getDatasetCount() > 0) {
+		} else if(protocol.is(Protocol.CSV) && getDatasetCount() > 0) {
 		
 			int baud                       = Integer.parseInt(baudRate.get().split(" ")[0]);
 			List<Field> datasets           = getDatasetsList();
@@ -131,16 +118,16 @@ public class ConnectionTelemetryDemo extends ConnectionTelemetry {
 			String printfIntArgs           = names.stream().collect(Collectors.joining(", "));                                        // example: "a, b"
 			String printfFloatArgs         = names.stream().map(name -> name + "_text")
 			                                               .collect(Collectors.joining(", "));                                        // example: "a_text, b_text"
-			String printfIntFormatString   = IntStream.rangeClosed(0, datasets.get(datasets.size() - 1).location.get())
+			String printfIntFormatString   = IntStream.rangeClosed(0, datasets.getLast().location.get())
 			                                          .mapToObj(location -> getDatasetByLocation(location) == null ? "0" : "%d")
 			                                          .collect(Collectors.joining(","));                                              // example: "%d,%d" or "%d,0,%d" if sparse
-			String printfFloatFormatString = IntStream.rangeClosed(0, datasets.get(datasets.size() - 1).location.get())
+			String printfFloatFormatString = IntStream.rangeClosed(0, datasets.getLast().location.get())
 			                                          .mapToObj(location -> getDatasetByLocation(location) == null ? "0" : "%f")
 			                                          .collect(Collectors.joining(","));                                              // example: "%f,%f" or "%f,0,%f" if sparse
-			int printfIntStringLength      = IntStream.rangeClosed(0, datasets.get(datasets.size() - 1).location.get())
+			int printfIntStringLength      = IntStream.rangeClosed(0, datasets.getLast().location.get())
 			                                          .map(location -> getDatasetByLocation(location) == null ? 2 : 7)
 			                                          .sum() + 1;                                                                     // 2 bytes per unused location, 7 bytes per location, +1 for the null terminator
-			int printfFloatStringLength    = IntStream.rangeClosed(0, datasets.get(datasets.size() - 1).location.get())
+			int printfFloatStringLength    = IntStream.rangeClosed(0, datasets.getLast().location.get())
 			                                          .map(location -> getDatasetByLocation(location) == null ? 2 : 31)
 			                                          .sum() + 1;                                                                     // 2 bytes per unused location, 31 bytes per location, +1 for the null terminator
 			

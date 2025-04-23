@@ -5,7 +5,7 @@ import com.jogamp.common.nio.Buffers;
 import com.jogamp.opengl.GL2ES3;
 import com.jogamp.opengl.GL3;
 
-public class OpenGLHistogramChart extends PositionedChart {
+public class OpenGLHistogramChart extends Chart {
 	
 	FloatBuffer[] binsAsTriangles; // [datasetN], filled with binN's, for drawing
 	
@@ -43,13 +43,13 @@ public class OpenGLHistogramChart extends PositionedChart {
 	
 	private AutoScale yAutoscale;
 	
-	@Override public String toString() { return "Histogram"; }
-	
-	public OpenGLHistogramChart() {
+	protected OpenGLHistogramChart(String name, int x1, int y1, int x2, int y2) {
+		
+		super(name, x1, y1, x2, y2);
 
 		yAutoscale = new AutoScale(AutoScale.MODE_EXPONENTIAL, 30, 0.20f);
 		
-		durationWidget = WidgetTextfield.ofInt(2, Integer.MAX_VALUE / 16, ConnectionsController.getDefaultChartDuration())
+		durationWidget = WidgetTextfield.ofInt(2, Integer.MAX_VALUE / 16, Connections.getDefaultChartDuration())
 		                                .setSuffix("Samples")
 		                                .setExportLabel("sample count")
 		                                .onChange((newDuration, oldDuration) -> {
@@ -260,7 +260,7 @@ public class OpenGLHistogramChart extends PositionedChart {
 		
 	}
 	
-	@Override public void getConfigurationGui(JPanel gui) {
+	@Override public void appendConfigurationWidgets(JPanel gui) {
 		
 		gui.add(Theme.newWidgetsPanel("Data")
 		             .with(datasetsWidget)

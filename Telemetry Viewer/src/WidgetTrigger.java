@@ -39,8 +39,8 @@ public class WidgetTrigger implements Widget {
 	public Field normalDataset = null;
 	public Field.Bitfield.State bitfieldState = null;
 	private boolean userSpecifiedTheChannel = false;
-	final private DatasetsInterface datasets = new DatasetsInterface(); // must use our own interface, because the trigger channel might not be displayed on the chart
-	final private PositionedChart chart;
+	final DatasetsInterface datasets = new DatasetsInterface(); // must use our own interface, because the trigger channel might not be displayed on the chart
+	final private Chart chart;
 	
 	private boolean triggered = false;
 	private int     triggeredSampleNumber    = -1; // the trigger point
@@ -56,7 +56,7 @@ public class WidgetTrigger implements Widget {
 	/**
 	 * A widget that lets the user configure a trigger and all of its settings.
 	 */
-	public WidgetTrigger(PositionedChart chart, Consumer<Boolean> eventHandler) {
+	public WidgetTrigger(Chart chart, Consumer<Boolean> eventHandler) {
 		
 		super();
 		this.chart = chart;
@@ -126,8 +126,7 @@ public class WidgetTrigger implements Widget {
 		
 		prePostRatio = new WidgetSlider("Pre/Post Ratio", 0, 10000, 2000)
 		                   .setExportLabel("trigger pre/post ratio")
-		                   .onChange(dragStarted -> setPaused(true),
-		                             null,
+		                   .onDrag(dragStarted -> setPaused(true),
 		                             dragEnded -> setPaused(false));
 		
 		mode = new WidgetToggleButton<Mode>("", Mode.values(), Mode.DISABLED)
@@ -159,6 +158,12 @@ public class WidgetTrigger implements Widget {
 	
 	public boolean isEnabled() {
 		return !mode.is(Mode.DISABLED);
+	}
+	
+	@Override public void setEnabled(boolean isEnabled) {
+		
+		mode.set(isEnabled ? Mode.AUTO : Mode.DISABLED);
+		
 	}
 	
 	/**
@@ -475,7 +480,7 @@ public class WidgetTrigger implements Widget {
 		return this;
 	}
 	
-	@Override public void importFrom(ConnectionsController.QueueOfLines lines) throws AssertionError {
+	@Override public void importFrom(Connections.QueueOfLines lines) throws AssertionError {
 		widgets.forEach(widget -> widget.importFrom(lines));
 		SwingUtilities.invokeLater(() -> userSpecifiedTheChannel = true); // invokeLater because the constructor also invokeLater's this to false
 	}

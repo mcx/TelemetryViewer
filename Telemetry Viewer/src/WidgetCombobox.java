@@ -27,8 +27,10 @@ public class WidgetCombobox<T> implements Widget {
 	private JComboBox<T> combobox;
 	private T disabledMessage = null;
 	private Map<T, String> disabledValues = new HashMap<T,String>(); // <value,tooltip>
+	private boolean forcedDisabled = false;
 	private boolean changeHandlerCalled = false;
 	private BiPredicate<T,T> changeHandler;
+	private boolean maskEvents = false;
 
 	@SuppressWarnings("unchecked")
 	public WidgetCombobox(String label, List<T> values, T selectedValue) {
@@ -57,8 +59,8 @@ public class WidgetCombobox<T> implements Widget {
 		combobox.addActionListener(event -> {
 			T newValue = (T) combobox.getSelectedItem();
 			
-			// ignore the event if disabled-with-message
-			if(disabledMessage != null)
+			// ignore the event if disabled-with-message or if resetValues() is in progress
+			if(disabledMessage != null || maskEvents)
 				return;
 			
 			if(disabledValues.containsKey(newValue)) {
@@ -147,7 +149,7 @@ public class WidgetCombobox<T> implements Widget {
 	}
 	
 	public boolean is(T someValue) {
-		return value == someValue;
+		return value.equals(someValue);
 	}
 	
 	public T get() {
@@ -185,17 +187,18 @@ public class WidgetCombobox<T> implements Widget {
 		values = newValues;
 		boolean selectedValueHasChanged = selectedValue != value;
 		
-		BiPredicate<T,T> handler = changeHandler;
-		changeHandler = null;
+		maskEvents = true;
 		combobox.removeAllItems();
 		for(T newValue : newValues)
 			combobox.addItem(newValue);
 		combobox.setMaximumRowCount(combobox.getItemCount());
 		if(selectedValueHasChanged)
-			changeHandler = handler;
+			maskEvents = false;
 		set(selectedValue);
-		if(!selectedValueHasChanged)
-			changeHandler = handler;
+		maskEvents = false;
+		
+		if(disabledMessage != null)
+			disableWithMessage(disabledMessage);
 	}
 	
 	@Override public void appendTo(JPanel panel, String constraints) {
@@ -221,7 +224,10 @@ public class WidgetCombobox<T> implements Widget {
 		
 	}
 	
-	public WidgetCombobox<T> setEnabled(boolean isEnabled) {
+	@Override public void setEnabled(boolean isEnabled) {
+		
+		if(forcedDisabled)
+			return;
 		
 		if(isEnabled && disabledMessage != null) {
 			removeValue(disabledMessage);
@@ -235,6 +241,16 @@ public class WidgetCombobox<T> implements Widget {
 			prefixLabel.setEnabled(isEnabled);
 			combobox.setEnabled(isEnabled);
 		}
+		
+	}
+	
+	public WidgetCombobox<T> forceDisabled(boolean isDisabled) {
+		
+		if(isDisabled && disabledMessage == null)
+			setEnabled(false);
+		forcedDisabled = isDisabled;
+		if(!isDisabled)
+			setEnabled(true);
 		return this;
 		
 	}
@@ -264,7 +280,7 @@ public class WidgetCombobox<T> implements Widget {
 	}
 
 	@SuppressWarnings("unchecked")
-	@Override public void importFrom(ConnectionsController.QueueOfLines lines) throws AssertionError {
+	@Override public void importFrom(Connections.QueueOfLines lines) throws AssertionError {
 
 		String text = lines.parseString(importExportLabel + " = %s");
 		T newValue = values.stream().filter(value -> value.toString().equals(text)).findFirst().orElse(null);

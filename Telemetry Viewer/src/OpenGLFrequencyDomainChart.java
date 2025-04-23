@@ -11,7 +11,7 @@ import com.jogamp.common.nio.Buffers;
 import com.jogamp.opengl.GL2ES3;
 import com.jogamp.opengl.GL3;
 
-public class OpenGLFrequencyDomainChart extends PositionedChart {
+public class OpenGLFrequencyDomainChart extends Chart {
 	
 	private Cache cache = new Cache();
 	private record FFTs(boolean exists,   // true if there are enough samples to calculate at least one FFT
@@ -66,20 +66,16 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 	private int[][][] histogram = null; // only populated in Histogram mode
 	private int actualYaxisBins = 0;
 	
-	@Override public String toString() {
+	protected OpenGLFrequencyDomainChart(String name, int x1, int y1, int x2, int y2) {
 		
-		return "Frequency Domain";
-		
-	}
-	
-	public OpenGLFrequencyDomainChart() {
+		super(name, x1, y1, x2, y2);
 		
 		autoscalePower = new AutoScale(AutoScale.MODE_EXPONENTIAL, 90, 0.20f);
 		
 		// create the control widgets and event handlers
 		datasetsWidget = datasets.getCheckboxesWidget(newDatasets -> {});
 		
-		sampleCountTextfield = WidgetTextfield.ofInt(10, Integer.MAX_VALUE / 16, ConnectionsController.getDefaultChartDuration())
+		sampleCountTextfield = WidgetTextfield.ofInt(10, Integer.MAX_VALUE / 16, Connections.getDefaultChartDuration())
 		                                      .setSuffix("Samples")
 		                                      .setExportLabel("sample count")
 		                                      .onChange((newDuration, oldDuration) -> {
@@ -221,7 +217,7 @@ public class OpenGLFrequencyDomainChart extends PositionedChart {
 		
 	}
 	
-	@Override public void getConfigurationGui(JPanel gui) {
+	@Override public void appendConfigurationWidgets(JPanel gui) {
 		
 		gui.add(Theme.newWidgetsPanel("Data")
 		             .with(datasetsWidget)

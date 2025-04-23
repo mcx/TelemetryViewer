@@ -1,4 +1,3 @@
-import java.io.IOException;
 import java.io.InputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -8,52 +7,44 @@ import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import javax.swing.SwingUtilities;
-
 public class ConnectionTelemetryTCP extends ConnectionTelemetry {
 	
 	private final int MAX_TCP_IDLE_MILLISECONDS = 10000; // if connected but no new samples after than much time, disconnect and wait for a new connection
 	
 	public ConnectionTelemetryTCP() {
 		
-		widgetsList.add(name.set("TCP"));
-		widgetsList.add(portNumber);
-		widgetsList.add(protocol.removeValue(Protocol.TC66));
-		widgetsList.add(sampleRate);
+		configWidgets.add(name.set("TCP"));
+		configWidgets.add(portNumber);
+		configWidgets.add(protocol.removeValue(Protocol.TC66));
+		configWidgets.add(sampleRate);
 		
 	}
+	
+	@Override public String getName() { return "TCP Port " + portNumber.get(); }
 
-	@Override public void connectLive(boolean showGui) {
-		
-		previousSampleCountTimestamp = 0;
-		previousSampleCount = 0;
-		calculatedSamplesPerSecond = 0;
-		
-		if(showGui)
-			setFieldsDefined(false);
+	@Override public void connectToDevice(boolean showGui) {
 		
 		receiverThread = new Thread(() -> {
+		
+			previousSampleCountTimestamp = 0;
+			previousSampleCount = 0;
+			calculatedSamplesPerSecond = 0;
 			
 			ServerSocket tcpServer = null;
 			Socket tcpSocket = null;
-			Field.Type checksumProcessor = fields.values().stream().filter(Field::isChecksum).map(field -> field.type.get()).findFirst().orElse(null);
-			SharedByteStream stream = new SharedByteStream(ConnectionTelemetryTCP.this, checksumProcessor);
 			
 			// start the TCP server
+			setStatus(Status.CONNECTING, false);
 			try {
 				tcpServer = new ServerSocket(portNumber.get());
 				tcpServer.setSoTimeout(1000);
 			} catch (Exception e) {
 				try { tcpServer.close(); } catch(Exception e2) {}
-				SwingUtilities.invokeLater(() -> disconnect("Unable to start the TCP server. Another program might already be using port " + portNumber.get() + "."));
+				disconnect("Unable to start the TCP server. Another program might already be using port " + portNumber.get() + ".", false);
 				return;
 			}
-			
-			setConnected(true);
-			
-			if(showGui)
-				Main.showConfigurationGui(getDataStructureGui());
-			
+			setStatus(Status.CONNECTED, showGui);
+			SharedByteStream stream = new SharedByteStream(ConnectionTelemetryTCP.this);
 			startProcessingTelemetry(stream);
 			
 			// listen for a connection
@@ -61,14 +52,15 @@ public class ConnectionTelemetryTCP extends ConnectionTelemetry {
 
 				try {
 					
-					if(Thread.interrupted() || !isConnected())
-						throw new InterruptedException();
+					// stop if requested
+					if(!isConnected())
+						throw new Exception();
 					
 					tcpSocket = tcpServer.accept();
-					tcpSocket.setSoTimeout(5000); // each valid packet of data must take <5 seconds to arrive
+					tcpSocket.setSoTimeout(1000);
 					InputStream is = tcpSocket.getInputStream();
 
-					NotificationsController.showVerboseForMilliseconds("TCP connection established with a client at " + tcpSocket.getRemoteSocketAddress().toString().substring(1) + ".", 5000, true); // trim leading "/" from the IP address
+					Notifications.printInfo("TCP connection established with a client at " + tcpSocket.getRemoteSocketAddress().toString().substring(1) + "."); // trim leading "/" from the IP address
 					
 					// enter an infinite loop that checks for activity. if the TCP port is idle for >10 seconds, abandon it so another device can try to connect.
 					long previousTimestamp = System.currentTimeMillis();
@@ -88,7 +80,7 @@ public class ConnectionTelemetryTCP extends ConnectionTelemetry {
 							previousSampleNumber = sampleNumber;
 							previousTimestamp = timestamp;
 						} else if(previousTimestamp < timestamp - MAX_TCP_IDLE_MILLISECONDS) {
-							NotificationsController.showFailureForMilliseconds("The TCP connection was idle for too long. It has been closed so another device can connect.", 5000, true);
+							Notifications.showFailureForMilliseconds("The TCP connection was idle for too long. It has been closed so another device can connect.", 5000, true);
 							tcpSocket.close();
 							break;
 						}
@@ -97,27 +89,14 @@ public class ConnectionTelemetryTCP extends ConnectionTelemetry {
 				} catch(SocketTimeoutException ste) {
 					
 					// a client never connected, so do nothing and let the loop try again.
-					NotificationsController.showVerboseForMilliseconds("TCP socket timed out while waiting for a connection.", 5000, true);
 					
-				} catch(IOException ioe) {
-					
-					// an IOException can occur if an InterruptedException occurs while receiving data
-					// let this be detected by the connection test in the loop
-					if(!isConnected())
-						continue;
-					
-					// problem while accepting the socket connection, or getting the input stream, or reading from the input stream
-					stopProcessingTelemetry();
-					try { tcpSocket.close(); } catch(Exception e2) {}
-					try { tcpServer.close(); } catch(Exception e2) {}
-					SwingUtilities.invokeLater(() -> disconnect("TCP connection failed."));
-					return;
-					
-				}  catch(InterruptedException ie) {
+				} catch(Exception e) {
 					
 					stopProcessingTelemetry();
 					try { tcpSocket.close(); } catch(Exception e2) {}
 					try { tcpServer.close(); } catch(Exception e2) {}
+					if(isConnected())
+						disconnect("Error while reading from " + getName() + ".", false);
 					return;
 					
 				}
@@ -125,37 +104,26 @@ public class ConnectionTelemetryTCP extends ConnectionTelemetry {
 			}
 			
 		});
-		
 		receiverThread.setPriority(Thread.MAX_PRIORITY);
 		receiverThread.setName("TCP Server");
 		receiverThread.start();
 		
 	}
 	
-	@Override public List<Widget> getConfigurationWidgets() {
-		
-		boolean isEnabled = !isConnected() && !ConnectionsController.importing && !ConnectionsController.exporting;
-		
-		return List.of(sampleRate.setEnabled(isEnabled),
-		               protocol.setEnabled(isEnabled),
-		               portNumber.setEnabled(isEnabled));
-		
-	}
-	
 	@Override public Map<String, String> getExampleCode() {
 		
-		if(protocol.get() == Protocol.CSV && getDatasetCount() == 0) {
+		if(protocol.is(Protocol.CSV) && getDatasetCount() == 0) {
 			
 			return Map.of("Java Software", "[ Define at least one CSV column to see example software. ]");
 			
-		} else if (protocol.get() == Protocol.CSV && getDatasetCount() > 0) {
+		} else if(protocol.is(Protocol.CSV) && getDatasetCount() > 0) {
 		
-			List<Field> datasets         = getDatasetsList();
+			List<Field> datasets           = getDatasetsList();
 			List<String> names             = datasets.stream().map(dataset -> dataset.name.get().toLowerCase().replace(' ', '_')).toList(); // example: "a" "b"
-			String printfIntArgs           = names.stream().collect(Collectors.joining(", "));                                                            // example: "a, b"
+			String printfIntArgs           = names.stream().collect(Collectors.joining(", "));                                              // example: "a, b"
 			String printfFloatFormatString = IntStream.rangeClosed(0, datasets.get(datasets.size() - 1).location.get())
 			                                          .mapToObj(location -> getDatasetByLocation(location) == null ? "0" : "%f")
-			                                          .collect(Collectors.joining(","));                                                                  // example: "%f,%f" or "%f,0,%f" if sparse
+			                                          .collect(Collectors.joining(","));                                                    // example: "%f,%f" or "%f,0,%f" if sparse
 			
 			return Map.of("Java Software", """
 				import java.io.PrintWriter;
@@ -173,11 +141,11 @@ public class ConnectionTelemetryTCP extends ConnectionTelemetry {
 								// enter another infinite loop that sends packets of telemetry
 								PrintWriter output = new PrintWriter(socket.getOutputStream(), true);
 								while(true) {
-								%s
+				%s
 									output.println(String.format("%s", %s));
 									if(output.checkError())
 										throw new Exception();
-									Thread.sleep(%d);
+									Thread.sleep(%d); // EDIT THIS LINE
 								}
 								
 							} catch(Exception e) {

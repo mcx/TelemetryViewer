@@ -2,53 +2,70 @@ import java.io.PrintWriter;
 import java.nio.FloatBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
+
 import javax.swing.JPanel;
 
 import com.jogamp.common.nio.Buffers;
 import com.jogamp.opengl.GL2ES3;
 import com.jogamp.opengl.GL3;
 
-public abstract class PositionedChart {
+public abstract class Chart {
 	
-	// grid coordinates, not pixels
-	int topLeftX     = -1;
-	int topLeftY     = -1;
-	int bottomRightX = -1;
-	int bottomRightY = -1;
+	public final String name;
+	public final int topLeftX;
+	public final int topLeftY;
+	public final int bottomRightX;
+	public final int bottomRightY;
+	protected int duration;
+	protected boolean sampleCountMode = true;
+	protected DatasetsInterface datasets = new DatasetsInterface();
+	protected List<Widget> widgets = new ArrayList<Widget>();
+	protected WidgetTrigger trigger;
 	
-	int duration;
-	boolean sampleCountMode = true;
-
-	DatasetsInterface datasets = new DatasetsInterface();
-	public WidgetTrigger trigger = null;
-	List<Widget> widgets = new ArrayList<Widget>();
-	
-	public PositionedChart setPosition(int x1, int y1, int x2, int y2) {
+	/**
+	 * Creates a chart.
+	 * 
+	 * @param name    User-friendly name describing this chart. This will be displayed on chart type buttons, and used when importing/exporting.
+	 * @param x1      X tile coordinate of one corner.
+	 * @param y1      Y tile coordinate of one corner.
+	 * @param x2      X tile coordinate of the opposite corner.
+	 * @param y2      Y tile coordinate of the opposite corner.
+	 */
+	protected Chart(String name, int x1, int y1, int x2, int y2) {
 		
+		this.name = name;
 		topLeftX     = x1 < x2 ? x1 : x2;
 		topLeftY     = y1 < y2 ? y1 : y2;
 		bottomRightX = x2 > x1 ? x2 : x1;
 		bottomRightY = y2 > y1 ? y2 : y1;
-		OpenGLChartsView.instance.updateTileOccupancy(null);
-		return this;
 		
 	}
 	
-	public boolean regionOccupied(int startX, int startY, int endX, int endY) {
+	/**
+	 * Checks if a certain tile region would overlap this chart.
+	 * 
+	 * @param x1    X tile coordinate of one corner.
+	 * @param y1    Y tile coordinate of one corner.
+	 * @param x2    X tile coordinate of the opposite corner.
+	 * @param y2    Y tile coordinate of the opposite corner.
+	 * @return      True if that tile region would overlap with this chart.
+	 */
+	final public boolean intersects(int x1, int y1, int x2, int y2) {
 		
-		if(endX < startX) {
-			int temp = startX;
-			startX = endX;
-			endX = temp;
+		if(x2 < x1) {
+			int temp = x1;
+			x1 = x2;
+			x2 = temp;
 		}
-		if(endY < startY) {
-			int temp = startY;
-			startY = endY;
-			endY = temp;
+		if(y2 < y1) {
+			int temp = y1;
+			y1 = y2;
+			y2 = temp;
 		}
-
-		for(int x = startX; x <= endX; x++)
-			for(int y = startY; y <= endY; y++)
+		
+		for(int x = x1; x <= x2; x++)
+			for(int y = y1; y <= y2; y++)
 				if(x >= topLeftX && x <= bottomRightX && y >= topLeftY && y <= bottomRightY)
 					return true;
 		
@@ -56,24 +73,38 @@ public abstract class PositionedChart {
 		
 	}
 	
-	long cpuStartNanoseconds;
-	long cpuStopNanoseconds;
-	double previousCpuMilliseconds;
-	double previousGpuMilliseconds;
-	double cpuMillisecondsAccumulator;
-	double gpuMillisecondsAccumulator;
-	int count;
-	final int SAMPLE_COUNT = 60;
-	double averageCpuMilliseconds;
-	double averageGpuMilliseconds;
-	int[] gpuQueryHandles;
-	long[] gpuTimes = new long[2];
-	String line1;
-	String line2;
+	private long cpuStartNanoseconds;
+	private long cpuStopNanoseconds;
+	private double previousCpuMilliseconds;
+	private double previousGpuMilliseconds;
+	private double cpuMillisecondsAccumulator;
+	private double gpuMillisecondsAccumulator;
+	private int count;
+	private final int SAMPLE_COUNT = 60;
+	private double averageCpuMilliseconds;
+	private double averageGpuMilliseconds;
+	private int[] gpuQueryHandles;
 	
-	public final EventHandler draw(GL2ES3 gl, float[] chartMatrix, int width, int height, long nowTimestamp, int lastSampleNumber, double zoomLevel, int mouseX, int mouseY) {
+	/**
+	 * Draws this chart on screen, and measures the CPU/GPU usage of this chart if that feature is enabled.
+	 * GPU usage measurements are only possible with OpenGL, not OpenGL ES.
+	 * 
+	 * @param gl                 The OpenGL context.
+	 * @param chartMatrix        The 4x4 matrix to use.
+	 * @param width              Width of the chart, in pixels.
+	 * @param height             Height of the chart, in pixels.
+	 * @param endTimestamp       Timestamp corresponding with the right edge of a time-domain plot. NOTE: this might be in the future!
+	 * @param endSampleNumber    Sample number corresponding with the right edge of a time-domain plot. NOTE: this might be in the future!
+	 * @param zoomLevel          Requested zoom level.
+	 * @param mouseX             Mouse's x position, in pixels, relative to the chart.
+	 * @param mouseY             Mouse's y position, in pixels, relative to the chart.
+	 * @return                   An EventHandler if the mouse is over something that can be clicked or dragged.
+	 */
+	final public EventHandler draw(GL2ES3 gl, float[] chartMatrix, int width, int height, long endTimestamp, int endSampleNumber, double zoomLevel, int mouseX, int mouseY) {
 		
 		boolean openGLES = OpenGLChartsView.instance.openGLES;
+		
+		// create the OpenGL timer queries if they don't already exist
 		if(!openGLES && gpuQueryHandles == null) {
 			gpuQueryHandles = new int[2];
 			gl.glGenQueries(2, gpuQueryHandles, 0);
@@ -81,22 +112,22 @@ public abstract class PositionedChart {
 			gl.glQueryCounter(gpuQueryHandles[1], GL3.GL_TIMESTAMP);
 		}
 		
-		// if benchmarking, calculate CPU/GPU time for the *previous frame*
-		// GPU benchmarking is not possible with OpenGL ES
+		// if measuring CPU/GPU usage, calculate CPU/GPU time for the *previous frame*
 		if(SettingsView.instance.benchmarkingCheckbox.get()) {
 			previousCpuMilliseconds = (cpuStopNanoseconds - cpuStartNanoseconds) / 1000000.0;
 			if(!openGLES) {
+				long[] gpuTimes = new long[2];
 				gl.glGetQueryObjecti64v(gpuQueryHandles[0], GL3.GL_QUERY_RESULT, gpuTimes, 0);
 				gl.glGetQueryObjecti64v(gpuQueryHandles[1], GL3.GL_QUERY_RESULT, gpuTimes, 1);
+				previousGpuMilliseconds = (gpuTimes[1] - gpuTimes[0]) / 1000000.0;
 			}
-			previousGpuMilliseconds = (gpuTimes[1] - gpuTimes[0]) / 1000000.0;
 			if(count < SAMPLE_COUNT) {
 				cpuMillisecondsAccumulator += previousCpuMilliseconds;
 				gpuMillisecondsAccumulator += previousGpuMilliseconds;
 				count++;
 			} else {
-				averageCpuMilliseconds = cpuMillisecondsAccumulator / 60.0;
-				averageGpuMilliseconds = gpuMillisecondsAccumulator / 60.0;
+				averageCpuMilliseconds = cpuMillisecondsAccumulator / SAMPLE_COUNT;
+				averageGpuMilliseconds = gpuMillisecondsAccumulator / SAMPLE_COUNT;
 				cpuMillisecondsAccumulator = 0;
 				gpuMillisecondsAccumulator = 0;
 				count = 0;
@@ -109,10 +140,9 @@ public abstract class PositionedChart {
 		}
 		
 		// draw the chart
-		EventHandler handler = drawChart(gl, chartMatrix, width, height, nowTimestamp, lastSampleNumber, zoomLevel, mouseX, mouseY);
+		EventHandler handler = drawChart(gl, chartMatrix, width, height, endTimestamp, endSampleNumber, zoomLevel, mouseX, mouseY);
 		
-		// if benchmarking, draw the CPU/GPU benchmarks over this chart
-		// GPU benchmarking is not possible with OpenGL ES
+		// if measuring CPU/GPU usage, draw the CPU/GPU times over this chart
 		if(SettingsView.instance.benchmarkingCheckbox.get()) {
 			// stop timers for *this frame*
 			cpuStopNanoseconds = System.nanoTime();
@@ -120,9 +150,9 @@ public abstract class PositionedChart {
 				gl.glQueryCounter(gpuQueryHandles[1], GL3.GL_TIMESTAMP);
 			
 			// show times of *previous frame*
-			line1 =             String.format("CPU = %.3fms (Average = %.3fms)", previousCpuMilliseconds, averageCpuMilliseconds);
-			line2 = !openGLES ? String.format("GPU = %.3fms (Average = %.3fms)", previousGpuMilliseconds, averageGpuMilliseconds) :
-			                                  "GPU = unknown";
+			String line1 =             String.format("CPU = %.3fms (Average = %.3fms)", previousCpuMilliseconds, averageCpuMilliseconds);
+			String line2 = !openGLES ? String.format("GPU = %.3fms (Average = %.3fms)", previousGpuMilliseconds, averageGpuMilliseconds) :
+			                                         "GPU = unknown";
 			float textHeight = 2 * OpenGL.smallTextHeight + Theme.tickTextPadding;
 			float textWidth = Float.max(OpenGL.smallTextWidth(gl, line1), OpenGL.smallTextWidth(gl, line2));
 			OpenGL.drawBox(gl, Theme.neutralColor, Theme.tileShadowOffset, 0, textWidth + Theme.tickTextPadding*2, textHeight + Theme.tickTextPadding*2);
@@ -130,25 +160,122 @@ public abstract class PositionedChart {
 			OpenGL.drawSmallText(gl, line2, (int) (Theme.tickTextPadding + Theme.tileShadowOffset), (int) Theme.tickTextPadding, 0);
 		}
 		
+		// return the mouse event handler
 		return handler;
 		
 	}
 	
 	/**
-	 * Draws the chart on screen.
+	 * Draws this chart on screen.
 	 * 
-	 * @param gl                  The OpenGL context.
-	 * @param chartMatrix         The 4x4 matrix to use.
-	 * @param width               Width of the chart, in pixels.
-	 * @param height              Height of the chart, in pixels.
-	 * @param endTimestamp        Timestamp corresponding with the right edge of a time-domain plot. NOTE: this might be in the future!
-	 * @param endSampleNumber     Sample number corresponding with the right edge of a time-domain plot. NOTE: this sample might not exist yet!
-	 * @param zoomLevel           Requested zoom level.
-	 * @param mouseX              Mouse's x position, in pixels, relative to the chart.
-	 * @param mouseY              Mouse's y position, in pixels, relative to the chart.
-	 * @return                    An EventHandler if the mouse is over something that can be clicked or dragged.
+	 * @param gl                 The OpenGL context.
+	 * @param chartMatrix        The 4x4 matrix to use.
+	 * @param width              Width of the chart, in pixels.
+	 * @param height             Height of the chart, in pixels.
+	 * @param endTimestamp       Timestamp corresponding with the right edge of a time-domain plot. NOTE: this might be in the future!
+	 * @param endSampleNumber    Sample number corresponding with the right edge of a time-domain plot. NOTE: this might be in the future!
+	 * @param zoomLevel          Requested zoom level.
+	 * @param mouseX             Mouse's x position, in pixels, relative to the chart.
+	 * @param mouseY             Mouse's y position, in pixels, relative to the chart.
+	 * @return                   An EventHandler if the mouse is over something that can be clicked or dragged.
 	 */
 	public abstract EventHandler drawChart(GL2ES3 gl, float[] chartMatrix, int width, int height, long endTimestamp, int endSampleNumber, double zoomLevel, int mouseX, int mouseY);
+	
+	/**
+	 * Appends configuration widgets for this chart to a preexisting JPanel.
+	 * 
+	 * @param gui    The JPanel that receives the widgets. This will be shown to the user when they create the chart or when they click the gear icon to configure the chart.
+	 */
+	public abstract void appendConfigurationWidgets(JPanel gui);
+	
+	/**
+	 * Imports a chart and all of its settings.
+	 * 
+	 * @param lines    Lines of text from the settings file.
+	 * @return         The fully configured chart.
+	 */
+	final public static Chart importFrom(Connections.QueueOfLines lines) {
+		
+		lines.parseExact("");
+		String type = lines.parseString("chart type = %s");
+		Charts.Type chartType = Stream.of(Charts.Type.values()).filter(t -> t.toString().equals(type)).findFirst().orElse(null);
+		if(chartType == null)
+			throw new AssertionError("Invalid chart type.");
+
+		int topLeftX = lines.parseInteger("top left x = %d");
+		if(topLeftX < 0 || topLeftX >= SettingsView.instance.tileColumnsTextfield.get())
+			throw new AssertionError("Invalid chart position.");
+		
+		int topLeftY = lines.parseInteger("top left y = %d");
+		if(topLeftY < 0 || topLeftY >= SettingsView.instance.tileRowsTextfield.get())
+			throw new AssertionError("Invalid chart position.");
+
+		int bottomRightX = lines.parseInteger("bottom right x = %d");
+		if(bottomRightX < 0 || bottomRightX >= SettingsView.instance.tileColumnsTextfield.get())
+			throw new AssertionError("Invalid chart position.");
+
+		int bottomRightY = lines.parseInteger("bottom right y = %d");
+		if(bottomRightY < 0 || bottomRightY >= SettingsView.instance.tileRowsTextfield.get())
+			throw new AssertionError("Invalid chart position.");
+		
+		Charts.forEach(existingChart -> {
+			if(existingChart.intersects(topLeftX, topLeftY, bottomRightX, bottomRightY))
+				throw new AssertionError("Chart overlaps an existing chart.");
+		});
+
+		Chart chart = chartType.createAt(topLeftX, topLeftY, bottomRightX, bottomRightY);
+		chart.widgets.forEach(widget -> widget.importFrom(lines));
+		return chart;
+		
+	}
+	
+	/**
+	 * Exports a chart and all of its settings.
+	 * 
+	 * @param file    Destination file.
+	 */
+	final public void exportTo(PrintWriter file) {
+
+		file.println("");
+		file.println("\tchart type = " + name);
+		file.println("\ttop left x = " + topLeftX);
+		file.println("\ttop left y = " + topLeftY);
+		file.println("\tbottom right x = " + bottomRightX);
+		file.println("\tbottom right y = " + bottomRightY);
+		widgets.forEach(widget -> widget.exportTo(file));
+		
+	}
+	
+	/**
+	 * Permanently destroys this chart.
+	 * If the configuration GUI is on screen, it will be closed.
+	 * If this chart contains the global trigger, the global trigger will be removed. 
+	 * GPU resources will be released the next time the OpenGLChartsRegion is drawn (the next vsync, if it's on screen.)
+	 */
+	final public void dispose() {
+		
+		ConfigureView.instance.closeIfUsedFor(this);
+		if(OpenGLChartsView.globalTrigger == trigger)
+			OpenGLChartsView.globalTrigger = null;
+		OpenGLChartsView.instance.chartsToDispose.add(this);
+		
+	}
+	
+	/**
+	 * Charts that create any OpenGL FBOs/textures/etc. must dispose of them when this method is called.
+	 * If a chart overrides this method, it must call super.disposeGpu(gl).
+	 * The chart may be drawn after this call, so the chart must be able to automatically regenerate any needed FBOs/textures/etc.
+	 * 
+	 * @param gl    The OpenGL context.
+	 */
+	public void disposeGpu(GL2ES3 gl) {
+		
+		if(gpuQueryHandles != null) {
+			gl.glDeleteQueries(2, gpuQueryHandles, 0);
+			gpuQueryHandles = null;
+		}
+		
+	}
 	
 	public static final class Tooltip {
 		private record Row(float[] glColor, String text) {}
@@ -307,7 +434,7 @@ public abstract class PositionedChart {
 			float maxWidth = (float) rows.stream().mapToDouble(row -> (row.glColor == null) ?
 			                                                          OpenGL.smallTextWidth(gl, row.text) : 
 			                                                          OpenGL.smallTextWidth(gl, row.text) + OpenGL.smallTextHeight + Theme.tooltipTextPadding).max().orElse(0);
-			float padding = 6f * ChartsController.getDisplayScalingFactor();
+			float padding = 6f * Charts.getDisplayScalingFactor();
 			float boxWidth = maxWidth + (2 * padding);
 			float boxHeight = rows.size() * (OpenGL.smallTextHeight + padding) + padding;
 			
@@ -653,88 +780,6 @@ public abstract class PositionedChart {
 			return bake(gl, plotWidth, plotHeight, mouseX, mouseY, xAnchor).draw(gl, false, null);
 			
 		}
-	}
-	
-	public abstract void getConfigurationGui(JPanel gui);
-	
-	final public void importFrom(ConnectionsController.QueueOfLines lines) {
-
-		int topLeftX = lines.parseInteger("top left x = %d");
-		if(topLeftX < 0 || topLeftX >= SettingsView.instance.tileColumnsTextfield.get())
-			throw new AssertionError("Invalid chart position.");
-		
-		int topLeftY = lines.parseInteger("top left y = %d");
-		if(topLeftY < 0 || topLeftY >= SettingsView.instance.tileRowsTextfield.get())
-			throw new AssertionError("Invalid chart position.");
-
-		int bottomRightX = lines.parseInteger("bottom right x = %d");
-		if(bottomRightX < 0 || bottomRightX >= SettingsView.instance.tileColumnsTextfield.get())
-			throw new AssertionError("Invalid chart position.");
-
-		int bottomRightY = lines.parseInteger("bottom right y = %d");
-		if(bottomRightY < 0 || bottomRightY >= SettingsView.instance.tileRowsTextfield.get())
-			throw new AssertionError("Invalid chart position.");
-		
-		for(PositionedChart existingChart : ChartsController.getCharts())
-			if(existingChart.regionOccupied(topLeftX, topLeftY, bottomRightX, bottomRightY))
-				throw new AssertionError("Chart overlaps an existing chart.");
-		
-		setPosition(topLeftX, topLeftY, bottomRightX, bottomRightY);
-		
-		widgets.forEach(widget -> widget.importFrom(lines));
-		
-	}
-	
-	final public void exportTo(PrintWriter file) {
-
-		file.println("");
-		file.println("\tchart type = " + toString());
-		file.println("\ttop left x = " + topLeftX);
-		file.println("\ttop left y = " + topLeftY);
-		file.println("\tbottom right x = " + bottomRightX);
-		file.println("\tbottom right y = " + bottomRightY);
-		
-		widgets.forEach(widget -> widget.exportTo(file));
-		
-	}
-	
-	public abstract String toString();
-	
-	/**
-	 * Schedules the chart to be disposed.
-	 * Non-GPU resources (cache files, etc.) will be released immediately.
-	 * GPU resources will be released the next time the OpenGLChartsRegion is drawn. (the next vsync, if it's on screen.)
-	 */
-	final public void dispose() {
-		
-		disposeNonGpu();
-		OpenGLChartsView.instance.chartsToDispose.add(this);
-		
-	}
-	
-	/**
-	 * Charts that create cache files or other non-GPU resources must dispose of them when this method is called.
-	 */
-	public void disposeNonGpu() {
-		
-		if(OpenGLChartsView.globalTrigger == trigger)
-			OpenGLChartsView.globalTrigger = null;
-		
-	}
-	
-	/**
-	 * Charts that create any OpenGL FBOs/textures/etc. must dispose of them when this method is called.
-	 * The chart may be drawn after this call, so the chart must be able to automatically regenerate any needed FBOs/textures/etc.
-	 * 
-	 * @param gl    The OpenGL context.
-	 */
-	public void disposeGpu(GL2ES3 gl) {
-		
-		if(gpuQueryHandles != null) {
-			gl.glDeleteQueries(2, gpuQueryHandles, 0);
-			gpuQueryHandles = null;
-		}
-		
 	}
 	
 }

@@ -221,7 +221,7 @@ public class OpenGLPlot {
 				float yText1 = Theme.tilePadding;
 				float xText1b = chartWidth - Theme.tilePadding - OpenGL.smallTextWidth(gl, text1b);
 				float xPowerScaleRight = xText1b - Theme.tickTextPadding;
-				float xPowerScaleLeft  = xPowerScaleRight - (100 * ChartsController.getDisplayScalingFactor());
+				float xPowerScaleLeft  = xPowerScaleRight - (100 * Charts.getDisplayScalingFactor());
 				float xText1a = xPowerScaleLeft - Theme.tickTextPadding - OpenGL.smallTextWidth(gl, text1a);
 				float yText1Top = yText1 + OpenGL.smallTextHeight;
 				

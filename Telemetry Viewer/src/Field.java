@@ -88,7 +88,7 @@ public class Field implements Comparable<Field> {
 		                                  return true;
 		                              } else if(connection.isFieldAllowed(this, newOffset, Type.UINT8) != null) {
 		                                  // new location can't even fit 1 byte, so reject the change
-		                                  NotificationsController.printDebugMessageAndBeep(connection.getClass().getName() + " rejected field location \"" + newOffset + "\" because it is already occupied.");
+		                                  Notifications.printDebugMessageAndBeep(connection.getClass().getName() + " rejected field location \"" + newOffset + "\" because it is already occupied.");
 		                                  return false;
 		                              } else {
 		                                  // new location has >= 1 byte available, so update the list of appropriate data types
@@ -248,9 +248,9 @@ public class Field implements Comparable<Field> {
 				JOptionPane.showMessageDialog(null, "Define at least one dataset, or disconnect.", "Error", JOptionPane.ERROR_MESSAGE);
 			} else {
 				connection.setFieldsDefined(true);
-				if(ChartsController.getCharts().isEmpty())
-					NotificationsController.showHintUntil("Add a chart by clicking on a tile, or click-and-dragging across multiple tiles.", () -> !ChartsController.getCharts().isEmpty(), true);
-				Main.hideConfigurationGui();
+				if(!Charts.exist())
+					Notifications.showHintUntil("Add a chart by clicking on a tile, or click-and-dragging across multiple tiles.", () -> Charts.exist(), true);
+				Main.hideDataStructureGui(connection);
 			}
 		});
 		
@@ -258,8 +258,8 @@ public class Field implements Comparable<Field> {
 	
 	@Override public int compareTo(Field other) {
 		// hopefully no connection has a packet size >10,000 bytes (>80,000 bits)
-		int thisBitOffset  = (ConnectionsController.telemetryConnections.indexOf(this.connection)  * 80000) + ( this.location.get() * 8);
-		int otherBitOffset = (ConnectionsController.telemetryConnections.indexOf(other.connection) * 80000) + (other.location.get() * 8);
+		int thisBitOffset  = (Connections.telemetryConnections.indexOf(this.connection)  * 80000) + ( this.location.get() * 8);
+		int otherBitOffset = (Connections.telemetryConnections.indexOf(other.connection) * 80000) + (other.location.get() * 8);
 		return thisBitOffset - otherBitOffset;
 	}
 	
@@ -346,7 +346,7 @@ public class Field implements Comparable<Field> {
 		
 	}
 	
-	public void importFrom(ConnectionsController.QueueOfLines lines) throws AssertionError {
+	public void importFrom(Connections.QueueOfLines lines) throws AssertionError {
 		
 		lines.parseExact("");
 		location.importFrom(lines);
@@ -420,7 +420,7 @@ public class Field implements Comparable<Field> {
 	 */
 	@Override public String toString() {
 		
-		boolean oneConnection = ConnectionsController.telemetryConnections.size() == 1;
+		boolean oneConnection = Connections.telemetryConnections.size() == 1;
 		return oneConnection ? name.get() : "[" + connection.toString() + "] " + name.get();
 		
 		
@@ -594,7 +594,7 @@ public class Field implements Comparable<Field> {
 		 * @param levels             A Map where the keys are Bitfield States, and the values are the corresponding details for any level events to draw on screen.
 		 * @param di                 Interface to obtain the samples from.
 		 */
-		void getEdgesAndLevelsBetween(int minSampleNumber, int maxSampleNumber, boolean sampleCountMode, Map<Integer, PositionedChart.Tooltip> edgeTooltips, Map<State, List<LevelRange>> levels, DatasetsInterface di) {
+		void getEdgesAndLevelsBetween(int minSampleNumber, int maxSampleNumber, boolean sampleCountMode, Map<Integer, Chart.Tooltip> edgeTooltips, Map<State, List<LevelRange>> levels, DatasetsInterface di) {
 			
 			// sanity checks
 			if(minSampleNumber < 0)
@@ -639,8 +639,8 @@ public class Field implements Comparable<Field> {
 						if(edgeTooltips.containsKey(sampleNumber)) {
 							edgeTooltips.get(sampleNumber).addRow(states[stateN].glColor, states[stateN].name);
 						} else {
-							edgeTooltips.put(sampleNumber, new PositionedChart.Tooltip(sampleNumber, timestamp, -1, -1)
-							                                   .addRow(states[stateN].glColor, states[stateN].name));
+							edgeTooltips.put(sampleNumber, new Chart.Tooltip(sampleNumber, timestamp, -1, -1)
+							                                        .addRow(states[stateN].glColor, states[stateN].name));
 						}
 					}
 				}
@@ -666,8 +666,8 @@ public class Field implements Comparable<Field> {
 		 */
 		@Override public int compareTo(Bitfield other) {
 			// hopefully no connection has a packet size >10,000 bytes (>80,000 bits)
-			int thisBitOffset  = (ConnectionsController.telemetryConnections.indexOf(this.dataset.connection)  * 80000) + ( this.dataset.location.get() * 8) +  this.LSBit;
-			int otherBitOffset = (ConnectionsController.telemetryConnections.indexOf(other.dataset.connection) * 80000) + (other.dataset.location.get() * 8) + other.LSBit;
+			int thisBitOffset  = (Connections.telemetryConnections.indexOf(this.dataset.connection)  * 80000) + ( this.dataset.location.get() * 8) +  this.LSBit;
+			int otherBitOffset = (Connections.telemetryConnections.indexOf(other.dataset.connection) * 80000) + (other.dataset.location.get() * 8) + other.LSBit;
 			return thisBitOffset - otherBitOffset;
 		}
 		
@@ -706,7 +706,7 @@ public class Field implements Comparable<Field> {
 			 */
 			@Override public String toString() {
 				
-				boolean oneConnection = ConnectionsController.telemetryConnections.size() == 1;
+				boolean oneConnection = Connections.telemetryConnections.size() == 1;
 				return oneConnection ? name : "[" + connection.toString() + "] " + name;
 				
 			}
@@ -716,8 +716,8 @@ public class Field implements Comparable<Field> {
 			 */
 			@Override public int compareTo(State other) {
 				// hopefully no connection has a packet size >10,000 bytes (>80,000 bits)
-				int thisBitOffset  = (ConnectionsController.telemetryConnections.indexOf(this.dataset.connection)  * 80000) + ( this.dataset.location.get() * 8) +  this.bitfield.LSBit;
-				int otherBitOffset = (ConnectionsController.telemetryConnections.indexOf(other.dataset.connection) * 80000) + (other.dataset.location.get() * 8) + other.bitfield.LSBit;
+				int thisBitOffset  = (Connections.telemetryConnections.indexOf(this.dataset.connection)  * 80000) + ( this.dataset.location.get() * 8) +  this.bitfield.LSBit;
+				int otherBitOffset = (Connections.telemetryConnections.indexOf(other.dataset.connection) * 80000) + (other.dataset.location.get() * 8) + other.bitfield.LSBit;
 				
 				// with 8-bit bitfields, every bitfield value will be <=255
 				int thisValue  = (thisBitOffset  * 8) +  this.value;

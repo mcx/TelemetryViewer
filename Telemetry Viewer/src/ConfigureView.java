@@ -1,7 +1,6 @@
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.GridLayout;
-import java.awt.event.ActionListener;
 import javax.swing.JButton;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
@@ -19,7 +18,7 @@ public class ConfigureView extends JPanel {
 	private JPanel buttonsPanel;
 	private JScrollPane scrollableRegion;
 	
-	private PositionedChart activeChart = null;
+	private Chart activeChart = null;
 	private boolean activeChartIsNew = false;
 	
 	/**
@@ -85,7 +84,7 @@ public class ConfigureView extends JPanel {
 	 * 
 	 * @param chart    The chart to configure.
 	 */
-	public void forExistingChart(PositionedChart chart) {
+	public void forExistingChart(Chart chart) {
 		
 		activeChart = chart;
 		activeChartIsNew = false;
@@ -94,7 +93,7 @@ public class ConfigureView extends JPanel {
 		widgetsPanel.removeAll();
 		widgetsPanel.setVisible(true);
 		
-		chart.getConfigurationGui(widgetsPanel);
+		chart.appendConfigurationWidgets(widgetsPanel);
 		
 		JButton doneButton = new JButton("Done");
 		doneButton.addActionListener(event -> close());
@@ -114,32 +113,28 @@ public class ConfigureView extends JPanel {
 	 * 
 	 * @param chart    The new chart.
 	 */
-	public void forNewChart(PositionedChart chart) {
+	public void forNewChart(Chart chart) {
 		
 		activeChart = chart;
 		activeChartIsNew = true;
 		
-		ActionListener chartTypeHandler = event -> {
-			// replace the chart if a different chart type was selected
-			JToggleButton clickedButton = (JToggleButton) event.getSource();
-			if(!activeChart.toString().equals(clickedButton.getText())) {
-				int x1 = activeChart.topLeftX;
-				int y1 = activeChart.topLeftY;
-				int x2 = activeChart.bottomRightX;
-				int y2 = activeChart.bottomRightY;
-				ChartsController.removeChart(activeChart);
-				PositionedChart newChart = ChartsController.createAndAddChart(clickedButton.getText());
-				newChart.setPosition(x1, y1, x2, y2);
-				instance.forNewChart(newChart);
-			}
-		};
-		
 		JPanel chartTypePanel = new JPanel();
 		chartTypePanel.setLayout(new GridLayout(0, 2, Theme.padding, Theme.padding));
-		for(String chartType : ChartsController.getChartTypes()) {
-			JToggleButton button = new JToggleButton(chartType);
-			button.setSelected(button.getText().equals(activeChart.toString()));
-			button.addActionListener(chartTypeHandler);
+		for(Charts.Type chartType : Charts.Type.values()) {
+			String typeString = chartType.toString();
+			JToggleButton button = new JToggleButton(typeString);
+			button.setSelected(typeString.equals(activeChart.toString()));
+			button.addActionListener(event -> {
+				if(!activeChart.toString().equals(typeString)) {
+					int x1 = activeChart.topLeftX;
+					int y1 = activeChart.topLeftY;
+					int x2 = activeChart.bottomRightX;
+					int y2 = activeChart.bottomRightY;
+					Charts.remove(activeChart);
+					Chart newChart = chartType.createAt(x1, y1, x2, y2);
+					instance.forNewChart(newChart);
+				}
+			});
 			chartTypePanel.add(button);
 		}
 		
@@ -148,10 +143,10 @@ public class ConfigureView extends JPanel {
 		widgetsPanel.setVisible(true);
 		
 		widgetsPanel.add(chartTypePanel);
-		chart.getConfigurationGui(widgetsPanel);
+		chart.appendConfigurationWidgets(widgetsPanel);
 		
 		JButton cancelButton = new JButton("Cancel");
-		cancelButton.addActionListener(event -> { ChartsController.removeChart(activeChart); close(); });
+		cancelButton.addActionListener(event -> { Charts.remove(activeChart); close(); });
 		JButton doneButton = new JButton("Done");
 		doneButton.addActionListener(event -> close());
 		buttonsPanel.removeAll();
@@ -201,7 +196,7 @@ public class ConfigureView extends JPanel {
 		
 	}
 	
-	public void redrawIfUsedFor(PositionedChart chart) {
+	public void redrawIfUsedFor(Chart chart) {
 		
 		if(chart != activeChart || activeChart == null)
 			return;
@@ -218,7 +213,7 @@ public class ConfigureView extends JPanel {
 	 * 
 	 * @param chart    The chart.
 	 */
-	public void closeIfUsedFor(PositionedChart chart) {
+	public void closeIfUsedFor(Chart chart) {
 		
 		if(activeChart == chart)
 			close();

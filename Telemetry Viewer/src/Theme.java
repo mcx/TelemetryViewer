@@ -27,7 +27,7 @@ public class Theme {
 	// general swing and other settings
 	public static int    columnWidth;
 	public static Color  jpanelColor                      = new JPanel().getBackground();
-	public static int    padding                          = Integer.parseInt(System.getProperty("java.version").split("\\.")[0]) >= 9 ? 5 : (int) (5 * ChartsController.getDisplayScalingFactor());
+	public static int    padding                          = Integer.parseInt(System.getProperty("java.version").split("\\.")[0]) >= 9 ? 5 : (int) (5 * Charts.getDisplayScalingFactor());
 	public static String removeSymbol                     = "\uD83D\uDDD9";
 	public static Color  defaultDatasetColor              = Color.RED;
 	public static long   defaultChartDurationMilliseconds = 10_000;

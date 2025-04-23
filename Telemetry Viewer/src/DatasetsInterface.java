@@ -37,7 +37,7 @@ public class DatasetsInterface {
 	
 	private Map<Field, StorageFloats.Cache> sampleCaches = new HashMap<>();
 	private StorageTimestamps.Cache timestampsCache = null;
-	private Map<Integer, PositionedChart.Tooltip> edgesCache = new TreeMap<Integer, PositionedChart.Tooltip>();
+	private Map<Integer, Chart.Tooltip> edgesCache = new TreeMap<Integer, Chart.Tooltip>();
 	private Map<Field.Bitfield.State, List<Field.Bitfield.LevelRange>> levelsCache  = new TreeMap<Field.Bitfield.State, List<Field.Bitfield.LevelRange>>();
 	private int edgesLevelsCacheStartingSampleNumber = -1;
 	private int edgesLevelsCacheEndingSampleNumber   = -1;
@@ -81,13 +81,13 @@ public class DatasetsInterface {
 	 *                           If false, the Tooltips will show their sample number and time.
 	 * @returns                  A Map where the keys are sample numbers, and the values are the corresponding Tooltips to draw on screen.
 	 */
-	private Map<Integer, PositionedChart.Tooltip> getEdgesBetween(int minSampleNumber, int maxSampleNumber, boolean sampleCountMode) {
+	private Map<Integer, Chart.Tooltip> getEdgesBetween(int minSampleNumber, int maxSampleNumber, boolean sampleCountMode) {
 		
 		// sanity checks
 		if(minSampleNumber < 0)
-			return new TreeMap<Integer, PositionedChart.Tooltip>();
+			return new TreeMap<Integer, Chart.Tooltip>();
 		if(minSampleNumber >= maxSampleNumber)
-			return new TreeMap<Integer, PositionedChart.Tooltip>();
+			return new TreeMap<Integer, Chart.Tooltip>();
 		
 		// cache management
 		if(minSampleNumber == edgesLevelsCacheStartingSampleNumber && maxSampleNumber == edgesLevelsCacheEndingSampleNumber) {
@@ -403,11 +403,11 @@ public class DatasetsInterface {
 		AtomicReference<EventHandler> clickHandler = new AtomicReference<EventHandler>();
 		
 		// prepare the tooltips for edge events
-		List<PositionedChart.Tooltip> tooltips = getEdgesBetween((int) minSampleNumber, (int) maxSampleNumber, sampleCountMode)
-		                                         .values().stream().toList();
+		List<Chart.Tooltip> tooltips = getEdgesBetween((int) minSampleNumber, (int) maxSampleNumber, sampleCountMode)
+		                               .values().stream().toList();
 		
 		// check if the mouse is near a tooltip
-		PositionedChart.Tooltip closestTooltip = null;
+		Chart.Tooltip closestTooltip = null;
 		if(!tooltips.isEmpty() && mouseX != -1 && mouseY != -1) {
 			if(sampleCountMode) {
 				long mouseSampleNumber = Math.min(maxSampleNumber, pixelXtoX.apply(mouseX));
@@ -418,9 +418,9 @@ public class DatasetsInterface {
 				                                        }).get();
 			} else {
 				long mouseTimestamp = pixelXtoX.apply(mouseX);
-				PositionedChart.Tooltip closestTooltipAtOrBefore = null;
-				PositionedChart.Tooltip closestTooltipAfter      = null;
-				for(PositionedChart.Tooltip tooltip : tooltips) {
+				Chart.Tooltip closestTooltipAtOrBefore = null;
+				Chart.Tooltip closestTooltipAfter      = null;
+				for(Chart.Tooltip tooltip : tooltips) {
 					if(tooltip.timestamp <= mouseTimestamp)
 						closestTooltipAtOrBefore = tooltip;
 					else if(closestTooltipAfter == null)
@@ -442,9 +442,9 @@ public class DatasetsInterface {
 		}
 		
 		// draw all tooltips
-		List<PositionedChart.Tooltip.Drawable> bakedTooltips = tooltips.stream().map(tooltip -> tooltip.bake(gl, plotWidth, plotHeight, -1, -1, xToPixelX.apply(sampleCountMode ? tooltip.sampleNumber : tooltip.timestamp))).toList();
+		List<Chart.Tooltip.Drawable> bakedTooltips = tooltips.stream().map(tooltip -> tooltip.bake(gl, plotWidth, plotHeight, -1, -1, xToPixelX.apply(sampleCountMode ? tooltip.sampleNumber : tooltip.timestamp))).toList();
 		for(int i = 0; i < bakedTooltips.size(); i++) {
-			PositionedChart.Tooltip.Drawable next = (i == bakedTooltips.size() - 1) ? null : bakedTooltips.get(i + 1);
+			Chart.Tooltip.Drawable next = (i == bakedTooltips.size() - 1) ? null : bakedTooltips.get(i + 1);
 			if(!bakedTooltips.get(i).draw(gl, closestTooltip != null, next))
 				insufficientSpace.set(true);
 		}
@@ -452,7 +452,7 @@ public class DatasetsInterface {
 		// draw the tooltip closest to the mouse on top
 		// if clickable, and if the mouse is over that tooltip, it will be drawn with a black border
 		if(closestTooltip != null) {
-			PositionedChart.Tooltip.Drawable baked = closestTooltip.bake(gl, plotWidth, plotHeight, clickable ? mouseX : -1, clickable ? mouseY : -1, xToPixelX.apply(sampleCountMode ? closestTooltip.sampleNumber : closestTooltip.timestamp));
+			Chart.Tooltip.Drawable baked = closestTooltip.bake(gl, plotWidth, plotHeight, clickable ? mouseX : -1, clickable ? mouseY : -1, xToPixelX.apply(sampleCountMode ? closestTooltip.sampleNumber : closestTooltip.timestamp));
 			if(!baked.draw(gl, false, null))
 				insufficientSpace.set(true);
 			
@@ -480,7 +480,7 @@ public class DatasetsInterface {
 			outlinesAsGlLines.rewind();
 			List<int[]> labelPositions = new ArrayList<int[]>(); // [0] = xLeft, [1] = xRight of the corresponding quad
 			int bitfieldN = bitfields.indexOf(state.bitfield);
-			float padding       = 6f * ChartsController.getDisplayScalingFactor();
+			float padding       = 6f * Charts.getDisplayScalingFactor();
 			float yBottom       = padding + ((bitfields.size() - 1 - bitfieldN) * (padding + OpenGL.smallTextHeight + padding));
 			float yTop          = yBottom + OpenGL.smallTextHeight + padding;
 			float yTextBaseline = yBottom + padding/2f;
@@ -542,10 +542,10 @@ public class DatasetsInterface {
 		
 		// draw a warning if there was not enough space for all edges or levels
 		if(insufficientSpace.get() == true) {
-			float gradientLength = 10 * ChartsController.getDisplayScalingFactor();
+			float gradientLength = 10 * Charts.getDisplayScalingFactor();
 			float[] red            = new float[] {1, 0, 0, 1};
 			float[] transparentRed = new float[] {1, 0, 0, 0};
-			float padding = 6f * ChartsController.getDisplayScalingFactor();
+			float padding = 6f * Charts.getDisplayScalingFactor();
 			
 			// top gradient
 			OpenGL.buffer.rewind();
@@ -647,8 +647,8 @@ public class DatasetsInterface {
 		w.edgesHandler    = edgesHandler;
 		w.levelsHandler   = levelsHandler;
 		
-		long defaultSampleCount = ConnectionsController.telemetryConnections.isEmpty() ? 10_000 :
-		                          Long.min(ConnectionsController.telemetryConnections.get(0).getSampleRate() * 10L, Integer.MAX_VALUE / 16);
+		long defaultSampleCount = Connections.telemetryConnections.isEmpty() ? 10_000 :
+		                          Long.min(Connections.telemetryConnections.get(0).getSampleRate() * 10L, Integer.MAX_VALUE / 16);
 		
 		w.duration = WidgetTextfield.ofText(Long.toString(defaultSampleCount))
 		                            .setExportLabel("duration")
@@ -681,17 +681,21 @@ public class DatasetsInterface {
 		                     .onChange((newUnit, oldUnit) -> {
 		                         if(oldUnit == DurationUnit.SAMPLES && newUnit == DurationUnit.MILLISECONDS) {
 		                             // convert from sample count to seconds
-		                             int sampleRateHz = (connection != null) ? connection.getSampleRate() : ConnectionsController.telemetryConnections.get(0).getSampleRate();
+		                             int sampleRateHz = (connection != null) ? connection.getSampleRate() : Connections.telemetryConnections.get(0).getSampleRate();
 		                             double seconds = Long.parseLong(w.duration.get()) / (double) sampleRateHz;
 		                             w.duration.set(Double.toString(seconds));
 		                         } else if(oldUnit == DurationUnit.MILLISECONDS && newUnit == DurationUnit.SAMPLES) {
 		                             // convert from seconds to sample count
-		                             int sampleRateHz = (connection != null) ? connection.getSampleRate() : ConnectionsController.telemetryConnections.get(0).getSampleRate();
+		                             int sampleRateHz = (connection != null) ? connection.getSampleRate() : Connections.telemetryConnections.get(0).getSampleRate();
 		                             long sampleCount = Math.round(Double.parseDouble(w.duration.get()) * (double) sampleRateHz);
 		                             w.duration.set(Long.toString(sampleCount));
 		                         }
 		                         return true;
 		                     });
+		
+		// immediately call the duration event handler with the default values
+		// this is needed so the chart doesn't start off with a one frame glitch where duration is zero
+		durationHandler.accept(DurationUnit.SAMPLES, defaultSampleCount);
 
 		w.createAndUpdateWidgets();
 		return w;
@@ -702,16 +706,15 @@ public class DatasetsInterface {
 	 * A Widget that lets the user select one dataset or one bitfield state.
 	 */
 	public WidgetDatasets getDatasetOrStateCombobox(Consumer<Field> datasetHandler, Consumer<Field.Bitfield.State> stateHandler) {
-		List<String> options = ConnectionsController.telemetryConnections
-		                                            .stream()
-		                                            .flatMap(connection -> connection.getDatasetsList().stream())
-		                                            .flatMap(dataset -> {
-		                                                if(!dataset.isBitfield)
-		                                                    return Stream.of(dataset.toString());
-		                                                else
-		                                                    return dataset.bitfields.stream().flatMap(bitfield -> Stream.of(bitfield.states)).map(state -> state.toString());
-		                                            })
-		                                            .toList();
+		List<String> options = Connections.telemetryConnections.stream()
+		                                  .flatMap(connection -> connection.getDatasetsList().stream())
+		                                  .flatMap(dataset -> {
+		                                      if(!dataset.isBitfield)
+		                                          return Stream.of(dataset.toString());
+		                                      else
+		                                          return dataset.bitfields.stream().flatMap(bitfield -> Stream.of(bitfield.states)).map(state -> state.toString());
+		                                  })
+		                                  .toList();
 		String defaultOption = options.isEmpty() ? null : options.getFirst();
 		
 		WidgetDatasets w = new WidgetDatasets();
@@ -719,19 +722,17 @@ public class DatasetsInterface {
 		                               .setExportLabel("trigger channel")
 		                               .onChange((newChannelName, oldChannelName) -> {
 		                                    if(newChannelName != null) {
-		                                        var dataset = ConnectionsController.telemetryConnections
-		                                                                           .stream()
-		                                                                           .flatMap(connection -> connection.getDatasetsList().stream())
-		                                                                           .filter(d -> !d.isBitfield)
-		                                                                           .filter(d -> d.toString().equals(newChannelName))
-		                                                                           .findFirst().orElse(null);
-		                                        var state   = ConnectionsController.telemetryConnections
-		                                                                           .stream()
-		                                                                           .flatMap(connection -> connection.getDatasetsList().stream())
-		                                                                           .filter(d -> d.isBitfield)
-		                                                                           .flatMap(d -> d.bitfields.stream().flatMap(b -> Stream.of(b.states)))
-		                                                                           .filter(s -> s.toString().equals(newChannelName))
-		                                                                           .findFirst().orElse(null);
+		                                        var dataset = Connections.telemetryConnections.stream()
+		                                                                 .flatMap(connection -> connection.getDatasetsList().stream())
+		                                                                 .filter(d -> !d.isBitfield)
+		                                                                 .filter(d -> d.toString().equals(newChannelName))
+		                                                                 .findFirst().orElse(null);
+		                                        var state   = Connections.telemetryConnections.stream()
+		                                                                 .flatMap(connection -> connection.getDatasetsList().stream())
+		                                                                 .filter(d -> d.isBitfield)
+		                                                                 .flatMap(d -> d.bitfields.stream().flatMap(b -> Stream.of(b.states)))
+		                                                                 .filter(s -> s.toString().equals(newChannelName))
+		                                                                 .findFirst().orElse(null);
 		                                        if(dataset != null) {
 		                                            normalDatasets.clear();
 		                                            normalDatasets.add(dataset);
@@ -755,10 +756,10 @@ public class DatasetsInterface {
 	 * A widget that allows the user to select a fixed number of normal datasets (but not bitfields.)
 	 */
 	public WidgetDatasets getComboboxesWidget(List<String> labels, Consumer<List<Field>> eventHandler) {
-		List<Field> fields = ConnectionsController.telemetryConnections.stream()
-		                                                               .flatMap(connection -> connection.getDatasetsList().stream())
-		                                                               .filter(field -> !field.isBitfield)
-		                                                               .toList();
+		List<Field> fields = Connections.telemetryConnections.stream()
+		                                .flatMap(connection -> connection.getDatasetsList().stream())
+		                                .filter(field -> !field.isBitfield)
+		                                .toList();
 		if(normalDatasets.isEmpty() && !fields.isEmpty()) {
 			for(int i = 0; i < labels.size(); i++)
 				normalDatasets.add(fields.getFirst());
@@ -814,22 +815,21 @@ public class DatasetsInterface {
 		 */
 		private void createAndUpdateWidgets() {
 			
-			List<Field>                currentDatasets  = ConnectionsController.telemetryConnections.stream().flatMap(connection -> connection.getDatasetsList().stream()).filter(field -> !field.isBitfield).toList();
-			List<Field>                currentBitfields = ConnectionsController.telemetryConnections.stream().flatMap(connection -> connection.getDatasetsList().stream()).filter(field -> field.isBitfield).toList();
-			List<Field.Bitfield.State> currentStates    = ConnectionsController.telemetryConnections.stream().flatMap(connection -> connection.getDatasetsList().stream()).filter(field -> field.isBitfield).flatMap(field -> field.bitfields.stream()).flatMap(bitfield -> Stream.of(bitfield.states)).filter(state -> !state.name.isEmpty()).toList();
+			List<Field>                currentDatasets  = Connections.telemetryConnections.stream().flatMap(connection -> connection.getDatasetsList().stream()).filter(field -> !field.isBitfield).toList();
+			List<Field>                currentBitfields = Connections.telemetryConnections.stream().flatMap(connection -> connection.getDatasetsList().stream()).filter(field -> field.isBitfield).toList();
+			List<Field.Bitfield.State> currentStates    = Connections.telemetryConnections.stream().flatMap(connection -> connection.getDatasetsList().stream()).filter(field -> field.isBitfield).flatMap(field -> field.bitfields.stream()).flatMap(bitfield -> Stream.of(bitfield.states)).filter(state -> !state.name.isEmpty()).toList();
 			
 			if(triggerChannelCombobox != null) {
 				// trigger channel combobox
-				List<String> currentOptions = ConnectionsController.telemetryConnections
-				                                                   .stream()
-				                                                   .flatMap(connection -> connection.getDatasetsList().stream())
-				                                                   .flatMap(dataset -> {
-				                                                       if(!dataset.isBitfield)
-				                                                           return Stream.of(dataset.toString());
-				                                                       else
-				                                                           return dataset.bitfields.stream().flatMap(bitfield -> Stream.of(bitfield.states)).map(state -> state.toString());
-				                                                   })
-				                                                   .toList();
+				List<String> currentOptions = Connections.telemetryConnections.stream()
+				                                         .flatMap(connection -> connection.getDatasetsList().stream())
+				                                         .flatMap(dataset -> {
+				                                             if(!dataset.isBitfield)
+				                                                 return Stream.of(dataset.toString());
+				                                             else
+				                                                 return dataset.bitfields.stream().flatMap(bitfield -> Stream.of(bitfield.states)).map(state -> state.toString());
+				                                         })
+				                                         .toList();
 				String selectedChannel = triggerChannelCombobox.get();
 				triggerChannelCombobox.resetValues(currentOptions, selectedChannel);
 				triggerChannelCombobox.setEnabled(currentOptions.isEmpty() ? false : isEnabled);
@@ -968,14 +968,14 @@ public class DatasetsInterface {
 			
 		}
 		
-		@Override public void importFrom(ConnectionsController.QueueOfLines lines) throws AssertionError {
+		@Override public void importFrom(Connections.QueueOfLines lines) throws AssertionError {
 			
 			if(triggerChannelCombobox != null) {
 				triggerChannelCombobox.importFrom(lines);
 				return;
 			}
 			
-			List<Field> fields = ConnectionsController.telemetryConnections.stream().flatMap(connection -> connection.getDatasetsList().stream()).toList();
+			List<Field> fields = Connections.telemetryConnections.stream().flatMap(connection -> connection.getDatasetsList().stream()).toList();
 			
 			if(!comboboxes.isEmpty()) {
 				List<String> list = List.of(lines.parseString("datasets = %s").split(","));

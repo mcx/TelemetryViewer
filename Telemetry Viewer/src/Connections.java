@@ -5,20 +5,25 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import javax.swing.SwingUtilities;
 
+import com.fazecast.jSerialComm.SerialPort;
+import com.github.sarxos.webcam.Webcam;
+
 /**
  * ConnectionController manages all Connections, but the bulk of the work is done by the individual Connections.
  */
-public class ConnectionsController {
+public class Connections {
 	
 	public static volatile boolean importing = false;
 	public static volatile boolean exporting = false;
@@ -26,9 +31,87 @@ public class ConnectionsController {
 	public static volatile boolean previouslyImported = false; // true = the Connections contain imported data
 	private static Thread exportThread;
 	
-	public static List<Connection>                        allConnections = new ArrayList<Connection>();
-	public static List<ConnectionTelemetry>         telemetryConnections = new ArrayList<ConnectionTelemetry>();
-	public static List<ConnectionCamera>               cameraConnections = new ArrayList<ConnectionCamera>();
+	public static List<Connection>                allConnections = new ArrayList<Connection>();
+	public static List<ConnectionTelemetry> telemetryConnections = new ArrayList<ConnectionTelemetry>();
+	public static List<ConnectionCamera>       cameraConnections = new ArrayList<ConnectionCamera>();
+	
+	// the webcam library crashes on the Pi 4, so don't query webcams on Linux AArch64
+	private static final boolean webcamsSupported = !(System.getProperty("os.name").toLowerCase().equals("linux") && System.getProperty("os.arch").toLowerCase().equals("aarch64"));
+	
+	public final static List<String> uarts = Stream.of(SerialPort.getCommPorts())
+	                                               .map(port -> "UART: " + port.getSystemPortName())
+	                                               .sorted()
+	                                               .collect(Collectors.toCollection(() -> Collections.synchronizedList(new ArrayList<String>())));
+	public final static List<String> cameras = webcamsSupported ? Webcam.getWebcams().stream()
+	                                                                    .map(cam -> "Cam: " + cam.getName())
+	                                                                    .sorted()
+	                                                                    .collect(Collectors.toCollection(() -> Collections.synchronizedList(new ArrayList<String>()))) :
+	                                                              List.of();
+	static {
+		Thread t = new Thread(() -> {
+			while(true) {
+				try {
+					
+					// check what devices are currently present
+					List<String> newUarts = Stream.of(SerialPort.getCommPorts())
+					                              .map(port -> "UART: " + port.getSystemPortName())
+					                              .sorted().toList();
+					List<String> newCameras = webcamsSupported ? Webcam.getWebcams(1000).stream()
+					                                                   .map(cam -> "Cam: " + cam.getName())
+					                                                   .sorted().toList() :
+					                                             List.of();
+					
+					boolean updateComboboxes = !newUarts.equals(uarts) || !newCameras.equals(cameras);
+					
+					// update the lists and notify if devices have appeared or disappeared
+					newUarts.stream().filter(uart -> !uarts.contains(uart))
+					                 .forEach(uart -> {
+					                      uarts.add(uart);
+					                      uarts.sort(null);
+					                      Notifications.showDevice("Device found: " + uart.substring(6) + "."); // trim leading "UART: "
+					                  });
+					
+					uarts.stream().filter(uart -> !newUarts.contains(uart))
+					              .toList() // to prevent a ConcurrentModificationException
+					              .forEach(uart -> {
+					                   uarts.remove(uart);
+					                   Notifications.showDevice("Device lost: " + uart.substring(6) + "."); // trim leading "UART: "
+					               });
+					
+					newCameras.stream().filter(camera -> !cameras.contains(camera))
+					                   .forEach(camera -> {
+					                        cameras.add(camera);
+					                        cameras.sort(null);
+					                        Notifications.showDevice("Device found: " + camera.substring(5) + "."); // trim leading "Cam: "
+					                    });
+					
+					cameras.stream().filter(camera -> !newCameras.contains(camera))
+					                .toList() // to prevent a ConcurrentModificationException
+					                .forEach(camera -> {
+					                     cameras.remove(camera);
+					                     Notifications.showDevice("Device lost: " + camera.substring(5) + "."); // trim leading "Cam: "
+					                 });
+					
+					// update the connection name comboboxes if a device was lost or found
+					if(updateComboboxes)
+						SwingUtilities.invokeLater(() -> {
+							allConnections.forEach(connection -> {
+								List<String> newNames = getDevicesStream(connection).map(Device::name).toList();
+								String selectedName = connection.name.get();
+								connection.name.resetValues(newNames, selectedName);
+							});
+						});
+					
+				} catch(Exception e) {}
+				
+				// wait 1 second before repeating
+				try { Thread.sleep(1000); } catch(Exception e) {}
+			}
+		});
+		t.setName("Device Monitoring Thread");
+		t.start();
+	}
+	
 	static {
 		addConnection(null);
 	}
@@ -36,31 +119,25 @@ public class ConnectionsController {
 	private static final String filenameSanitizer = "[^a-zA-Z0-9_\\.\\- ]"; // only allow letters, numbers, underscores, periods, hyphens and spaces.
 	
 	public record Device(String name, boolean isAvailable, Supplier<Connection> connection) {}
+	
 	public static Stream<Device> getDevicesStream(Connection parent) {
 		
 		List<Device> list = new ArrayList<Device>();
-		ConnectionTelemetryUART.getNames().forEach(name -> {
-			boolean isAvailable = telemetryConnections.stream().noneMatch(con -> con != parent && con.name.get().equals(name));
-			list.add(new Device(name, isAvailable, isAvailable ? () -> new ConnectionTelemetryUART(name) :
-			                                                     () -> null));
+		uarts.forEach(name -> {
+			boolean isAvailable = telemetryConnections.stream().noneMatch(con -> con != parent && con.name.is(name));
+			list.add(new Device(name, isAvailable, () -> new ConnectionTelemetryUART(name)));
 		});
-		list.add(new Device("TCP", true, () -> new ConnectionTelemetryTCP()));
-		list.add(new Device("UDP", true, () -> new ConnectionTelemetryUDP()));
-		boolean isDemoAvailable = telemetryConnections.stream().noneMatch(con -> con != parent && con.name.get().equals("Demo Mode"));
-		list.add(new Device("Demo Mode", isDemoAvailable, isDemoAvailable ? () -> new ConnectionTelemetryDemo() :
-		                                                                    () -> null));
-		boolean isStressAvailable = telemetryConnections.stream().noneMatch(con -> con != parent && con.name.get().equals("Stress Test Mode"));
-		list.add(new Device("Stress Test Mode", isStressAvailable, isStressAvailable ? () -> new ConnectionTelemetryStressTest() :
-		                                                                               () -> null));
-		// don't support webcams on AArch64 Linux (Pi4, etc.) because the webcam library crashes
-		if(!(System.getProperty("os.name").toLowerCase().equals("linux") && System.getProperty("os.arch").toLowerCase().equals("aarch64"))) {
-			ConnectionCamera.getNames().forEach(name -> {
-				boolean isAvailable = cameraConnections.stream().noneMatch(con -> con != parent && con.name.get().equals(name));
-				list.add(new Device(name, isAvailable, isAvailable ? () -> new ConnectionCamera(name) :
-				                                                     () -> null));
-			});
-			list.add(new Device(ConnectionCamera.mjpegOverHttp, true, () -> new ConnectionCamera(ConnectionCamera.mjpegOverHttp)));
-		}
+		boolean isDemoAvailable   = telemetryConnections.stream().noneMatch(con -> con != parent && con.name.is("Demo Mode"));
+		boolean isStressAvailable = telemetryConnections.stream().noneMatch(con -> con != parent && con.name.is("Stress Test Mode"));
+		list.add(new Device("TCP",              true,              () -> new ConnectionTelemetryTCP()));
+		list.add(new Device("UDP",              true,              () -> new ConnectionTelemetryUDP()));
+		list.add(new Device("Demo Mode",        isDemoAvailable,   () -> new ConnectionTelemetryDemo()));
+		list.add(new Device("Stress Test Mode", isStressAvailable, () -> new ConnectionTelemetryStressTest()));
+		cameras.forEach(name -> {
+			boolean isAvailable = cameraConnections.stream().noneMatch(con -> con != parent && con.name.is(name));
+			list.add(new Device(name, isAvailable, () -> new ConnectionCamera(name)));
+		});
+		list.add(new Device(ConnectionCamera.mjpegOverHttp, true, () -> new ConnectionCamera(ConnectionCamera.mjpegOverHttp)));
 		return list.stream();
 		
 	}
@@ -82,7 +159,7 @@ public class ConnectionsController {
 		// because the CommunicationView constructor will still be in progress at that time!
 		if(CommunicationView.instance != null)
 			CommunicationView.instance.redraw(); // redraw bottom panel so it shows the connection widgets
-		SettingsView.instance.redraw();      // redraw the left panel so it shows the TX GUI if appropriate
+		SettingsView.instance.redraw();          // redraw the left panel so it shows the TX GUI if appropriate
 		
 	}
 	
@@ -91,10 +168,8 @@ public class ConnectionsController {
 		oldConnection.dispose();
 		
 		allConnections.remove(oldConnection);
-		if(oldConnection instanceof ConnectionTelemetry oldConn)
-			telemetryConnections.remove(oldConn);
-		else if(oldConnection instanceof ConnectionCamera oldConn)
-			cameraConnections.remove(oldConn);
+		telemetryConnections.remove(oldConnection);
+		cameraConnections.remove(oldConnection);
 		
 		CommunicationView.instance.redraw(); // redraw bottom panel so it doesn't show the old connection's widgets
 		SettingsView.instance.redraw();      // redraw the left panel so it doesn't show the old connection's TX GUI
@@ -128,7 +203,7 @@ public class ConnectionsController {
 	
 	public static void removeAllConnections() {
 		
-		allConnections.stream().toList().forEach(ConnectionsController::removeConnection); // toList() to prevent a ConcurrentModificationException
+		allConnections.stream().toList().forEach(Connections::removeConnection); // toList() to prevent a ConcurrentModificationException
 		
 	}
 	
@@ -146,21 +221,11 @@ public class ConnectionsController {
 		
 	}
 	
-	public static class SampleDetails {
-		public ConnectionTelemetry connection;
-		public int sampleNumber;
-		public long timestamp;
-		public SampleDetails(ConnectionTelemetry connection, int sampleNumber, long timestamp) {
-			this.connection = connection;
-			this.sampleNumber = sampleNumber;
-			this.timestamp = timestamp;
-		}
-	}
+	public record SampleDetails(ConnectionTelemetry connection, int sampleNumber, long timestamp) {}
 	
 	public static SampleDetails getClosestSampleDetailsFor(long timestamp) {
 		
 		long smallestError = Long.MAX_VALUE;
-		
 		ConnectionTelemetry closestConnection = null;
 		int closestSampleNumber = 0;
 		long closestTimestamp = 0;
@@ -178,6 +243,7 @@ public class ConnectionsController {
 			long error = Long.min(Math.abs(beforeError), Math.abs(afterError));
 			
 			if(error < smallestError) {
+				smallestError = error;
 				closestConnection = connection;
 				closestSampleNumber = beforeError < afterError ? closestSampleNumberBefore : closestSampleNumberAfter;
 				closestTimestamp = connection.getTimestamp(closestSampleNumber);
@@ -192,17 +258,9 @@ public class ConnectionsController {
 	/**
 	 * @return    True if telemetry can be received.
 	 */
-	public static boolean telemetryPossible() {
+	public static boolean exist() {
 		
-		for(ConnectionTelemetry connection : telemetryConnections)
-			if(connection.isConnected() && connection.isFieldsDefined())
-				return true;
-		
-		for(ConnectionCamera connection : cameraConnections)
-			if(connection.isConnected())
-				return true;
-		
-		return false;
+		return allConnections.stream().filter(connection -> connection.isConnected()).count() > 0;
 		
 	}
 	
@@ -237,41 +295,6 @@ public class ConnectionsController {
 		
 	}
 	
-	public static WidgetCombobox<String> getNamesCombobox(Connection connection) {
-		
-		return new WidgetCombobox<String>(null, getDevicesStream(connection).map(Device::name).toList(), null)
-		           .setExportLabel("type")
-		           .onChange((newName, oldName) -> {
-		               // ignore this event if the connection is still be constructed
-		               if(connection.name == null || connection.name.get() == null)
-		                   return true;
-		               
-		               // accept and ignore if no change
-		               if(newName.equals(oldName) || oldName == null)
-		                   return true;
-		               
-		               // reject change if the device is not available
-		               Device dev = getDevicesStream(connection).filter(device -> device.name.equals(newName) && device.isAvailable)
-		                                                        .findFirst().orElse(null);
-		               if(dev == null)
-		                   return false;
-		               
-		               if(oldName.startsWith("UART") && newName.startsWith("UART")) {
-		                   SwingUtilities.invokeLater(() -> SettingsView.instance.redraw()); // so the TX GUI shows the new port name, invokeLater so the name change goes into effect first!
-		                   return true; // no need to replace this connection, just changing the port number
-		               }
-		               
-		               if(oldName.startsWith("Cam") && newName.startsWith("Cam")) {
-		            	   SwingUtilities.invokeLater(() -> CommunicationView.instance.redraw()); // so the widgets get redrawn when switching between local and MJPEG-over-HTTP modes!
-		                   return true; // no need to replace this connection, just changing the settings
-		               }
-		               
-		               replaceConnection(connection, dev.connection.get());
-		               return true;
-		           });
-		
-	}
-	
 	/**
 	 * Imports a settings file, log files, and/or camera files.
 	 * The user will be notified if there is a problem with any of the files.
@@ -281,7 +304,7 @@ public class ConnectionsController {
 	public static void importFiles(List<String> filepaths) {
 		
 		if(importing || exporting) {
-			NotificationsController.showFailureForMilliseconds("Unable to import more files while importing or exporting is in progress.", 5000, true);
+			Notifications.showFailureForMilliseconds("Unable to import more files while importing or exporting is in progress.", 5000, true);
 			return;
 		}
 		
@@ -294,18 +317,18 @@ public class ConnectionsController {
 		                                                           !path.endsWith(".mkv")).count();
 		
 		if(invalidFileCount > 0) {
-			NotificationsController.showFailureForMilliseconds("Unsupported file type. Only files exported from TelemetryViewer can be imported:\nSettings files (.txt)\nCSV files (.csv)\nCamera files (.mkv)", 5000, true);
+			Notifications.showFailureForMilliseconds("Unsupported file type. Only files exported from TelemetryViewer can be imported:\nSettings files (.txt)\nCSV files (.csv)\nCamera files (.mkv)", 5000, true);
 			return;
 		}
 		if(settingsFileCount > 1) {
-			NotificationsController.showFailureForMilliseconds("Only one settings file can be opened at a time.", 5000, true);
+			Notifications.showFailureForMilliseconds("Only one settings file can be opened at a time.", 5000, true);
 			return;
 		}
 		
 		// if not importing a settings file, disconnect and remove existing samples/frames
 		if(settingsFileCount == 0) {
 			for(Connection connection : allConnections) {
-				connection.disconnect(null);
+				connection.disconnect(null, true);
 				connection.removeAllData();
 			}
 		}
@@ -366,14 +389,14 @@ public class ConnectionsController {
 				imports.put(connection, filepaths.get(0));
 			}
 			
-			ChartsController.createAndAddChart("Camera").setPosition(0, 0, 5, 4);
-			ChartsController.createAndAddChart("Timeline").setPosition(0, 5, 5, 5);
+			Charts.Type.CAMERA.createAt(0, 0, 5, 4);
+			Charts.Type.TIMELINE.createAt(0, 5, 5, 5);
 		}
 		
 		if(csvFileCount + mkvFileCount != imports.size()) {
 			if(settingsFileCount == 1)
-				allConnections.forEach(connection -> connection.disconnect(null));
-			NotificationsController.showFailureForMilliseconds("Data file does not correspond with an existing connection.", 5000, true);
+				allConnections.forEach(connection -> connection.disconnect(null, true));
+			Notifications.showFailureForMilliseconds("Data file does not correspond with an existing connection.", 5000, true);
 			return;
 		}
 		
@@ -389,7 +412,7 @@ public class ConnectionsController {
 				if(filepath.endsWith(".csv") || filepath.endsWith(".mkv"))
 					try { totalByteCount += Files.size(Paths.get(filepath)); } catch(Exception e) { }
 			
-			AtomicLong completedByteCount = NotificationsController.showProgressBar("Importing...", totalByteCount);
+			AtomicLong completedByteCount = Notifications.showProgressBar("Importing...", totalByteCount);
 		
 			// import the CSV / MKV files
 			long firstTimestamp = imports.entrySet().stream()
@@ -397,11 +420,12 @@ public class ConnectionsController {
 			                                        .min().orElse(Long.MAX_VALUE);
 			long now = System.currentTimeMillis();
 			if(firstTimestamp != Long.MAX_VALUE)
-				imports.entrySet().forEach(entry -> entry.getKey().importDataFile(entry.getValue(), firstTimestamp, now, completedByteCount));
+				imports.entrySet().forEach(entry -> entry.getKey().connectToFile(entry.getValue(), firstTimestamp, now, completedByteCount));
 			
 			// when importing an MKV file by itself, "finish" importing it, then rewind, then play (so the timeline shows the entire amount of time)
 			if(moviePlayerMode) {
 				finishImporting();
+				while(!telemetryExists()); // wait until at least the first frame is imported
 				OpenGLChartsView.instance.setPaused(firstTimestamp, null, 0);
 				OpenGLChartsView.instance.setPlayForwards();
 			}
@@ -452,7 +476,7 @@ public class ConnectionsController {
 				totalSampleCount += connection.getSampleCount();
 			for(ConnectionCamera camera : camerasToExport)
 				totalSampleCount += camera.getFileSize(); // not equivalent to a sampleCount, but hopefully good enough
-			AtomicLong completedSampleCount = NotificationsController.showProgressBar("Exporting...", totalSampleCount);
+			AtomicLong completedSampleCount = Notifications.showProgressBar("Exporting...", totalSampleCount);
 			
 			if(exportSettingsFile) {
 				exportSettingsFile(filepath + ".txt");
@@ -486,15 +510,15 @@ public class ConnectionsController {
 	
 	static void finishImporting() {
 		
-		ConnectionsController.realtimeImporting = false; // now importing ASAP
+		Connections.realtimeImporting = false; // now importing ASAP
 		CommunicationView.instance.redraw();
 		
 	}
 	
 	static void cancelImporting() {
 		
-		allConnections.forEach(connection -> connection.disconnect(null));
-		NotificationsController.printDebugMessage("Importing... Canceled");
+		allConnections.forEach(connection -> connection.disconnect(null, true));
+		Notifications.printInfo("Importing... Canceled");
 		CommunicationView.instance.redraw();
 		
 	}
@@ -505,7 +529,7 @@ public class ConnectionsController {
 	static void cancelExporting() {
 		
 		if(exportThread != null && exportThread.isAlive()) {
-			NotificationsController.printDebugMessage("Exporting... Canceled");
+			Notifications.printInfo("Exporting... Canceled");
 			exportThread.interrupt();
 			while(exportThread.isAlive()); // wait
 			
@@ -532,16 +556,16 @@ public class ConnectionsController {
 			
 			file.println(allConnections.size() + " Connections:");
 			file.println("");
-			allConnections.forEach(connection -> connection.exportSettings(file));
+			allConnections.forEach(connection -> connection.exportTo(file));
 			
-			file.println(ChartsController.getCharts().size() + " Charts:");
-			ChartsController.getCharts().forEach(chart -> chart.exportTo(file));
+			file.println(Charts.count() + " Charts:");
+			Charts.forEach(chart -> chart.exportTo(file));
 			
 			file.close();
 			
 		} catch (IOException e) {
 			
-			NotificationsController.showFailureForMilliseconds("Unable to save the settings file.", 5000, false);
+			Notifications.showFailureForMilliseconds("Unable to save the settings file.", 5000, false);
 			
 		}
 		
@@ -558,7 +582,7 @@ public class ConnectionsController {
 	private static boolean importSettingsFile(String path, boolean connect) {
 		
 		QueueOfLines lines = null;
-		NotificationsController.removeIfConnectionRelated();
+		Notifications.removeIfConnectionRelated();
 		
 		try {
 
@@ -581,7 +605,7 @@ public class ConnectionsController {
 				                           type.equals("Stress Test Mode") ? new ConnectionTelemetryStressTest() :
 				                                                             new ConnectionTelemetryUART(type);
 				addConnection(newConnection);
-				newConnection.importSettings(lines);
+				newConnection.importFrom(lines);
 				lines.parseExact("");
 				if(connect)
 					newConnection.connect(false);
@@ -591,38 +615,27 @@ public class ConnectionsController {
 
 			int chartsCount = lines.parseInteger("%d Charts:");
 			if(chartsCount == 0) {
-				NotificationsController.showHintUntil("Add a chart by clicking on a tile, or click-and-dragging across multiple tiles.", () -> !ChartsController.getCharts().isEmpty(), true);
+				Notifications.showHintUntil("Add a chart by clicking on a tile, or click-and-dragging across multiple tiles.", () -> Charts.exist(), true);
 				return true;
 			}
 
-			for(int i = 0; i < chartsCount; i++) {
-				
-				lines.parseExact("");
-				String chartType = lines.parseString("chart type = %s");
-				
-				PositionedChart chart = ChartsController.createAndAddChart(chartType);
-				if(chart == null) {
-					lines.lineNumber--;
-					throw new AssertionError("Invalid chart type.");
-				}
-				chart.importFrom(lines);
-				
-			}
+			for(int i = 0; i < chartsCount; i++)
+				Chart.importFrom(lines);
 			
 			return true;
 			
 		} catch (IOException ioe) {
 			
-			NotificationsController.showFailureUntil("Unable to open the settings file.", () -> false, true);
+			Notifications.showFailureUntil("Unable to open the settings file.", () -> false, true);
 			return false;
 			
 		} catch(AssertionError ae) {
 		
-			ChartsController.removeAllCharts();
+			Charts.removeAll();
 			for(Connection connection : allConnections)
-				connection.disconnect(null);
+				connection.disconnect(null, true);
 			
-			NotificationsController.showFailureUntil("Error while parsing the settings file:\nLine " + lines.lineNumber + ": " + ae.getMessage(), () -> false, true);
+			Notifications.showFailureUntil("Error while parsing the settings file:\nLine " + lines.lineNumber + ": " + ae.getMessage(), () -> false, true);
 			return false;
 		
 		}

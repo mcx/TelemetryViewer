@@ -4,7 +4,7 @@ import javax.swing.JPanel;
 import com.jogamp.opengl.GL2ES3;
 import com.jogamp.opengl.GL3;
 
-public class OpenGLDialChart extends PositionedChart {
+public class OpenGLDialChart extends Chart {
 	
 	final int   dialResolution = 400; // how many quads to draw
 	final float dialThickness = 0.4f; // percentage of the radius
@@ -16,13 +16,9 @@ public class OpenGLDialChart extends PositionedChart {
 	private WidgetCheckbox readingLabelVisibility;
 	private WidgetCheckbox minMaxLabelsVisibility;
 	
-	@Override public String toString() {
+	protected OpenGLDialChart(String name, int x1, int y1, int x2, int y2) {
 		
-		return "Dial";
-		
-	}
-	
-	public OpenGLDialChart() {
+		super(name, x1, y1, x2, y2);
 		
 		datasetLabelVisibility = new WidgetCheckbox("Show Dataset Label", true);
 		
@@ -65,7 +61,7 @@ public class OpenGLDialChart extends PositionedChart {
 		
 	}
 	
-	@Override public void getConfigurationGui(JPanel gui) {
+	@Override public void appendConfigurationWidgets(JPanel gui) {
 		
 		gui.add(Theme.newWidgetsPanel("Data")
 		             .with(datasetWidget)

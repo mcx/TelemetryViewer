@@ -1,11 +1,8 @@
 import java.awt.Desktop;
-import java.awt.Dimension;
 import java.net.URI;
-import java.util.AbstractMap;
-import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
 import java.util.stream.Stream;
 
 import javax.swing.BoxLayout;
@@ -33,6 +30,7 @@ public class CommunicationView extends JPanel {
 	private JButton exportButton;
 	private JButton helpButton;
 	private JButton connectionButton;
+	private List<Connection> previousConnections;
 
 	/**
 	 * Private constructor to enforce singleton usage.
@@ -57,7 +55,7 @@ public class CommunicationView extends JPanel {
 			JFrame parentWindow = (JFrame) SwingUtilities.windowForComponent(this);
 			if(inputFiles.showOpenDialog(parentWindow) == JFileChooser.APPROVE_OPTION) {
 				List<String> filepaths = Stream.of(inputFiles.getSelectedFiles()).map(file -> file.getAbsolutePath()).toList();
-				ConnectionsController.importFiles(filepaths);
+				Connections.importFiles(filepaths);
 			}
 			
 		});
@@ -70,17 +68,15 @@ public class CommunicationView extends JPanel {
 			JDialog exportWindow = new JDialog(Main.window, "Select Files to Export");
 			exportWindow.setLayout(new MigLayout("wrap 1, insets " + Theme.padding));
 			
-			JCheckBox settingsFileCheckbox = new JCheckBox("Settings file (the data structures, chart settings, and GUI settings)", true);
-			List<Map.Entry<JCheckBox, ConnectionTelemetry>> csvFileCheckboxes = new ArrayList<Map.Entry<JCheckBox, ConnectionTelemetry>>();
-			List<Map.Entry<JCheckBox, ConnectionCamera>> cameraFileCheckboxes = new ArrayList<Map.Entry<JCheckBox, ConnectionCamera>>();
+			JCheckBox settingsFileCheckbox = new JCheckBox("Settings file (the connection settings, chart settings, and GUI settings)", true);
+			Map<JCheckBox, ConnectionTelemetry> csvOptions = new LinkedHashMap<JCheckBox, ConnectionTelemetry>();
+			Map<JCheckBox, ConnectionCamera>    mkvOptions = new LinkedHashMap<JCheckBox, ConnectionCamera>();
 			
-			for(ConnectionTelemetry connection : ConnectionsController.telemetryConnections)
-				if(connection.getSampleCount() > 0)
-					csvFileCheckboxes.add(new AbstractMap.SimpleEntry<JCheckBox, ConnectionTelemetry>(new JCheckBox("CSV file for \"" + connection.name.get() + "\" (the acquired samples and corresponding timestamps)", true), connection));
-			for(ConnectionCamera camera : ConnectionsController.cameraConnections)
-				if(camera.getSampleCount() > 0)
-					cameraFileCheckboxes.add(new AbstractMap.SimpleEntry<JCheckBox, ConnectionCamera>(new JCheckBox("MKV file for \"" + camera.name.get() + "\" (the acquired images and corresponding timestamps)", true), camera));
-			
+			Connections.telemetryConnections.stream().filter(connection -> connection.getSampleCount() > 0)
+			                                         .forEach(connection -> csvOptions.put(new JCheckBox("CSV file for \"" + connection.getName() + "\" (the acquired samples and corresponding timestamps)", true), connection));
+			Connections.cameraConnections.stream().filter(connection -> connection.getSampleCount() > 0)
+			                                      .forEach(connection -> mkvOptions.put(new JCheckBox("MKV file for \"" + connection.getName() + "\" (the acquired images and corresponding timestamps)", true), connection));
+
 			JButton cancelButton = new JButton("Cancel");
 			cancelButton.addActionListener(event2 -> exportWindow.dispose());
 			
@@ -88,15 +84,9 @@ public class CommunicationView extends JPanel {
 			confirmButton.addActionListener(event2 -> {
 				
 				// cancel if every checkbox is unchecked
-				boolean nothingSelected = true;
-				if(settingsFileCheckbox.isSelected())
-					nothingSelected = false;
-				for(Entry<JCheckBox, ConnectionTelemetry> entry : csvFileCheckboxes)
-					if(entry.getKey().isSelected())
-						nothingSelected = false;
-				for(Entry<JCheckBox, ConnectionCamera> entry : cameraFileCheckboxes)
-					if(entry.getKey().isSelected())
-						nothingSelected = false;
+				boolean nothingSelected = !settingsFileCheckbox.isSelected() &&
+				                          csvOptions.keySet().stream().noneMatch(checkbox -> checkbox.isSelected()) &&
+				                          mkvOptions.keySet().stream().noneMatch(checkbox -> checkbox.isSelected());
 				if(nothingSelected) {
 					exportWindow.dispose();
 					return;
@@ -111,15 +101,9 @@ public class CommunicationView extends JPanel {
 					if(saveFile.getSelectedFile().getName().indexOf(".") != -1)
 						absolutePath = absolutePath.substring(0, absolutePath.lastIndexOf("."));
 					boolean exportSettingsFile = settingsFileCheckbox.isSelected();
-					List<ConnectionTelemetry> connectionsList = new ArrayList<ConnectionTelemetry>();
-					List<ConnectionCamera>    camerasList     = new ArrayList<ConnectionCamera>();
-					for(Entry<JCheckBox, ConnectionTelemetry> entry : csvFileCheckboxes)
-						if(entry.getKey().isSelected())
-							connectionsList.add(entry.getValue());
-					for(Entry<JCheckBox, ConnectionCamera> entry : cameraFileCheckboxes)
-						if(entry.getKey().isSelected())
-							camerasList.add(entry.getValue());
-					ConnectionsController.exportFiles(absolutePath, exportSettingsFile, connectionsList, camerasList);
+					List<ConnectionTelemetry> csvFiles = csvOptions.entrySet().stream().filter(entry -> entry.getKey().isSelected()).map(entry -> entry.getValue()).toList();
+					List<ConnectionCamera>    mkvFiles = mkvOptions.entrySet().stream().filter(entry -> entry.getKey().isSelected()).map(entry -> entry.getValue()).toList();
+					Connections.exportFiles(absolutePath, exportSettingsFile, csvFiles, mkvFiles);
 					exportWindow.dispose();
 				}
 				
@@ -131,10 +115,8 @@ public class CommunicationView extends JPanel {
 			buttonsPanel.add(confirmButton, "growx, cell 2 0");
 			
 			exportWindow.add(settingsFileCheckbox);
-			for(Entry<JCheckBox, ConnectionTelemetry> entry : csvFileCheckboxes)
-				exportWindow.add(entry.getKey());
-			for(Entry<JCheckBox, ConnectionCamera> entry : cameraFileCheckboxes)
-				exportWindow.add(entry.getKey());
+			csvOptions.keySet().forEach(checkbox -> exportWindow.add(checkbox));
+			mkvOptions.keySet().forEach(checkbox -> exportWindow.add(checkbox));
 			exportWindow.add(buttonsPanel, "grow x");
 			exportWindow.pack();
 			exportWindow.setModal(true);
@@ -185,10 +167,15 @@ public class CommunicationView extends JPanel {
 
 		});
 		
-		connectionButton = new JButton("New Connection");
-		connectionButton.addActionListener(event -> ConnectionsController.addConnection(null));
+		connectionButton = new JButton();
+		connectionButton.addActionListener(event -> {
+			     if(Connections.importing &&  Connections.realtimeImporting) Connections.finishImporting();
+			else if(Connections.importing && !Connections.realtimeImporting) Connections.cancelImporting();
+			else if(Connections.exporting)                                   Connections.cancelExporting();
+			else                                                             Connections.addConnection(null);
+		});
 		
-		// show the components
+		// update and show the components
 		redraw();
 		
 	}
@@ -221,87 +208,41 @@ public class CommunicationView extends JPanel {
 	 *     When zero samples/frames exist:
 	 *         export button is disabled
 	 *         
-	 *     When the packet type is changed:
-	 *         sampleRate disabled if using TC66 mode
-	 *         
 	 *     When a connection is created or removed
 	 *         the connection widgets will be shown or not
-	 *         
-	 *     Note regarding demo mode and stress test mode:
-	 *         sampleRate and protocol are always disabled
 	 */
 	public void redraw() {
 		
 		Runnable task = () -> {
 			
-			// repopulate
-			removeAll();
-			add(settingsButton);
-			add(importButton);
-			add(exportButton);
-			add(helpButton);
-			add(connectionButton);
-			for(int i = 0; i < ConnectionsController.allConnections.size(); i++) {
-				Connection connection = ConnectionsController.allConnections.get(i);
-				JPanel panel = new JPanel(new MigLayout("hidemode 3, gap " + Theme.padding  + ", insets 0 " + Theme.padding + " 0 0"));
+			boolean connectionsChanged = !Connections.allConnections.equals(previousConnections);
+			
+			if(connectionsChanged) {
 				
-				if(ConnectionsController.importing)
-					connection.name.disableWithMessage("Importing [" + connection.name.get() + "]");
-				else
-					connection.name.setEnabled(!connection.isConnected() && !ConnectionsController.exporting);
+				// only repopulate if the connections have changed
+				// this allows the user to keep interacting with a widget while a connection automatically reconnects
+				// if we always repopulate, a widget could lose focus while the user is interacting with it
+				removeAll();
+				add(settingsButton);
+				add(importButton);
+				add(exportButton);
+				add(helpButton);
+				add(connectionButton);
+				for(int i = 0; i < Connections.allConnections.size(); i++)
+					add(Connections.allConnections.get(i).getConfigGUI(), "align right, cell 5 " + i);
 				
-				// connect/disconnect button
-				JButton connectButton = new JButton(connection.isConnected() ? "Disconnect" : "Connect") {
-					@Override public Dimension getPreferredSize() { // giving this button a fixed size so the GUI lines up nicely
-						return new JButton("Disconnect").getPreferredSize();
-					}
-				};
-				connectButton.addActionListener(event -> {
-					if(connectButton.getText().equals("Connect"))
-						connection.connect(true);
-					else if(connectButton.getText().equals("Disconnect"))
-						connection.disconnect(null);
-				});
-				connectButton.setEnabled(!ConnectionsController.importing && !ConnectionsController.exporting);
+				previousConnections = List.copyOf(Connections.allConnections);
 				
-				// remove connection button
-				JButton removeButton = new JButton(Theme.removeSymbol);
-				removeButton.setBorder(Theme.narrowButtonBorder);
-				removeButton.addActionListener(event -> ConnectionsController.removeConnection(connection));
-				if(ConnectionsController.allConnections.size() < 2 || ConnectionsController.importing)
-					removeButton.setVisible(false);
-				
-				// populate
-				connection.getConfigurationWidgets().forEach(widget -> widget.appendTo(panel, ""));
-				connection.name.appendTo(panel, "");
-				panel.add(connectButton);
-				panel.add(removeButton);
-				add(panel, "align right, cell 5 " + i);
 			}
 			
-			// reconfigure
-			List.of(connectionButton.getActionListeners()).forEach(listener -> connectionButton.removeActionListener(listener));
-			if(!ConnectionsController.importing && !ConnectionsController.exporting) {
-				importButton.setEnabled(true);
-				exportButton.setEnabled(ConnectionsController.telemetryExists());
-				connectionButton.setText("New Connection");
-				connectionButton.addActionListener(event -> ConnectionsController.addConnection(null));
-			} else if(ConnectionsController.importing && ConnectionsController.realtimeImporting) {
-				importButton.setEnabled(false);
-				exportButton.setEnabled(false);
-				connectionButton.setText("Finish Importing");
-				connectionButton.addActionListener(event -> ConnectionsController.finishImporting());
-			} else if(ConnectionsController.importing && !ConnectionsController.realtimeImporting) {
-				importButton.setEnabled(false);
-				exportButton.setEnabled(false);
-				connectionButton.setText("Cancel Importing");
-				connectionButton.addActionListener(event -> ConnectionsController.cancelImporting());
-			} else if(ConnectionsController.exporting) {
-				importButton.setEnabled(false);
-				exportButton.setEnabled(false);
-				connectionButton.setText("Cancel Exporting");
-				connectionButton.addActionListener(event -> ConnectionsController.cancelExporting());
-			}
+			// update all widgets
+			Connections.allConnections.forEach(connection -> connection.updateConfigGUI());
+			importButton.setEnabled(!Connections.importing && !Connections.exporting);
+			exportButton.setEnabled(!Connections.importing && !Connections.exporting && Connections.telemetryExists());
+			connectionButton.setText(Connections.importing &&  Connections.realtimeImporting ? "Finish Importing" :
+			                         Connections.importing && !Connections.realtimeImporting ? "Cancel Importing" :
+			                         Connections.exporting                                   ? "Cancel Exporting" :
+			                                                                                   "New Connection");
 			
 			// redraw
 			revalidate();
