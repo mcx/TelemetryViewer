@@ -115,7 +115,7 @@ public class OpenGLStatisticsChart extends Chart {
 		int sampleCount = lastSampleNumber - firstSampleNumber + 1;
 
 		String durationLabel = sampleCountMode             ? "(" + sampleCount + " Samples)" :
-		                       showAs.equals("Timestamps") ? "(" + SettingsView.formatTimestampToMilliseconds(datasets.getTimestamp(firstSampleNumber)).replace('\n', ' ') + " to " + SettingsView.formatTimestampToMilliseconds(datasets.getTimestamp(lastSampleNumber)).replace('\n', ' ') + ")" :
+		                       showAs.equals("Timestamps") ? "(" + Settings.formatTimestampToMilliseconds(datasets.getTimestamp(firstSampleNumber)).replace('\n', ' ') + " to " + Settings.formatTimestampToMilliseconds(datasets.getTimestamp(lastSampleNumber)).replace('\n', ' ') + ")" :
 		                                                     "(" + (datasets.getTimestamp(lastSampleNumber) - datasets.getTimestamp(firstSampleNumber)) + " ms)";
 		
 		// determine the text to display

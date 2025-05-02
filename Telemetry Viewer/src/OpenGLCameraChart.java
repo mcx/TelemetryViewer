@@ -13,7 +13,7 @@ public class OpenGLCameraChart extends Chart {
 	WidgetCheckbox mirrorX;
 	WidgetCheckbox mirrorY;
 	WidgetCheckbox rotateClockwise;
-	WidgetCheckbox label;
+	WidgetCheckbox labelEnabled;
 	
 	public ConnectionCamera connection = null;
 	
@@ -37,13 +37,13 @@ public class OpenGLCameraChart extends Chart {
 		mirrorX = new WidgetCheckbox("Mirror X-Axis \u2194", false);
 		mirrorY = new WidgetCheckbox("Mirror Y-Axis \u2195", false);
 		rotateClockwise = new WidgetCheckbox("Rotate Clockwise \u21B7", false);
-		label = new WidgetCheckbox("Show Label", true);
+		labelEnabled = new WidgetCheckbox("Show Label", true);
 		
 		widgets.add(cameraName);
 		widgets.add(mirrorX);
 		widgets.add(mirrorY);
 		widgets.add(rotateClockwise);
-		widgets.add(label);
+		widgets.add(labelEnabled);
 		
 	}
 	
@@ -75,7 +75,7 @@ public class OpenGLCameraChart extends Chart {
 		             .with(mirrorX)
 		             .with(mirrorY)
 		             .with(rotateClockwise)
-		             .with(label)
+		             .with(labelEnabled)
 		             .getPanel());
 		
 	}
@@ -83,8 +83,8 @@ public class OpenGLCameraChart extends Chart {
 	@Override public EventHandler drawChart(GL2ES3 gl, float[] chartMatrix, int width, int height, long endTimestamp, int endSampleNumber, double zoomLevel, int mouseX, int mouseY) {
 
 		// if there's a global trigger, use the timestamp of the trigger point instead of the endTimestamp
-		if(OpenGLChartsView.instance.triggerDetails.isTriggered())
-			endTimestamp = OpenGLChartsView.instance.triggerDetails.triggeredTimestamp();
+		if(OpenGLCharts.GUI.triggerDetails.isTriggered())
+			endTimestamp = OpenGLCharts.GUI.triggerDetails.triggeredTimestamp();
 		
 		// get the image
 		ConnectionCamera.Frame f = (connection == null) ? new ConnectionCamera.Frame(null, true, 1, 1, "[select a camera]", 0) :
@@ -103,10 +103,14 @@ public class OpenGLCameraChart extends Chart {
 		float yLabelTop = yLabelBaseline + OpenGL.largeTextHeight;
 		float xLabelLeft = (width / 2f) - (labelWidth / 2f);
 		float xLabelRight = xLabelLeft + labelWidth;
-		if(label.get()) {
+		if(labelEnabled.isTrue()) {
 			yDisplayBottom = yLabelTop + Theme.tickTextPadding + Theme.tilePadding;
 			displayHeight = yDisplayTop - yDisplayBottom;
 		}
+		
+		// stop if there's not enough space
+		if(displayWidth < 2 || displayHeight < 2)
+			return null;
 		
 		// maintain the image aspect ratio, so it doesn't stretch
 		float desiredAspectRatio = rotateClockwise.get() ? (float) f.height / (float) f.width : (float) f.width / (float) f.height;
@@ -147,7 +151,7 @@ public class OpenGLCameraChart extends Chart {
 		else if( mirrorX.get() &&  mirrorY.get()) OpenGL.drawTexturedBox(gl, texHandle, false, xDisplayRight, yDisplayBottom, -displayWidth,  displayHeight, 0, rotateClockwise.get());
 		
 		// draw the label, on top of a background quad, if there is room
-		if(label.get() && labelWidth < width - Theme.tilePadding * 2) {
+		if(labelEnabled.isTrue() && labelWidth < width - Theme.tilePadding * 2) {
 			OpenGL.drawQuad2D(gl, Theme.tileShadowColor, xLabelLeft - Theme.tickTextPadding, yLabelBaseline - Theme.tickTextPadding, xLabelRight + Theme.tickTextPadding, yLabelTop + Theme.tickTextPadding);
 			OpenGL.drawLargeText(gl, f.label, (int) xLabelLeft, (int) yLabelBaseline, 0);
 		}

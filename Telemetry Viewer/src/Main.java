@@ -35,12 +35,12 @@ public class Main {
 				                         + new JScrollBar().getPreferredSize().width
 				                         + Theme.padding;
 			
-			int communicationViewWidth  = CommunicationView.instance.getPreferredSize().width;
-			int communicationViewHeight = CommunicationView.instance.getPreferredSize().height;
-			int settingsViewHeight      = SettingsView.instance.getPreferredSize().height;
+			int connectionsGuiWidth  = Connections.GUI.getPreferredSize().width;
+			int connectionsGuiHeight = Connections.GUI.getPreferredSize().height;
+			int settingsGuiHeight    =    Settings.GUI.getPreferredSize().height;
 			
-			int width = Integer.max(dataStructureViewWidth, communicationViewWidth + 8*Theme.padding);
-			int height = settingsViewHeight + communicationViewHeight + (8 * Theme.padding);
+			int width = Integer.max(dataStructureViewWidth, connectionsGuiWidth + 8*Theme.padding);
+			int height = settingsGuiHeight + connectionsGuiHeight + (8 * Theme.padding);
 			return new Dimension(width, height);
 		}
 		
@@ -77,10 +77,10 @@ public class Main {
 			
 			// populate the window
 			window.setLayout(new BorderLayout());
-			window.add(OpenGLChartsView.instance,  BorderLayout.CENTER);
-			window.add(SettingsView.instance,      BorderLayout.WEST);
-			window.add(CommunicationView.instance, BorderLayout.SOUTH);
-			window.add(ConfigureView.instance,     BorderLayout.EAST);
+			window.add(OpenGLCharts.GUI, BorderLayout.CENTER);
+			window.add(Settings.GUI,     BorderLayout.WEST);
+			window.add(Connections.GUI,  BorderLayout.SOUTH);
+			window.add(Configure.GUI,    BorderLayout.EAST);
 			
 			window.setSize(window.getPreferredSize());
 			window.setMinimumSize(window.getMinimumSize());
@@ -155,10 +155,10 @@ public class Main {
 	public static void showDataStructureGui(ConnectionTelemetry connection) {
 		
 		SwingUtilities.invokeLater(() -> {
-			OpenGLChartsView.instance.animator.pause();
-			CommunicationView.instance.showSettings(false);
-			ConfigureView.instance.close();
-			window.remove(OpenGLChartsView.instance);
+			OpenGLCharts.GUI.animator.pause();
+			Connections.GUI.showSettings(false);
+			Configure.GUI.close();
+			window.remove(OpenGLCharts.GUI);
 			window.add(connection.getDataStructureGui(), BorderLayout.CENTER);
 			window.revalidate();
 			window.repaint();
@@ -177,10 +177,10 @@ public class Main {
 			boolean configGuiVisible = dsGui.getParent() != null;
 			if(configGuiVisible) {
 				window.remove(dsGui);
-				window.add(OpenGLChartsView.instance, BorderLayout.CENTER);
+				window.add(OpenGLCharts.GUI, BorderLayout.CENTER);
 				window.revalidate();
 				window.repaint();
-				OpenGLChartsView.instance.animator.resume();
+				OpenGLCharts.GUI.animator.resume();
 			}
 		});
 		

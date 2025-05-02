@@ -51,14 +51,14 @@ public class ConnectionCamera extends Connection {
 	
 	// camera configuration, if network camera
 	public final boolean isMjpeg;
-	public WidgetTextfield<String> url;
-	private WidgetSlider qualitySlider;
+	public WidgetTextfield<String>     url;
+	private WidgetSlider<Integer>      qualitySlider;
 	private WidgetToggleButton<String> cameraButtons;
 	private WidgetToggleButton<String> resolutionButtons;
 	private WidgetToggleButton<String> lightButtons;
-	private WidgetSlider zoomSlider;
+	private WidgetSlider<Integer>      zoomSlider;
 	private WidgetToggleButton<String> focusMode;
-	private WidgetSlider focusDistance;
+	private WidgetSlider<Integer>      focusDistance;
 	
 	static final String mjpegOverHttp = "Cam: MJPEG over HTTP";
 	
@@ -122,8 +122,8 @@ public class ConnectionCamera extends Connection {
 			configWidgets.add(name);
 			configWidgets.add(url);
 			
-			qualitySlider = new WidgetSlider("JPEG Quality", 1, 100, 50)
-			                    .onChange(newValue -> httpPost("/settings/quality?set=" + newValue, false));
+			qualitySlider = WidgetSlider.ofInt("JPEG Quality", 1, 100, 50)
+			                            .onChange(newValue -> httpPost("/settings/quality?set=" + newValue, false));
 			
 			cameraButtons = new WidgetToggleButton<String>(null, new String[] {"Front Camera", "Rear Camera"}, "Rear Camera")
 			                    .setExportLabel("camera")
@@ -158,8 +158,8 @@ public class ConnectionCamera extends Connection {
 			                        return true;
 			                   });
 			
-			zoomSlider = new WidgetSlider("Zoom", 0, 100, 0)
-			                 .onChange(newValue -> httpPost("/ptz?zoom=" + newValue, false));
+			zoomSlider = WidgetSlider.ofInt("Zoom", 0, 100, 0)
+			                         .onChange(newValue -> httpPost("/ptz?zoom=" + newValue, false));
 			
 			focusMode = new WidgetToggleButton<String>("Focus", new String[] {"Smooth", "Fast", "Locked", "Manual"}, "Smooth")
 			                .setExportLabel("focus mode")
@@ -175,9 +175,9 @@ public class ConnectionCamera extends Connection {
 			                    return true;
 			                });
 			
-			focusDistance = new WidgetSlider(null, 0, 1000, 500)
-			                    .setExportLabel("manual focus distance")
-			                    .onChange(newValue -> httpPost("/settings/focus_distance?set=%1.2f".formatted((1000 - newValue) / 100.0), false));
+			focusDistance = WidgetSlider.ofInt(null, 0, 1000, 500)
+			                            .setExportLabel("manual focus distance")
+			                            .onChange(newValue -> httpPost("/settings/focus_distance?set=%1.2f".formatted((1000 - newValue) / 100.0), false));
 			
 			transmitWidgets.add(qualitySlider);
 			transmitWidgets.add(cameraButtons);
@@ -488,8 +488,8 @@ public class ConnectionCamera extends Connection {
 			e.printStackTrace();
 		}
 		
-		CommunicationView.instance.redraw();
-		OpenGLChartsView.instance.setPlayLive();
+		Connections.GUI.redraw();
+		OpenGLCharts.GUI.setPlayLive();
 		
 	}
 	
@@ -587,7 +587,7 @@ public class ConnectionCamera extends Connection {
 		int width = 0;
 		int height = 0;
 		byte[] bgrBytes = null;
-		String label = String.format("%s (%s)", getName(), SettingsView.formatCameraTimestamp(info.timestamp));
+		String label = String.format("%s (%s)", getName(), Settings.formatCameraTimestamp(info.timestamp));
 		
 		try {
 			// try to use the libjpeg-turbo library
@@ -620,7 +620,7 @@ public class ConnectionCamera extends Connection {
 		
 		configWidgets.stream().skip(1).forEach(widget -> widget.importFrom(lines));
 		transmitWidgets.forEach(widget -> widget.importFrom(lines));
-		CommunicationView.instance.redraw();
+		Connections.GUI.redraw();
 		
 	}
 
@@ -755,7 +755,7 @@ public class ConnectionCamera extends Connection {
 		try {
 			long offset = file.size();
 			if(getSampleCount() == 1)
-				CommunicationView.instance.redraw();
+				Connections.GUI.redraw();
 			file.write(ByteBuffer.wrap(jpegBytes));
 //			file.force(true); // not necessary, and massively slows down importing
 			framesIndex.add(new FrameInfo(timestamp, offset, jpegBytes.length));
@@ -886,7 +886,7 @@ public class ConnectionCamera extends Connection {
 			try {
 				long offset = file.size();
 				if(getSampleCount() == 1)
-					CommunicationView.instance.redraw();
+					Connections.GUI.redraw();
 				file.write(ByteBuffer.wrap(jpegBytes, 0, jpegBytesLength));
 				file.force(true);
 				framesIndex.add(new FrameInfo(timestamp, offset, jpegBytesLength));

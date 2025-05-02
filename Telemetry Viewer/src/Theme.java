@@ -25,9 +25,10 @@ import net.miginfocom.swing.MigLayout;
 public class Theme {
 
 	// general swing and other settings
+	public static float  osDpiScalingFactor = 1;
 	public static int    columnWidth;
 	public static Color  jpanelColor                      = new JPanel().getBackground();
-	public static int    padding                          = Integer.parseInt(System.getProperty("java.version").split("\\.")[0]) >= 9 ? 5 : (int) (5 * Charts.getDisplayScalingFactor());
+	public static int    padding                          = Integer.parseInt(System.getProperty("java.version").split("\\.")[0]) >= 9 ? 5 : (int) (5 * Settings.GUI.getChartScalingFactor());
 	public static String removeSymbol                     = "\uD83D\uDDD9";
 	public static Color  defaultDatasetColor              = Color.RED;
 	public static long   defaultChartDurationMilliseconds = 10_000;
@@ -81,9 +82,9 @@ public class Theme {
 	public static float   legendNamesPadding    = 25.0f;
 	
 	// fonts
-	public static Font smallFont  = new Font("Geneva", Font.PLAIN, 12);
-	public static Font mediumFont = new Font("Geneva", Font.BOLD,  14);
-	public static Font largeFont  = new Font("Geneva", Font.BOLD,  18);
+	public static Font font[] = new Font[] { new Font("Geneva", Font.PLAIN, 12),
+	                                         new Font("Geneva", Font.BOLD,  14),
+	                                         new Font("Geneva", Font.BOLD,  18) };
 	
 	// number formatting
 	final private static int maxDecimalPlaces = 3;
@@ -276,9 +277,9 @@ public class Theme {
 		legendTextPadding  = 5.0f * displayScalingFactor;
 		legendNamesPadding = 25.0f * displayScalingFactor;
 		
-		smallFont  = new Font("Geneva", Font.PLAIN, (int) (12.0 * displayScalingFactor));
-		mediumFont = new Font("Geneva", Font.BOLD,  (int) (14.0 * displayScalingFactor));
-		largeFont  = new Font("Geneva", Font.BOLD,  (int) (18.0 * displayScalingFactor));
+		font[0] = new Font("Geneva", Font.PLAIN, (int) (12.0 * displayScalingFactor));
+		font[1] = new Font("Geneva", Font.BOLD,  (int) (14.0 * displayScalingFactor));
+		font[2] = new Font("Geneva", Font.BOLD,  (int) (18.0 * displayScalingFactor));
 		OpenGL.updateFontTextures(gl);
 		
 	}

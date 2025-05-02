@@ -103,7 +103,7 @@ public class OpenGLQuaternionChart extends Chart {
 		}
 		
 		float[] quatMatrix = new float[16];
-		new Quaternion(q[1], q[2], q[3], q[0]).toMatrix(quatMatrix, 0); // x,y,z,w
+		new Quaternion(q[1], q[2], q[3], q[0]).toMatrix(quatMatrix); // x,y,z,w
 		
 		// adjust the modelview matrix to map the vertices' local space (-1 to +1) into chart space
 		// x = x * (plotWidth / 2)  + (plotWidth / 2)

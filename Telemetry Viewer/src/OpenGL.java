@@ -2,13 +2,22 @@ import java.awt.Color;
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.awt.Transparency;
+import java.awt.color.ColorSpace;
 import java.awt.image.BufferedImage;
+import java.awt.image.ColorModel;
+import java.awt.image.ComponentColorModel;
+import java.awt.image.DataBuffer;
 import java.awt.image.DataBufferByte;
+import java.awt.image.Raster;
+import java.awt.image.WritableRaster;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.stream.IntStream;
 
 import com.jogamp.common.nio.Buffers;
 import com.jogamp.opengl.GL2ES3;
@@ -372,7 +381,7 @@ public class OpenGL {
 	public static void drawTriangleStripTextured2D(GL2ES3 gl, FloatBuffer buffer, int textureHandle, boolean isFboTexture, int vertexCount) {
 		
 		// send data to the GPU
-		if(isFboTexture && SettingsView.instance.antialiasingSlider.get() > 1) {
+		if(isFboTexture && Settings.GUI.antialiasingLevel.get() > 1) {
 			gl.glUseProgram(TrianglesXYSTmultisample.programHandle);
 			gl.glBindVertexArray(TrianglesXYSTmultisample.vaoHandle);
 			gl.glBindBuffer(GL3.GL_ARRAY_BUFFER, TrianglesXYSTmultisample.vboHandle);
@@ -511,7 +520,7 @@ public class OpenGL {
 		if(text.length() > buffer.capacity() / 5)
 			return;
 		
-		y -= smallFontBaselineOffset;
+		y -= Font.baselineOffset[0];
 		
 		// modify the matrix if rotating
 		float[] rotatedMatrix = null;
@@ -530,10 +539,10 @@ public class OpenGL {
 			int atlasX = 0;
 			int atlasY = 0;
 			int atlasWidth = 0;
-			if(charIndex < smallFontAsciiCharWidthLUT.length && charIndex >= 0) {
-				atlasX = (charIndex % smallFontCharsPerRow) * smallFontMaxCharWidth;
-				atlasY = (charIndex / smallFontCharsPerRow) * smallFontMaxCharHeight;
-				atlasWidth = smallFontAsciiCharWidthLUT[charIndex];
+			if(charIndex < Font.asciiCharWidthLUT[0].length && charIndex >= 0) {
+				atlasX = (charIndex % Font.charsPerRow[0]) * Font.maxCharWidth[0];
+				atlasY = (charIndex / Font.charsPerRow[0]) * Font.maxCharHeight[0];
+				atlasWidth = Font.asciiCharWidthLUT[0][charIndex];
 			} else {
 				int[] details = nonAsciiCharMap.get(c);
 				if(details != null) {
@@ -562,14 +571,14 @@ public class OpenGL {
 		buffer.rewind();
 		
 		// send data to the GPU
-		gl.glUseProgram(FontRenderer.programHandle);
-		gl.glBindVertexArray(FontRenderer.vaoHandle);
-		gl.glBindBuffer(GL3.GL_ARRAY_BUFFER, FontRenderer.vboHandle);
+		gl.glUseProgram(Font.programHandle);
+		gl.glBindVertexArray(Font.vaoHandle);
+		gl.glBindBuffer(GL3.GL_ARRAY_BUFFER, Font.vboHandle);
 		gl.glBufferData(GL3.GL_ARRAY_BUFFER, text.length() * 5 * 4, buffer, GL3.GL_DYNAMIC_DRAW);
-		gl.glUniformMatrix4fv(FontRenderer.matrixHandle, 1, false, degrees == 0 ? currentMatrix : rotatedMatrix, 0);
-		gl.glUniform1f(FontRenderer.lineHeightHandle, smallFontMaxCharHeight);
-		gl.glUniform1f(FontRenderer.opacityHandle, opacity);
-		gl.glBindTexture(GL3.GL_TEXTURE_2D, FontRenderer.smallFontTextureHandle[0]);
+		gl.glUniformMatrix4fv(Font.matrixHandle, 1, false, degrees == 0 ? currentMatrix : rotatedMatrix, 0);
+		gl.glUniform1f(Font.lineHeightHandle, Font.maxCharHeight[0]);
+		gl.glUniform1f(Font.opacityHandle, opacity);
+		gl.glBindTexture(GL3.GL_TEXTURE_2D, Font.textureHandle[0][0]);
 
 		// draw "points" (which become textured quads)
 		gl.glDrawArrays(GL3.GL_POINTS, 0, text.length());
@@ -590,7 +599,7 @@ public class OpenGL {
 		if(text.length() > buffer.capacity() / 5)
 			return;
 		
-		y -= mediumFontBaselineOffset;
+		y -= Font.baselineOffset[1];
 		
 		// modify the matrix if rotating
 		float[] rotatedMatrix = null;
@@ -609,10 +618,10 @@ public class OpenGL {
 			int atlasX = 0;
 			int atlasY = 0;
 			int atlasWidth = 0;
-			if(charIndex < mediumFontAsciiCharWidthLUT.length && charIndex >= 0) {
-				atlasX = (charIndex % mediumFontCharsPerRow) * mediumFontMaxCharWidth;
-				atlasY = (charIndex / mediumFontCharsPerRow) * mediumFontMaxCharHeight;
-				atlasWidth = mediumFontAsciiCharWidthLUT[charIndex];
+			if(charIndex < Font.asciiCharWidthLUT[1].length && charIndex >= 0) {
+				atlasX = (charIndex % Font.charsPerRow[1]) * Font.maxCharWidth[1];
+				atlasY = (charIndex / Font.charsPerRow[1]) * Font.maxCharHeight[1];
+				atlasWidth = Font.asciiCharWidthLUT[1][charIndex];
 			} else {
 				int[] details = nonAsciiCharMap.get(c);
 				if(details != null) {
@@ -641,14 +650,14 @@ public class OpenGL {
 		buffer.rewind();
 		
 		// send data to the GPU
-		gl.glUseProgram(FontRenderer.programHandle);
-		gl.glBindVertexArray(FontRenderer.vaoHandle);
-		gl.glBindBuffer(GL3.GL_ARRAY_BUFFER, FontRenderer.vboHandle);
+		gl.glUseProgram(Font.programHandle);
+		gl.glBindVertexArray(Font.vaoHandle);
+		gl.glBindBuffer(GL3.GL_ARRAY_BUFFER, Font.vboHandle);
 		gl.glBufferData(GL3.GL_ARRAY_BUFFER, text.length() * 5 * 4, buffer, GL3.GL_DYNAMIC_DRAW);
-		gl.glUniformMatrix4fv(FontRenderer.matrixHandle, 1, false, degrees == 0 ? currentMatrix : rotatedMatrix, 0);
-		gl.glUniform1f(FontRenderer.lineHeightHandle, mediumFontMaxCharHeight);
-		gl.glUniform1f(FontRenderer.opacityHandle, 1);
-		gl.glBindTexture(GL3.GL_TEXTURE_2D, FontRenderer.mediumFontTextureHandle[0]);
+		gl.glUniformMatrix4fv(Font.matrixHandle, 1, false, degrees == 0 ? currentMatrix : rotatedMatrix, 0);
+		gl.glUniform1f(Font.lineHeightHandle, Font.maxCharHeight[1]);
+		gl.glUniform1f(Font.opacityHandle, 1);
+		gl.glBindTexture(GL3.GL_TEXTURE_2D, Font.textureHandle[1][0]);
 
 		// draw "points" (which become textured quads)
 		gl.glDrawArrays(GL3.GL_POINTS, 0, text.length());
@@ -669,7 +678,7 @@ public class OpenGL {
 		if(text.length() > buffer.capacity() / 5)
 			return;
 		
-		y -= largeFontBaselineOffset;
+		y -= Font.baselineOffset[2];
 		
 		// modify the matrix if rotating
 		float[] rotatedMatrix = null;
@@ -688,10 +697,10 @@ public class OpenGL {
 			int atlasX = 0;
 			int atlasY = 0;
 			int atlasWidth = 0;
-			if(charIndex < largeFontAsciiCharWidthLUT.length && charIndex >= 0) {
-				atlasX = (charIndex % largeFontCharsPerRow) * largeFontMaxCharWidth;
-				atlasY = (charIndex / largeFontCharsPerRow) * largeFontMaxCharHeight;
-				atlasWidth = largeFontAsciiCharWidthLUT[charIndex];
+			if(charIndex < Font.asciiCharWidthLUT[2].length && charIndex >= 0) {
+				atlasX = (charIndex % Font.charsPerRow[2]) * Font.maxCharWidth[2];
+				atlasY = (charIndex / Font.charsPerRow[2]) * Font.maxCharHeight[2];
+				atlasWidth = Font.asciiCharWidthLUT[2][charIndex];
 			} else {
 				int[] details = nonAsciiCharMap.get(c);
 				if(details != null) {
@@ -720,14 +729,14 @@ public class OpenGL {
 		buffer.rewind();
 		
 		// send data to the GPU
-		gl.glUseProgram(FontRenderer.programHandle);
-		gl.glBindVertexArray(FontRenderer.vaoHandle);
-		gl.glBindBuffer(GL3.GL_ARRAY_BUFFER, FontRenderer.vboHandle);
+		gl.glUseProgram(Font.programHandle);
+		gl.glBindVertexArray(Font.vaoHandle);
+		gl.glBindBuffer(GL3.GL_ARRAY_BUFFER, Font.vboHandle);
 		gl.glBufferData(GL3.GL_ARRAY_BUFFER, text.length() * 5 * 4, buffer, GL3.GL_DYNAMIC_DRAW);
-		gl.glUniformMatrix4fv(FontRenderer.matrixHandle, 1, false, degrees == 0 ? currentMatrix : rotatedMatrix, 0);
-		gl.glUniform1f(FontRenderer.lineHeightHandle, largeFontMaxCharHeight);
-		gl.glUniform1f(FontRenderer.opacityHandle, 1);
-		gl.glBindTexture(GL3.GL_TEXTURE_2D, FontRenderer.largeFontTextureHandle[0]);
+		gl.glUniformMatrix4fv(Font.matrixHandle, 1, false, degrees == 0 ? currentMatrix : rotatedMatrix, 0);
+		gl.glUniform1f(Font.lineHeightHandle, Font.maxCharHeight[2]);
+		gl.glUniform1f(Font.opacityHandle, 1);
+		gl.glBindTexture(GL3.GL_TEXTURE_2D, Font.textureHandle[2][0]);
 
 		// draw "points" (which become textured quads)
 		gl.glDrawArrays(GL3.GL_POINTS, 0, text.length());
@@ -745,8 +754,8 @@ public class OpenGL {
 		for(int i = 0; i < text.length(); i++) {
 			char c = text.charAt(i);
 			int charIndex = c - firstAsciiChar;
-			if(charIndex < smallFontAsciiCharWidthLUT.length && charIndex >= 0) {
-				width += smallFontAsciiCharWidthLUT[charIndex];
+			if(charIndex < Font.asciiCharWidthLUT[0].length && charIndex >= 0) {
+				width += Font.asciiCharWidthLUT[0][charIndex];
 			} else {
 				int[] details = nonAsciiCharMap.get(c);
 				if(details != null) {
@@ -779,8 +788,8 @@ public class OpenGL {
 		for(int i = 0; i < text.length(); i++) {
 			char c = text.charAt(i);
 			int charIndex = c - firstAsciiChar;
-			if(charIndex < mediumFontAsciiCharWidthLUT.length && charIndex >= 0) {
-				width += mediumFontAsciiCharWidthLUT[charIndex];
+			if(charIndex < Font.asciiCharWidthLUT[1].length && charIndex >= 0) {
+				width += Font.asciiCharWidthLUT[1][charIndex];
 			} else {
 				int[] details = nonAsciiCharMap.get(c);
 				if(details != null) {
@@ -813,8 +822,8 @@ public class OpenGL {
 		for(int i = 0; i < text.length(); i++) {
 			char c = text.charAt(i);
 			int charIndex = c - firstAsciiChar;
-			if(charIndex < largeFontAsciiCharWidthLUT.length && charIndex >= 0) {
-				width += largeFontAsciiCharWidthLUT[charIndex];
+			if(charIndex < Font.asciiCharWidthLUT[2].length && charIndex >= 0) {
+				width += Font.asciiCharWidthLUT[2][charIndex];
 			} else {
 				int[] details = nonAsciiCharMap.get(c);
 				if(details != null) {
@@ -843,205 +852,96 @@ public class OpenGL {
 	 */
 	public static void updateFontTextures(GL2ES3 gl) {
 		
+		// ensure the nonAsciiCharMap contains \u200A (the Unicode "hair space") because that character will be used soon
+		// and if we wait until the first draw call using it, we will have to regenerate the font textures again
+		if(!nonAsciiCharMap.containsKey('\u200A'))
+			nonAsciiCharMap.put('\u200A', new int[9]);
+		
 		int asciiCharCount = lastAsciiChar - firstAsciiChar + 1;
 		int nonAsciiCharCount = nonAsciiCharMap.size();
 		int charCount = asciiCharCount + nonAsciiCharCount;
 		
-		int textureWidth = 128;
-		int maxCharWidth = 100;
-		int maxCharHeight = 100;
-		BufferedImage image = null;
-		Graphics2D g = null;
-		int baselineOffset = 0;
-		int x = 0;
-		int y = 0;
-		ByteBuffer buffer = null;
+		// get metrics for the small/medium/large fonts
+		Graphics2D dummy = new BufferedImage(1, 1, BufferedImage.TYPE_BYTE_GRAY).createGraphics();
+		dummy.setColor(Color.BLACK);
+		dummy.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		FontMetrics metrics[] = new FontMetrics[] { dummy.getFontMetrics(Theme.font[0]),
+		                                            dummy.getFontMetrics(Theme.font[1]),
+		                                            dummy.getFontMetrics(Theme.font[2])};
+		dummy.dispose();
 		
-		// prepare for small font texture
-		while((textureWidth / maxCharWidth) * (textureWidth / maxCharHeight) < charCount) {
-			textureWidth *= 2;
-			image = new BufferedImage(textureWidth, textureWidth, BufferedImage.TYPE_4BYTE_ABGR);
-			g = image.createGraphics();
-			g.setColor(Color.BLACK);
+		// the three font atlas is generated in *parallel* (one thread per font)
+		// then this thread will *sequentially* send the textures to the GPU
+		IntStream.range(0, 3).parallel().<Runnable>mapToObj(fontN -> {
+			
+			// calculate the font atlas details
+			Font.maxCharWidth[fontN] = 0;
+			Font.asciiCharWidthLUT[fontN] = new int[asciiCharCount];
+			for(char c = firstAsciiChar; c <= lastAsciiChar; c++) {
+				int width = metrics[fontN].charWidth(c);
+				Font.maxCharWidth[fontN] = Math.max(Font.maxCharWidth[fontN], width);
+				Font.asciiCharWidthLUT[fontN][c - firstAsciiChar] = width;
+			}
+			for(Entry<Character, int[]> entry : nonAsciiCharMap.entrySet()) {
+				int width = metrics[fontN].charWidth(entry.getKey());
+				Font.maxCharWidth[fontN] = Math.max(Font.maxCharWidth[fontN], width);
+				entry.getValue()[fontN*3 + 2] = width;
+			}
+			Font.maxCharHeight[fontN] = metrics[fontN].getMaxAscent() + metrics[fontN].getMaxDescent();
+			Font.baselineOffset[fontN] = metrics[fontN].getMaxDescent() + 1;
+			int textureWidth = 128;
+			while((textureWidth / Font.maxCharWidth[fontN]) * (textureWidth / Font.maxCharHeight[fontN]) < charCount)
+				textureWidth += 32;
+			Font.charsPerRow[fontN] = (textureWidth / Font.maxCharWidth[fontN]);
+		
+			// draw the texture
+			byte[] bytes = new byte[textureWidth * textureWidth];
+			ColorModel cm = new ComponentColorModel(ColorSpace.getInstance(ColorSpace.CS_GRAY), false, false, Transparency.OPAQUE, DataBuffer.TYPE_BYTE);
+			WritableRaster raster = Raster.createInterleavedRaster(new DataBufferByte(bytes, bytes.length), textureWidth, textureWidth, textureWidth, 1, new int[]{0}, null);
+			BufferedImage image = new BufferedImage(cm, raster, false, null);
+			Graphics2D g = image.createGraphics();
+			g.setColor(Color.WHITE);
 			g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-			g.setFont(Theme.smallFont);
-			FontMetrics fm = g.getFontMetrics();
-			maxCharWidth = fm.getMaxAdvance();
-			maxCharHeight = fm.getMaxAscent() + fm.getMaxDescent();
-			baselineOffset = fm.getMaxDescent() + 1;
-			int charsPerRow = textureWidth / maxCharWidth;
-			smallFontMaxCharWidth = maxCharWidth;
-			smallFontMaxCharHeight = maxCharHeight;
-			smallFontCharsPerRow = charsPerRow;
-			smallFontAsciiCharWidthLUT = new int[asciiCharCount];
-			smallTextHeight = fm.getAscent() - baselineOffset;
-			smallFontBaselineOffset = baselineOffset;
-		}
-		
-		// draw the small font texture atlas
-		x = 0;
-		y = maxCharHeight;
-		for(char c = firstAsciiChar; c <= lastAsciiChar; c++) {
-			String s = new String(c + "");
-			int charWidth = (int) Math.ceil(Theme.smallFont.getStringBounds(s, g.getFontRenderContext()).getWidth());
-			smallFontAsciiCharWidthLUT[c - firstAsciiChar] = charWidth;
-			g.drawString(s, x, y-baselineOffset);
-			x += maxCharWidth;
-			if(x + maxCharWidth > textureWidth) {
-				x = 0;
-				y += maxCharHeight;
+			g.setFont(Theme.font[fontN]);
+			int x = 0;
+			int y = Font.maxCharHeight[fontN];
+			for(char c = firstAsciiChar; c <= lastAsciiChar; c++) {
+				g.drawChars(new char[] {c}, 0, 1, x, y-Font.baselineOffset[fontN]);
+				x += Font.maxCharWidth[fontN];
+				if(x + Font.maxCharWidth[fontN] > textureWidth) {
+					x = 0;
+					y += Font.maxCharHeight[fontN];
+				}
 			}
-		}
-		for(Map.Entry<Character, int[]> nonAsciiChar : nonAsciiCharMap.entrySet()) {
-			char c = nonAsciiChar.getKey();
-			int[] details = nonAsciiChar.getValue();
-			String s = new String(c + "");
-			int charWidth = (int) Math.ceil(Theme.smallFont.getStringBounds(s, g.getFontRenderContext()).getWidth());
-			details[0] = x;
-			details[1] = y - maxCharHeight;
-			details[2] = charWidth;
-			g.drawString(s, x, y-baselineOffset);
-			x += maxCharWidth;
-			if(x + maxCharWidth > textureWidth) {
-				x = 0;
-				y += maxCharHeight;
+			for(Map.Entry<Character, int[]> nonAsciiChar : nonAsciiCharMap.entrySet()) {
+				int[] details = nonAsciiChar.getValue();
+				char c = nonAsciiChar.getKey();
+				details[fontN*3 + 0] = x;
+				details[fontN*3 + 1] = y - Font.maxCharHeight[fontN];
+				g.drawChars(new char[] {c}, 0, 1, x, y-Font.baselineOffset[fontN]);
+				x += Font.maxCharWidth[fontN];
+				if(x + Font.maxCharWidth[fontN] > textureWidth) {
+					x = 0;
+					y += Font.maxCharHeight[fontN];
+				}
 			}
-		}
+			g.dispose();
+			
+			// return a Runnable which will send the texture to the GPU
+			int width = textureWidth;
+			return () -> {
+//				JFrame f = new JFrame("Atlas for font[" + fontN + "]");
+//				f.add(new JLabel(new ImageIcon(image)));
+//				f.pack();
+//				f.setVisible(true);
+				writeTexture(gl, Font.textureHandle[fontN], width, width, GL3.GL_RED, GL3.GL_UNSIGNED_BYTE, ByteBuffer.wrap(bytes));
+			};
+			
+		}).toList().forEach(Runnable::run);
 		
-		// send the small font texture to the GPU
-		buffer = Buffers.newDirectByteBuffer(((DataBufferByte) image.getRaster().getDataBuffer()).getData());
-		writeTexture(gl, FontRenderer.smallFontTextureHandle, textureWidth, textureWidth, GL3.GL_RGBA, GL3.GL_UNSIGNED_BYTE, buffer); // actually ABGR, so swizzling it in the fragment shader
-		
-//		JFrame small = new JFrame("Small Font Atlas");
-//		small.add(new JLabel(new ImageIcon(image)));
-//		small.pack();
-//		small.setVisible(true);
-		
-		// prepare for medium font texture
-		textureWidth = 128;
-		maxCharWidth = 100;
-		maxCharHeight = 100;
-		while((textureWidth / maxCharWidth) * (textureWidth / maxCharHeight) < charCount) {
-			textureWidth *= 2;
-			image = new BufferedImage(textureWidth, textureWidth, BufferedImage.TYPE_4BYTE_ABGR);
-			g = image.createGraphics();
-			g.setColor(Color.BLACK);
-			g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-			g.setFont(Theme.mediumFont);
-			FontMetrics fm = g.getFontMetrics();
-			maxCharWidth = fm.getMaxAdvance();
-			maxCharHeight = fm.getMaxAscent() + fm.getMaxDescent();
-			baselineOffset = fm.getMaxDescent() + 1;
-			int charsPerRow = textureWidth / maxCharWidth;
-			mediumFontMaxCharWidth = maxCharWidth;
-			mediumFontMaxCharHeight = maxCharHeight;
-			mediumFontCharsPerRow = charsPerRow;
-			mediumFontAsciiCharWidthLUT = new int[asciiCharCount];
-			mediumTextHeight = fm.getAscent() - baselineOffset;
-			mediumFontBaselineOffset = baselineOffset;
-		}
-		
-		// draw the medium font texture atlas
-		x = 0;
-		y = maxCharHeight;
-		for(char c = firstAsciiChar; c <= lastAsciiChar; c++) {
-			String s = new String(c + "");
-			int charWidth = (int) Math.ceil(Theme.mediumFont.getStringBounds(s, g.getFontRenderContext()).getWidth());
-			mediumFontAsciiCharWidthLUT[c - firstAsciiChar] = charWidth;
-			g.drawString(s, x, y-baselineOffset);
-			x += maxCharWidth;
-			if(x + maxCharWidth > textureWidth) {
-				x = 0;
-				y += maxCharHeight;
-			}
-		}
-		for(Map.Entry<Character, int[]> nonAsciiChar : nonAsciiCharMap.entrySet()) {
-			char c = nonAsciiChar.getKey();
-			int[] details = nonAsciiChar.getValue();
-			String s = new String(c + "");
-			int charWidth = (int) Math.ceil(Theme.mediumFont.getStringBounds(s, g.getFontRenderContext()).getWidth());
-			details[3] = x;
-			details[4] = y - maxCharHeight;
-			details[5] = charWidth;
-			g.drawString(s, x, y-baselineOffset);
-			x += maxCharWidth;
-			if(x + maxCharWidth > textureWidth) {
-				x = 0;
-				y += maxCharHeight;
-			}
-		}
-		
-		// send the medium font texture to the GPU
-		buffer = Buffers.newDirectByteBuffer(((DataBufferByte) image.getRaster().getDataBuffer()).getData());
-		writeTexture(gl, FontRenderer.mediumFontTextureHandle, textureWidth, textureWidth, GL3.GL_RGBA, GL3.GL_UNSIGNED_BYTE, buffer); // actually ABGR, so swizzling it in the fragment shader
-		
-//		JFrame medium = new JFrame("Medium Font Atlas");
-//		medium.add(new JLabel(new ImageIcon(image)));
-//		medium.pack();
-//		medium.setVisible(true);
-		
-		// prepare for large font texture
-		textureWidth = 128;
-		maxCharWidth = 100;
-		maxCharHeight = 100;
-		while((textureWidth / maxCharWidth) * (textureWidth / maxCharHeight) < charCount) {
-			textureWidth *= 2;
-			image = new BufferedImage(textureWidth, textureWidth, BufferedImage.TYPE_4BYTE_ABGR);
-			g = image.createGraphics();
-			g.setColor(Color.BLACK);
-			g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-			g.setFont(Theme.largeFont);
-			FontMetrics fm = g.getFontMetrics();
-			maxCharWidth = fm.getMaxAdvance();
-			maxCharHeight = fm.getMaxAscent() + fm.getMaxDescent();
-			baselineOffset = fm.getMaxDescent() + 1;
-			int charsPerRow = textureWidth / maxCharWidth;
-			largeFontMaxCharWidth = maxCharWidth;
-			largeFontMaxCharHeight = maxCharHeight;
-			largeFontCharsPerRow = charsPerRow;
-			largeFontAsciiCharWidthLUT = new int[asciiCharCount];
-			largeTextHeight = fm.getAscent() - baselineOffset;
-			largeFontBaselineOffset = baselineOffset;
-		}
-		
-		// draw the large font texture atlas
-		x = 0;
-		y = maxCharHeight;
-		for(char c = firstAsciiChar; c <= lastAsciiChar; c++) {
-			String s = new String(c + "");
-			int charWidth = (int) Math.ceil(Theme.largeFont.getStringBounds(s, g.getFontRenderContext()).getWidth());
-			largeFontAsciiCharWidthLUT[c - firstAsciiChar] = charWidth;
-			g.drawString(s, x, y-baselineOffset);
-			x += maxCharWidth;
-			if(x + maxCharWidth > textureWidth) {
-				x = 0;
-				y += maxCharHeight;
-			}
-		}
-		for(Map.Entry<Character, int[]> nonAsciiChar : nonAsciiCharMap.entrySet()) {
-			char c = nonAsciiChar.getKey();
-			int[] details = nonAsciiChar.getValue();
-			String s = new String(c + "");
-			int charWidth = (int) Math.ceil(Theme.largeFont.getStringBounds(s, g.getFontRenderContext()).getWidth());
-			details[6] = x;
-			details[7] = y - maxCharHeight;
-			details[8] = charWidth;
-			g.drawString(s, x, y-baselineOffset);
-			x += maxCharWidth;
-			if(x + maxCharWidth > textureWidth) {
-				x = 0;
-				y += maxCharHeight;
-			}
-		}
-		
-		// send the large font texture to the GPU
-		buffer = Buffers.newDirectByteBuffer(((DataBufferByte) image.getRaster().getDataBuffer()).getData());
-		writeTexture(gl, FontRenderer.largeFontTextureHandle, textureWidth, textureWidth, GL3.GL_RGBA, GL3.GL_UNSIGNED_BYTE, buffer); // actually ABGR, so swizzling it in the fragment shader
-		
-//		JFrame large = new JFrame("Large Font Atlas");
-//		large.add(new JLabel(new ImageIcon(image)));
-//		large.pack();
-//		large.setVisible(true);
+		smallTextHeight  = metrics[0].getAscent() - Font.baselineOffset[0];
+		mediumTextHeight = metrics[1].getAscent() - Font.baselineOffset[1];
+		largeTextHeight  = metrics[2].getAscent() - Font.baselineOffset[2];
 		
 	}
 	
@@ -1052,22 +952,21 @@ public class OpenGL {
 	 * @param textureHandle    The texture handle will be saved here.
 	 * @param width            Width, in pixels.
 	 * @param height           Height, in pixels.
-	 * @param pixelFormat      GL_RGB or GL_BGR or GL_RGBA.
+	 * @param pixelFormat      GL_RGBA or GL_RGB or GL_BGR or GL_RED.
 	 * @param pixelType        GL_UNSIGNED_BYTE or GL_FLOAT.
 	 * @param antialias        True for linear filtering, or false for nearest filtering.
 	 */
 	public static void createTexture(GL2ES3 gl, int[] textureHandle, int width, int height, int pixelFormat, int pixelType, boolean antialias) {
 		
+		int internalFormat = pixelFormat == GL3.GL_RED  ? GL3.GL_R8   :
+		                     pixelFormat == GL3.GL_RGBA ? GL3.GL_RGBA :
+		                                                  GL3.GL_RGB;
+		
 		gl.glGenTextures(1, textureHandle, 0);
 		gl.glBindTexture(GL3.GL_TEXTURE_2D, textureHandle[0]);
-		gl.glTexImage2D(GL3.GL_TEXTURE_2D, 0, pixelFormat == GL3.GL_RGBA ? GL3.GL_RGBA : GL3.GL_RGB, width, height, 0, pixelFormat, pixelType, null);
-		if(antialias) {
-			gl.glTexParameteri(GL3.GL_TEXTURE_2D, GL3.GL_TEXTURE_MIN_FILTER, GL3.GL_LINEAR);
-			gl.glTexParameteri(GL3.GL_TEXTURE_2D, GL3.GL_TEXTURE_MAG_FILTER, GL3.GL_LINEAR);
-		} else {
-			gl.glTexParameteri(GL3.GL_TEXTURE_2D, GL3.GL_TEXTURE_MIN_FILTER, GL3.GL_NEAREST);
-			gl.glTexParameteri(GL3.GL_TEXTURE_2D, GL3.GL_TEXTURE_MAG_FILTER, GL3.GL_NEAREST);
-		}
+		gl.glTexImage2D(GL3.GL_TEXTURE_2D, 0, internalFormat, width, height, 0, pixelFormat, pixelType, null);
+		gl.glTexParameteri(GL3.GL_TEXTURE_2D, GL3.GL_TEXTURE_MIN_FILTER, antialias ? GL3.GL_LINEAR : GL3.GL_NEAREST);
+		gl.glTexParameteri(GL3.GL_TEXTURE_2D, GL3.GL_TEXTURE_MAG_FILTER, antialias ? GL3.GL_LINEAR : GL3.GL_NEAREST);
 		
 	}
 	
@@ -1078,14 +977,17 @@ public class OpenGL {
 	 * @param textureHandle    Handle to the texture.
 	 * @param width            Width, in pixels.
 	 * @param height           Height, in pixels.
-	 * @param pixelFormat      GL_RGB or GL_BGR or GL_RGBA.
+	 * @param pixelFormat      GL_RGBA or GL_RGB or GL_BGR or GL_RED.
 	 * @param pixelType        GL_UNSIGNED_BYTE or GL_FLOAT.
 	 * @param pixels           ByteBuffer of pixel data.
 	 */
 	public static void writeTexture(GL2ES3 gl, int[] textureHandle, int width, int height, int pixelFormat, int pixelType, ByteBuffer pixels) {
 
+		int internalFormat = pixelFormat == GL3.GL_RED  ? GL3.GL_R8   :
+		                     pixelFormat == GL3.GL_RGBA ? GL3.GL_RGBA :
+		                                                  GL3.GL_RGB;
 		gl.glBindTexture(GL3.GL_TEXTURE_2D, textureHandle[0]);
-		gl.glTexImage2D(GL3.GL_TEXTURE_2D, 0, pixelFormat == GL3.GL_RGBA ? GL3.GL_RGBA : GL3.GL_RGB, width, height, 0, pixelFormat, pixelType, pixels);
+		gl.glTexImage2D(GL3.GL_TEXTURE_2D, 0, internalFormat, width, height, 0, pixelFormat, pixelType, pixels);
 		
 	}
 	
@@ -1187,9 +1089,9 @@ public class OpenGL {
 		
 		// create and use a texture
 		gl.glGenTextures(1, textureHandle, 0);
-		if(SettingsView.instance.antialiasingSlider.get() > 1) {
+		if(Settings.GUI.antialiasingLevel.get() > 1) {
 			gl.glBindTexture(GL3.GL_TEXTURE_2D_MULTISAMPLE, textureHandle[0]);
-			gl.glTexImage2DMultisample(GL3.GL_TEXTURE_2D_MULTISAMPLE, SettingsView.instance.antialiasingSlider.get(), GL3.GL_RGBA, 512, 512, true);
+			gl.glTexImage2DMultisample(GL3.GL_TEXTURE_2D_MULTISAMPLE, Settings.GUI.antialiasingLevel.get(), GL3.GL_RGBA, 512, 512, true);
 			gl.glFramebufferTexture2D(GL3.GL_FRAMEBUFFER, GL3.GL_COLOR_ATTACHMENT0, GL3.GL_TEXTURE_2D_MULTISAMPLE, textureHandle[0], 0);
 		} else {
 			gl.glBindTexture(GL3.GL_TEXTURE_2D, textureHandle[0]);
@@ -1234,15 +1136,15 @@ public class OpenGL {
 
 		// switch to the off-screen framebuffer and corresponding texture
 		gl.glBindFramebuffer(GL3.GL_FRAMEBUFFER, fboHandle[0]);
-		if(SettingsView.instance.antialiasingSlider.get() > 1)
+		if(Settings.GUI.antialiasingLevel.get() > 1)
 			gl.glBindTexture(GL3.GL_TEXTURE_2D_MULTISAMPLE, textureHandle[0]);
 		else
 			gl.glBindTexture(GL3.GL_TEXTURE_2D, textureHandle[0]);
 
 		// replace the existing texture if needed
 		if(replaceTexture) {
-			if(SettingsView.instance.antialiasingSlider.get() > 1)
-				gl.glTexImage2DMultisample(GL3.GL_TEXTURE_2D_MULTISAMPLE, SettingsView.instance.antialiasingSlider.get(), GL3.GL_RGBA, width, height, true);
+			if(Settings.GUI.antialiasingLevel.get() > 1)
+				gl.glTexImage2DMultisample(GL3.GL_TEXTURE_2D_MULTISAMPLE, Settings.GUI.antialiasingLevel.get(), GL3.GL_RGBA, width, height, true);
 			else
 				gl.glTexImage2D(GL3.GL_TEXTURE_2D, 0, GL3.GL_RGBA, width, height, 0, GL3.GL_RGBA, GL3.GL_UNSIGNED_BYTE, null);
 			gl.glClearColor(0, 0, 0, 0);
@@ -1724,34 +1626,20 @@ public class OpenGL {
 		static int vboHandle;
 	}
 	
-	private static class FontRenderer {
+	private static class Font {
 		static int programHandle;
 		static int matrixHandle;
 		static int lineHeightHandle;
 		static int opacityHandle;
-		static int[] smallFontTextureHandle = new int[1];
-		static int[] mediumFontTextureHandle = new int[1];
-		static int[] largeFontTextureHandle = new int[1];
 		static int vaoHandle;
 		static int vboHandle;
+		static int[][] textureHandle     = new int[3][1]; // [fontN][0]
+		static int[][] asciiCharWidthLUT = new int[3][];  // [fontN][charN]
+		static int[]   maxCharWidth      = new int[3];    // [fontN]
+		static int[]   maxCharHeight     = new int[3];    // [fontN]
+		static int[]   charsPerRow       = new int[3];    // [fontN]
+		static int[]   baselineOffset    = new int[3];    // [fontN]
 	}
-	private static int[] smallFontAsciiCharWidthLUT;
-	private static int   smallFontMaxCharWidth;
-	private static int   smallFontMaxCharHeight;
-	private static int   smallFontCharsPerRow;
-	private static int   smallFontBaselineOffset;
-	
-	private static int[] mediumFontAsciiCharWidthLUT;
-	private static int   mediumFontMaxCharWidth;
-	private static int   mediumFontMaxCharHeight;
-	private static int   mediumFontCharsPerRow;
-	private static int   mediumFontBaselineOffset;
-	
-	private static int[] largeFontAsciiCharWidthLUT;
-	private static int   largeFontMaxCharWidth;
-	private static int   largeFontMaxCharHeight;
-	private static int   largeFontCharsPerRow;
-	private static int   largeFontBaselineOffset;
 	
 	// texture atlases contain the printable ASCII characters, plus any characters in this map
 	// each map value is an int[] containing:
@@ -1965,10 +1853,18 @@ public class OpenGL {
 			"uniform mat4 matrix;\n",
 			"uniform float lineHeight;\n",
 			"void main(void) {\n",
-			"	gl_Position = matrix * vec4(gl_in[0].gl_Position.x + atlas[0].z, gl_in[0].gl_Position.y,              0, 1);    texCoord = vec2(atlas[0].x+atlas[0].z, atlas[0].y + lineHeight);    EmitVertex();\n",
-			"	gl_Position = matrix * vec4(gl_in[0].gl_Position.x + atlas[0].z, gl_in[0].gl_Position.y + lineHeight, 0, 1);    texCoord = vec2(atlas[0].x+atlas[0].z, atlas[0].y);                 EmitVertex();\n",
-			"	gl_Position = matrix * vec4(gl_in[0].gl_Position.x,              gl_in[0].gl_Position.y,              0, 1);    texCoord = vec2(atlas[0].x, atlas[0].y + lineHeight);               EmitVertex();\n",
-			"	gl_Position = matrix * vec4(gl_in[0].gl_Position.x,              gl_in[0].gl_Position.y + lineHeight, 0, 1);    texCoord = vec2(atlas[0].x, atlas[0].y);                            EmitVertex();\n",
+			"	gl_Position = matrix * vec4(gl_in[0].gl_Position.x + atlas[0].z, gl_in[0].gl_Position.y, 0, 1);\n",
+			"	texCoord = vec2(atlas[0].x+atlas[0].z, atlas[0].y + lineHeight);\n",
+			"	EmitVertex();\n",
+			"	gl_Position = matrix * vec4(gl_in[0].gl_Position.x + atlas[0].z, gl_in[0].gl_Position.y + lineHeight, 0, 1);\n",
+			"	texCoord = vec2(atlas[0].x+atlas[0].z, atlas[0].y);\n",
+			"	EmitVertex();\n",
+			"	gl_Position = matrix * vec4(gl_in[0].gl_Position.x, gl_in[0].gl_Position.y, 0, 1);\n",
+			"	texCoord = vec2(atlas[0].x, atlas[0].y + lineHeight);\n",
+			"	EmitVertex();\n",
+			"	gl_Position = matrix * vec4(gl_in[0].gl_Position.x, gl_in[0].gl_Position.y + lineHeight, 0, 1);\n",
+			"	texCoord = vec2(atlas[0].x, atlas[0].y);\n",
+			"	EmitVertex();\n",
 			"	EndPrimitive();\n",
 			"}\n"
 		};
@@ -2056,7 +1952,7 @@ public class OpenGL {
 				"	fragColor = vec4(color.r * a, color.g * a, color.b * a, a);\n",
 				"}\n"
 			};
-		int msaaLevel = SettingsView.instance.antialiasingSlider.get();
+		int msaaLevel = Settings.GUI.antialiasingLevel.get();
 		String[] fragmentShaderTex2DMS = new String[] {
 			versionLine,
 			"#ifdef GL_ES\n" +
@@ -2111,8 +2007,8 @@ public class OpenGL {
 			"uniform float opacity;\n",
 			"out vec4 fragColor;\n",
 			"void main(void) {\n",
-			"	fragColor = texelFetch(tex, ivec2(texCoord), 0).abgr;\n", // swizzling ABGR texture into RGBA
-			"	fragColor.a *= opacity;\n",
+			"	float alpha = opacity * texelFetch(tex, ivec2(texCoord), 0).r;\n", // alpha = texture's red channel * requested opacity
+			"	fragColor = vec4(0,0,0,alpha);\n", // color = black
 			"}\n"
 		};
 		
@@ -2627,7 +2523,7 @@ public class OpenGL {
 		 * One VBO of floats specifies (x1,y1,s1,t1,...) data.
 		 * One uniform mat4 specifies the matrix.
 		 */
-		if(SettingsView.instance.antialiasingSlider.get() > 1) {
+		if(Settings.GUI.antialiasingLevel.get() > 1) {
 			
 			TrianglesXYSTmultisample.programHandle = makeProgram(gl, vertexShaderVboXyst, null, fragmentShaderTex2DMS);
 			
@@ -2655,45 +2551,45 @@ public class OpenGL {
 		}
 		
 		/*
-		 * "FontRenderer" is for drawing 2D text.
+		 * "Font" is for drawing 2D text.
 		 * 
 		 * One VBO of floats specifies (x,y,s1,t1,sWidth,...) character location and texture atlas data.
 		 * One uniform mat4    specifies the matrix.
 		 * One uniform float   specifies the line height.
 		 * One uniform boolean specifies the opacity.
 		 */
-		FontRenderer.programHandle = makeProgram(gl, vertexShaderFontRenderer, geometryShaderFontRenderer, fragmentShaderFontRenderer);
+		Font.programHandle = makeProgram(gl, vertexShaderFontRenderer, geometryShaderFontRenderer, fragmentShaderFontRenderer);
 		
 		// VAO
 		gl.glGenVertexArrays(1, handle, 0);
 		gl.glBindVertexArray(handle[0]);
-		FontRenderer.vaoHandle = handle[0];
+		Font.vaoHandle = handle[0];
 		
 		// VBO
 		gl.glGenBuffers(1, handle, 0);
 		gl.glBindBuffer(GL3.GL_ARRAY_BUFFER, handle[0]);
-		FontRenderer.vboHandle = handle[0];
+		Font.vboHandle = handle[0];
 		
 		// use the VBO for (x,y,s,t,w) data
-		index = gl.glGetAttribLocation(FontRenderer.programHandle, "xy");
+		index = gl.glGetAttribLocation(Font.programHandle, "xy");
 		gl.glVertexAttribPointer(index, 2, GL3.GL_FLOAT, false, 5*4, 0);
 		gl.glEnableVertexAttribArray(index);
-		index = gl.glGetAttribLocation(FontRenderer.programHandle, "stw");
+		index = gl.glGetAttribLocation(Font.programHandle, "stw");
 		gl.glVertexAttribPointer(index, 3, GL3.GL_FLOAT, false, 5*4, 2*4);
 		gl.glEnableVertexAttribArray(index);
 		
 		// get handles for the uniforms
-		FontRenderer.matrixHandle     = gl.glGetUniformLocation(FontRenderer.programHandle, "matrix");
-		FontRenderer.lineHeightHandle = gl.glGetUniformLocation(FontRenderer.programHandle, "lineHeight");
-		FontRenderer.opacityHandle    = gl.glGetUniformLocation(FontRenderer.programHandle, "opacity");
+		Font.matrixHandle     = gl.glGetUniformLocation(Font.programHandle, "matrix");
+		Font.lineHeightHandle = gl.glGetUniformLocation(Font.programHandle, "lineHeight");
+		Font.opacityHandle    = gl.glGetUniformLocation(Font.programHandle, "opacity");
 		
 		// create the textures
-		createTexture(gl, handle, 512, 512, GL3.GL_RGBA, GL3.GL_UNSIGNED_BYTE, false);
-		FontRenderer.smallFontTextureHandle[0] = handle[0];
-		createTexture(gl, handle, 512, 512, GL3.GL_RGBA, GL3.GL_UNSIGNED_BYTE, false);
-		FontRenderer.mediumFontTextureHandle[0] = handle[0];
-		createTexture(gl, handle, 512, 512, GL3.GL_RGBA, GL3.GL_UNSIGNED_BYTE, false);
-		FontRenderer.largeFontTextureHandle[0] = handle[0];
+		createTexture(gl, handle, 512, 512, GL3.GL_RED, GL3.GL_UNSIGNED_BYTE, false);
+		Font.textureHandle[0][0] = handle[0];
+		createTexture(gl, handle, 512, 512, GL3.GL_RED, GL3.GL_UNSIGNED_BYTE, false);
+		Font.textureHandle[1][0] = handle[0];
+		createTexture(gl, handle, 512, 512, GL3.GL_RED, GL3.GL_UNSIGNED_BYTE, false);
+		Font.textureHandle[2][0] = handle[0];
 		
 	}
 	

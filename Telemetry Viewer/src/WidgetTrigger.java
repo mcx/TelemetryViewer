@@ -26,13 +26,13 @@ public class WidgetTrigger implements Widget {
 		BOTH_EDGES   { @Override public String toString() { return "Both Edges";   } }
 	};
 	
-	final public WidgetToggleButton<Mode> mode;
-	final public WidgetToggleButton<Affects> affects;
-	final public WidgetToggleButton<Type> type;
+	final public WidgetToggleButton<Mode>         mode;
+	final public WidgetToggleButton<Affects>      affects;
+	final public WidgetToggleButton<Type>         type;
 	final public DatasetsInterface.WidgetDatasets channel;
-	final public WidgetTextfield<Float> level;
-	final public WidgetTextfield<Float> hysteresis;
-	final public WidgetSlider prePostRatio;
+	final public WidgetTextfield<Float>           level;
+	final public WidgetTextfield<Float>           hysteresis;
+	final public WidgetSlider<Integer>            prePostRatio;
 	final private List<Widget> widgets;
 	
 	private boolean triggeringPaused = false;
@@ -64,14 +64,14 @@ public class WidgetTrigger implements Widget {
 		affects = new WidgetToggleButton<Affects>("Affects", Affects.values(), Affects.THIS_CHART)
 		              .setExportLabel("trigger affects")
 		              .onChange((newSetting, oldSetting) -> {
-		                   if(OpenGLChartsView.globalTrigger == this && newSetting == Affects.THIS_CHART) { // exiting global trigger mode
-		                       OpenGLChartsView.globalTrigger = null;
-		                   } else if(OpenGLChartsView.globalTrigger != null && OpenGLChartsView.globalTrigger != this && newSetting == Affects.EVERY_CHART) { // taking global control
-		                       OpenGLChartsView.globalTrigger.affects.set(Affects.THIS_CHART);
-		                       OpenGLChartsView.globalTrigger.mode.set(Mode.DISABLED);
-		                       OpenGLChartsView.globalTrigger = this;
+		                   if(OpenGLCharts.globalTrigger == this && newSetting == Affects.THIS_CHART) { // exiting global trigger mode
+		                       OpenGLCharts.globalTrigger = null;
+		                   } else if(OpenGLCharts.globalTrigger != null && OpenGLCharts.globalTrigger != this && newSetting == Affects.EVERY_CHART) { // taking global control
+		                       OpenGLCharts.globalTrigger.affects.set(Affects.THIS_CHART);
+		                       OpenGLCharts.globalTrigger.mode.set(Mode.DISABLED);
+		                       OpenGLCharts.globalTrigger = this;
 		                   } else if(newSetting == Affects.EVERY_CHART) {
-		                       OpenGLChartsView.globalTrigger = this;
+		                       OpenGLCharts.globalTrigger = this;
 		                   }
 		                   return true;
 		               });
@@ -124,10 +124,10 @@ public class WidgetTrigger implements Widget {
 		// the event handler above will get called automatically, so reset userSpecifiedTheChannel to false
 		SwingUtilities.invokeLater(() -> userSpecifiedTheChannel = false);
 		
-		prePostRatio = new WidgetSlider("Pre/Post Ratio", 0, 10000, 2000)
-		                   .setExportLabel("trigger pre/post ratio")
-		                   .onDrag(dragStarted -> setPaused(true),
-		                             dragEnded -> setPaused(false));
+		prePostRatio = WidgetSlider.ofInt("Pre/Post Ratio", 0, 10000, 2000)
+		                           .setExportLabel("trigger pre/post ratio")
+		                           .onDrag(dragStarted -> setPaused(true),
+		                                     dragEnded -> setPaused(false));
 		
 		mode = new WidgetToggleButton<Mode>("", Mode.values(), Mode.DISABLED)
 		           .setExportLabel("trigger mode")
@@ -186,10 +186,10 @@ public class WidgetTrigger implements Widget {
 	}
 	
 	public void setPaused(boolean isPaused) {
-		if(isPaused && OpenGLChartsView.globalTrigger == this)
-			OpenGLChartsView.instance.pauseAndSaveState(triggeredEndTimestamp);
-		else if(!isPaused && OpenGLChartsView.globalTrigger == this)
-			OpenGLChartsView.instance.unpauseAndRestoreState();
+		if(isPaused && OpenGLCharts.globalTrigger == this)
+			OpenGLCharts.GUI.pauseAndSaveState(triggeredEndTimestamp);
+		else if(!isPaused && OpenGLCharts.globalTrigger == this)
+			OpenGLCharts.GUI.unpauseAndRestoreState();
 		
 		triggeringPaused = isPaused;
 	}
@@ -466,7 +466,7 @@ public class WidgetTrigger implements Widget {
 	}
 	
 	@Override public void appendTo(JPanel panel, String constraints) {
-		if(OpenGLChartsView.globalTrigger != null && OpenGLChartsView.globalTrigger != this) {
+		if(OpenGLCharts.globalTrigger != null && OpenGLCharts.globalTrigger != this) {
 			mode.set(Mode.DISABLED);
 			mode.setEnabled(false);
 		} else {

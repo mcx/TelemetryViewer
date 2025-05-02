@@ -50,7 +50,7 @@ public class OpenGLTimelineChart extends Chart {
 	
 	@Override public EventHandler drawChart(GL2ES3 gl, float[] chartMatrix, int width, int height, long nowTimestamp, int lastSampleNumber, double zoomLevel, int mouseX, int mouseY) {
 		
-		WidgetTrigger.Result triggerDetails = OpenGLChartsView.instance.triggerDetails;
+		WidgetTrigger.Result triggerDetails = OpenGLCharts.GUI.triggerDetails;
 
 		// determine the x-axis range
 		boolean haveTelemetry = Connections.telemetryExists();
@@ -67,11 +67,11 @@ public class OpenGLTimelineChart extends Chart {
 		                           float yTop = plot.height();
 		                           
 		                           String timeText = !haveTelemetry                      ? "[waiting for telemetry]" :
-		                                             triggerDetails.connection() == null ? SettingsView.formatTimestampToMilliseconds(nowTimestamp) :
-		                                             triggerDetails.isTriggered()        ? "Triggered " + SettingsView.formatTimestampToMilliseconds(nowTimestamp) :
-		                                                                                   "[Not Triggered] " + SettingsView.formatTimestampToMilliseconds(triggerDetails.nonTriggeredEndTimestamp());
+		                                             triggerDetails.connection() == null ? Settings.formatTimestampToMilliseconds(nowTimestamp) :
+		                                             triggerDetails.isTriggered()        ? "Triggered " + Settings.formatTimestampToMilliseconds(nowTimestamp) :
+		                                                                                   "[Not Triggered] " + Settings.formatTimestampToMilliseconds(triggerDetails.nonTriggeredEndTimestamp());
 		                           
-		                           boolean useTwoLines = haveTelemetry ? SettingsView.isTimeFormatTwoLines() && OpenGL.largeTextWidth(gl, timeText.replace('\n', ' ')) > plot.width() : false;
+		                           boolean useTwoLines = haveTelemetry ? Settings.isTimeFormatTwoLines() && OpenGL.largeTextWidth(gl, timeText.replace('\n', ' ')) > plot.width() : false;
 		                           float timeHeight = useTwoLines ? 2.3f * OpenGL.largeTextHeight : OpenGL.largeTextHeight;
 		                           
 		                           if(showControls.isTrue()) {
@@ -129,36 +129,36 @@ public class OpenGLTimelineChart extends Chart {
 		                                                                               xEndButtonRight - buttonSize*10f/12f,  yButtonsBottom + buttonSize/5f,
 		                                                                               xEndButtonRight - buttonSize*10f/12f,  yButtonsBottom + buttonSize*4f/5f);
 		                               
-		                               if(OpenGLChartsView.playSpeed > 1) {
-		                                   String s = Integer.toString(OpenGLChartsView.playSpeed);
+		                               if(OpenGLCharts.playSpeed > 1) {
+		                                   String s = Integer.toString(OpenGLCharts.playSpeed);
 		                                   float w = OpenGL.smallTextWidth(gl, s);
 		                                   OpenGL.drawSmallText(gl, s, (int) (xPlayButtonRight - Theme.lineWidth - w), (int) (yButtonsBottom + 2*Theme.lineWidth), 0);
-		                               } else if(OpenGLChartsView.playSpeed < -1) {
-		                                   String s = Integer.toString(-1 * OpenGLChartsView.playSpeed);
+		                               } else if(OpenGLCharts.playSpeed < -1) {
+		                                   String s = Integer.toString(-1 * OpenGLCharts.playSpeed);
 		                                   OpenGL.drawSmallText(gl, s, (int) (xRewindButtonLeft + Theme.lineWidth), (int) (yButtonsBottom + 2*Theme.lineWidth), 0);
 		                               }
 		                               
 		                               // outline a button if the mouse is over it
 		                               if(plot.mouseX() >= xBeginButtonLeft && plot.mouseX() <= xBeginButtonRight && plot.mouseY() >= yButtonsBottom && plot.mouseY() <= yButtonsTop) {
 		                                   OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xBeginButtonLeft, yButtonsBottom, buttonSize, buttonSize);
-		                                   handler = EventHandler.onPress(event -> OpenGLChartsView.instance.setPaused(Connections.getFirstTimestamp(), null, 0));
+		                                   handler = EventHandler.onPress(event -> OpenGLCharts.GUI.setPaused(Connections.getFirstTimestamp(), null, 0));
 		                               } else if(plot.mouseX() >= xRewindButtonLeft && plot.mouseX() <= xRewindButtonRight && plot.mouseY() >= yButtonsBottom && plot.mouseY() <= yButtonsTop) {
 		                                   OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xRewindButtonLeft, yButtonsBottom, buttonSize, buttonSize);
-		                                   handler = EventHandler.onPress(event -> OpenGLChartsView.instance.setPlayBackwards());
+		                                   handler = EventHandler.onPress(event -> OpenGLCharts.GUI.setPlayBackwards());
 		                               } else if(plot.mouseX() >= xPauseButtonLeft && plot.mouseX() <= xPauseButtonRight && plot.mouseY() >= yButtonsBottom && plot.mouseY() <= yButtonsTop) {
 		                                   OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xPauseButtonLeft, yButtonsBottom, buttonSize, buttonSize);
-		                                   handler = EventHandler.onPress(event -> OpenGLChartsView.instance.setPaused(triggerDetails.nonTriggeredEndTimestamp(), null, 0));
+		                                   handler = EventHandler.onPress(event -> OpenGLCharts.GUI.setPaused(triggerDetails.nonTriggeredEndTimestamp(), null, 0));
 		                               } else if(plot.mouseX() >= xPlayButtonLeft && plot.mouseX() <= xPlayButtonRight && plot.mouseY() >= yButtonsBottom && plot.mouseY() <= yButtonsTop) {
 		                                   OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xPlayButtonLeft, yButtonsBottom, buttonSize, buttonSize);
-		                                   handler = EventHandler.onPress(event -> OpenGLChartsView.instance.setPlayForwards());
+		                                   handler = EventHandler.onPress(event -> OpenGLCharts.GUI.setPlayForwards());
 		                               } else if(plot.mouseX() >= xEndButtonLeft && plot.mouseX() <= xEndButtonRight && plot.mouseY() >= yButtonsBottom && plot.mouseY() <= yButtonsTop) {
 		                                   OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xEndButtonLeft, yButtonsBottom, buttonSize, buttonSize);
-		                                   handler = EventHandler.onPress(event -> OpenGLChartsView.instance.setPlayLive());
+		                                   handler = EventHandler.onPress(event -> OpenGLCharts.GUI.setPlayLive());
 		                               }
 		                               
 		                               // highlight the currently active button if the mouse is not already over a button
 		                               if(handler == null)
-		                                   switch(OpenGLChartsView.state) {
+		                                   switch(OpenGLCharts.state) {
 		                                       case REWINDING    -> OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xRewindButtonLeft, yButtonsBottom, buttonSize, buttonSize);
 		                                       case PLAYING      -> OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xPlayButtonLeft,   yButtonsBottom, buttonSize, buttonSize);
 		                                       case PLAYING_LIVE -> OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xEndButtonLeft,    yButtonsBottom, buttonSize, buttonSize);
@@ -200,7 +200,7 @@ public class OpenGLTimelineChart extends Chart {
 		                               OpenGL.drawBox(gl, Theme.tickLinesColor, 0, 0, plot.width(), timelineThickness);
 		                               
 		                               // draw a marker at the current (non-triggered) timestamp
-		                               float markerWidth = 6 * Charts.getDisplayScalingFactor();
+		                               float markerWidth = 6 * Settings.GUI.getChartScalingFactor();
 		                               float x = (float) (triggerDetails.nonTriggeredEndTimestamp() - minTimestamp) / (float) plotDomain * plot.width();
 		                               float y = timelineThickness;
 		                               OpenGL.drawTriangle2D(gl, Theme.tickLinesColor, x, y, x + markerWidth/2, y+markerWidth, x - markerWidth/2, y+markerWidth);
@@ -253,10 +253,10 @@ public class OpenGLTimelineChart extends Chart {
 		                                   if(!Connections.telemetryConnections.isEmpty() && Connections.cameraConnections.isEmpty()) {
 		                                       // only telemetry connections exist, so find the closest sample number
 		                                       var details = Connections.getClosestSampleDetailsFor(newMouseTimestamp);
-		                                       OpenGLChartsView.instance.setPaused(details.timestamp(), details.connection(), details.sampleNumber());
+		                                       OpenGLCharts.GUI.setPaused(details.timestamp(), details.connection(), details.sampleNumber());
 		                                   } else {
 		                                       // cameras exist, so use the timestamp
-		                                       OpenGLChartsView.instance.setPaused(newMouseTimestamp, null, 0);
+		                                       OpenGLCharts.GUI.setPaused(newMouseTimestamp, null, 0);
 		                                   }
 		                               },
 		                           null,

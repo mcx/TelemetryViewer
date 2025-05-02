@@ -102,7 +102,7 @@ public abstract class Chart {
 	 */
 	final public EventHandler draw(GL2ES3 gl, float[] chartMatrix, int width, int height, long endTimestamp, int endSampleNumber, double zoomLevel, int mouseX, int mouseY) {
 		
-		boolean openGLES = OpenGLChartsView.instance.openGLES;
+		boolean openGLES = OpenGLCharts.GUI.openGLES;
 		
 		// create the OpenGL timer queries if they don't already exist
 		if(!openGLES && gpuQueryHandles == null) {
@@ -113,7 +113,7 @@ public abstract class Chart {
 		}
 		
 		// if measuring CPU/GPU usage, calculate CPU/GPU time for the *previous frame*
-		if(SettingsView.instance.benchmarkingCheckbox.get()) {
+		if(Settings.GUI.benchmarkingEnabled.isTrue()) {
 			previousCpuMilliseconds = (cpuStopNanoseconds - cpuStartNanoseconds) / 1000000.0;
 			if(!openGLES) {
 				long[] gpuTimes = new long[2];
@@ -143,7 +143,7 @@ public abstract class Chart {
 		EventHandler handler = drawChart(gl, chartMatrix, width, height, endTimestamp, endSampleNumber, zoomLevel, mouseX, mouseY);
 		
 		// if measuring CPU/GPU usage, draw the CPU/GPU times over this chart
-		if(SettingsView.instance.benchmarkingCheckbox.get()) {
+		if(Settings.GUI.benchmarkingEnabled.isTrue()) {
 			// stop timers for *this frame*
 			cpuStopNanoseconds = System.nanoTime();
 			if(!openGLES)
@@ -203,19 +203,19 @@ public abstract class Chart {
 			throw new AssertionError("Invalid chart type.");
 
 		int topLeftX = lines.parseInteger("top left x = %d");
-		if(topLeftX < 0 || topLeftX >= SettingsView.instance.tileColumnsTextfield.get())
+		if(topLeftX < 0 || topLeftX >= Settings.GUI.tileColumns.get())
 			throw new AssertionError("Invalid chart position.");
 		
 		int topLeftY = lines.parseInteger("top left y = %d");
-		if(topLeftY < 0 || topLeftY >= SettingsView.instance.tileRowsTextfield.get())
+		if(topLeftY < 0 || topLeftY >= Settings.GUI.tileRows.get())
 			throw new AssertionError("Invalid chart position.");
 
 		int bottomRightX = lines.parseInteger("bottom right x = %d");
-		if(bottomRightX < 0 || bottomRightX >= SettingsView.instance.tileColumnsTextfield.get())
+		if(bottomRightX < 0 || bottomRightX >= Settings.GUI.tileColumns.get())
 			throw new AssertionError("Invalid chart position.");
 
 		int bottomRightY = lines.parseInteger("bottom right y = %d");
-		if(bottomRightY < 0 || bottomRightY >= SettingsView.instance.tileRowsTextfield.get())
+		if(bottomRightY < 0 || bottomRightY >= Settings.GUI.tileRows.get())
 			throw new AssertionError("Invalid chart position.");
 		
 		Charts.forEach(existingChart -> {
@@ -254,10 +254,10 @@ public abstract class Chart {
 	 */
 	final public void dispose() {
 		
-		ConfigureView.instance.closeIfUsedFor(this);
-		if(OpenGLChartsView.globalTrigger == trigger)
-			OpenGLChartsView.globalTrigger = null;
-		OpenGLChartsView.instance.chartsToDispose.add(this);
+		Configure.GUI.closeIfUsedFor(this);
+		if(OpenGLCharts.globalTrigger == trigger)
+			OpenGLCharts.globalTrigger = null;
+		OpenGLCharts.GUI.chartsToDispose.add(this);
 		
 	}
 	
@@ -318,8 +318,8 @@ public abstract class Chart {
 			this.xAnchor = xAnchor;
 			if(yAnchor >= 0)
 				this.yAnchors.add(yAnchor);
-			String title = (sampleNumber >= 0) ? "Sample " + sampleNumber + "\n" + SettingsView.formatTimestampToMilliseconds(timestamp) :
-			                                     SettingsView.formatTimestampToMilliseconds(timestamp);
+			String title = (sampleNumber >= 0) ? "Sample " + sampleNumber + "\n" + Settings.formatTimestampToMilliseconds(timestamp) :
+			                                     Settings.formatTimestampToMilliseconds(timestamp);
 			List.of(title.split("\n")).forEach(line -> rows.add(new Row(null, line)));
 		}
 		
@@ -434,7 +434,7 @@ public abstract class Chart {
 			float maxWidth = (float) rows.stream().mapToDouble(row -> (row.glColor == null) ?
 			                                                          OpenGL.smallTextWidth(gl, row.text) : 
 			                                                          OpenGL.smallTextWidth(gl, row.text) + OpenGL.smallTextHeight + Theme.tooltipTextPadding).max().orElse(0);
-			float padding = 6f * Charts.getDisplayScalingFactor();
+			float padding = 6f * Settings.GUI.getChartScalingFactor();
 			float boxWidth = maxWidth + (2 * padding);
 			float boxHeight = rows.size() * (OpenGL.smallTextHeight + padding) + padding;
 			

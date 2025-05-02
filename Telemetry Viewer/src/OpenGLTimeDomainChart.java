@@ -151,7 +151,7 @@ public class OpenGLTimeDomainChart extends Chart {
 		             .with(yAxisMaximumAutomatic, "sizegroup 1")
 		             .getPanel());
 		
-		boolean triggerDisabled = OpenGLChartsView.globalTrigger != null && OpenGLChartsView.globalTrigger != trigger;
+		boolean triggerDisabled = OpenGLCharts.globalTrigger != null && OpenGLCharts.globalTrigger != trigger;
 		gui.add(Theme.newWidgetsPanel(triggerDisabled ? "Trigger [Disabled due to global trigger]" : "Trigger")
 		             .with(trigger)
 		             .getPanel());
@@ -523,7 +523,7 @@ public class OpenGLTimeDomainChart extends Chart {
 		                mouseOverTriggerMarkers = false;
 		                if(trigger.isEnabled()) {
 		                    
-		                    float scalar = Charts.getDisplayScalingFactor();
+		                    float scalar = Settings.GUI.getChartScalingFactor();
 		                    float markerThickness = 3*scalar;
 		                    float markerLength = 5*scalar;
 		                    float yTriggerLevel = (trigger.level.get() - plotMinY) / (plotMaxY - plotMinY) * plot.height();
@@ -642,7 +642,7 @@ public class OpenGLTimeDomainChart extends Chart {
 		                                                       .toList();
 		                for(int i = 0; i < activeLevels.size(); i++) {
 		                    // following 3 lines from ChartUtils.drawMarkers()
-		                    float padding = 6f * Charts.getDisplayScalingFactor();
+		                    float padding = 6f * Settings.GUI.getChartScalingFactor();
 		                    float yBottom = padding + ((activeLevels.size() - 1 - i) * (padding + OpenGL.smallTextHeight + padding));
 		                    float yTop    = yBottom + OpenGL.smallTextHeight + padding;
 		                    

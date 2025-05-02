@@ -157,7 +157,7 @@ public class OpenGLDialChart extends Chart {
 				if(mouseX >= xMouseoverLeft && mouseX <= xMouseoverRight && mouseY >= yMouseoverBottom && mouseY <= yMouseoverTop) {
 					OpenGL.drawQuad2D(gl, Theme.legendBackgroundColor, xMouseoverLeft, yMouseoverBottom, xMouseoverRight, yMouseoverTop);
 					OpenGL.drawQuadOutline2D(gl, Theme.tickLinesColor, xMouseoverLeft, yMouseoverBottom, xMouseoverRight, yMouseoverTop);
-					handler = EventHandler.onPress(event -> ConfigureView.instance.forDataset(dataset));
+					handler = EventHandler.onPress(event -> Configure.GUI.forDataset(dataset));
 				}
 				OpenGL.drawLargeText(gl, datasetLabel, (int) xDatasetLabelLeft, (int) yDatasetLabelBaseline, 0);
 			}

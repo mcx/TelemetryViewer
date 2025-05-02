@@ -54,7 +54,7 @@ public class OpenGLFrequencyDomainChart extends Chart {
 	private WidgetTextfield<Integer> yAxisBinsTextfield;
 	
 	private WidgetCheckbox yAxisBinsAutomatic;
-	private WidgetSlider gamma;
+	private WidgetSlider<Float> gamma;
 	private WidgetTextfield<Float> minimumPower;
 	private WidgetCheckbox minimumPowerAutomatic;
 	private WidgetTextfield<Float> maximumPower;
@@ -133,9 +133,9 @@ public class OpenGLFrequencyDomainChart extends Chart {
 		                                      }
 		                                  });
 		
-		gamma = new WidgetSlider("Gamma", 0, 10, 5)
-		            .setExportLabel("histogram/waterfall fft gamma")
-		            .setDividedByTen();
+		gamma = WidgetSlider.ofFloat("Gamma", 0f, 1f, 0.5f)
+		                    .setExportLabel("histogram/waterfall fft gamma")
+		                    .withTickLabels(6);
 		
 		chartStyle = new WidgetToggleButton<ChartStyle>("Style", ChartStyle.values(), ChartStyle.SINGLE)
 		             .setExportLabel("fft style")
@@ -146,7 +146,7 @@ public class OpenGLFrequencyDomainChart extends Chart {
 		                  yAxisBinsTextfield.setVisible(newStyle == ChartStyle.HISTOGRAM);
 		                  yAxisBinsAutomatic.setVisible(newStyle == ChartStyle.HISTOGRAM);
 		                  gamma.setVisible(newStyle == ChartStyle.HISTOGRAM);
-		                  ConfigureView.instance.redrawIfUsedFor(this); // important: may need to revalidate/redraw the parent!
+		                  Configure.GUI.redrawIfUsedFor(this); // important: may need to revalidate/redraw the parent!
 		                  return true;
 		              });
 		
@@ -359,7 +359,7 @@ public class OpenGLFrequencyDomainChart extends Chart {
 		                               OpenGL.createHistogramTexture(gl, histogramTexHandle, xBinCount, yBinCount);
 		                           }
 		                           OpenGL.writeHistogramTexture(gl, histogramTexHandle, xBinCount, yBinCount, bytes.rewind());
-		                           OpenGL.drawHistogram(gl, histogramTexHandle, datasets.normalDatasets.get(datasetN).color.getGl(), fullScale, gamma.getFloat(), 0, 0, (int) plot.width(), (int) plot.height(), 1f/xBinCount/2f);
+		                           OpenGL.drawHistogram(gl, histogramTexHandle, datasets.normalDatasets.get(datasetN).color.getGl(), fullScale, gamma.get(), 0, 0, (int) plot.width(), (int) plot.height(), 1f/xBinCount/2f);
 		                       }
 		                   }
 		                   
@@ -626,6 +626,18 @@ public class OpenGLFrequencyDomainChart extends Chart {
 			int windowLength = 0;
 			List<List<float[]>> windows = new ArrayList<List<float[]>>(datasets.normalsCount());
 			
+			// stop if nothing to do
+			if(!datasets.hasNormals() || sampleCount < 2)
+				return new FFTs(false,
+				                binSizeHz,
+				                binCount,
+				                minHz,
+				                maxHz,
+				                minPower,
+				                maxPower,
+				                windowLength,
+				                windows);
+			
 			// calculate the FFTs
 			if(chartStyle == ChartStyle.SINGLE) {
 				
@@ -638,9 +650,8 @@ public class OpenGLFrequencyDomainChart extends Chart {
 					lastSampleNumber = firstSampleNumber;
 				sampleCount = lastSampleNumber - firstSampleNumber + 1;
 				
-				
 				// stop if nothing to do
-				if(!datasets.hasNormals() || sampleCount < 2)
+				if(sampleCount < 2)
 					return new FFTs(false,
 					                binSizeHz,
 					                binCount,

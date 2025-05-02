@@ -9,28 +9,62 @@ import javax.swing.JPanel;
 import javax.swing.JSlider;
 import javax.swing.SwingUtilities;
 
-public class WidgetSlider implements Widget {
+public class WidgetSlider<T> implements Widget {
+	
+	private enum Mode {INTEGER, LOG_INTEGER, FLOAT};
+	private final Mode mode;
 	
 	private String importExportLabel;
 	private JLabel prefixLabel;
 	private JSlider slider;
-	private volatile int value;
-	private boolean isLog2Mode = false;
-	private boolean isDividedByTen = false;
-	
+
+	private boolean changeHandlerCalled = false;
 	private Consumer<Boolean> mousePressedHandler;
-	private Consumer<Integer> newValueHandler;
+	private Consumer<T> newValueHandler;
 	private Consumer<Boolean> mouseReleasedHandler;
 	
+	// these will always be linear integers
+	// conversion to floats or log integers will be done when exposing them to the outside world
+	private final int min;
+	private final int max;
+	private volatile int value;
+	
+	public static WidgetSlider<Integer> ofInt(String label, int min, int max, int value) {
+		
+		return new WidgetSlider<Integer>(Mode.INTEGER, label, min, max, value);
+		
+	}
+	
+	public static WidgetSlider<Integer> ofLogInt(String label, int min, int max, int selectedValue) {
+		
+		int minimum = (int) (Math.log(min)           / Math.log(2));
+		int maximum = (int) (Math.log(max)           / Math.log(2));
+		int value   = (int) (Math.log(selectedValue) / Math.log(2));
+		return new WidgetSlider<Integer>(Mode.LOG_INTEGER, label, minimum, maximum, value);
+		
+	}
+	
+	public static WidgetSlider<Float> ofFloat(String label, float min, float max, float selectedValue) {
+		
+		int minimum = Math.round(min * 10f);
+		int maximum = Math.round(max * 10f);
+		int value   = Math.round(selectedValue * 10f);
+		return new WidgetSlider<Float>(Mode.FLOAT, label, minimum, maximum, value);
+		
+	}
+	
 	@SuppressWarnings("serial")
-	public WidgetSlider(String label, int min, int max, int selectedValue) {
+	private WidgetSlider(Mode mode, String label, int min, int max, int selectedValue) {
 		
+		this.mode = mode;
 		importExportLabel = label == null ? "" : label.toLowerCase();
-		
 		if(label != null && !label.equals(""))
 			prefixLabel = new JLabel(label + ":");
 		
-		value = selectedValue;
+		this.min = min;
+		this.max = max;
+		this.value = selectedValue;
+		
 		slider = new JSlider(min, max, selectedValue) {
 			@Override public Dimension getPreferredSize() {
 				Dimension d = super.getPreferredSize();
@@ -38,20 +72,6 @@ public class WidgetSlider implements Widget {
 				return d;
 			}
 		};
-		
-		// draw labels if the range is <20
-		if(max - min < 20) {
-			Hashtable<Integer, JLabel> labels = new Hashtable<Integer, JLabel>();
-			int tickCount = (max - min + 1);
-			int incrementAmount = (int) Math.ceil(tickCount / 8.0);
-			for(int i = min; i <= max; i += incrementAmount)
-				labels.put(i,  new JLabel("<html><font size=-2>" + i + "</font></html>"));
-			
-			slider.setMajorTickSpacing(1);
-			slider.setPaintTicks(true);
-			slider.setPaintLabels(true);
-			slider.setLabelTable(labels);
-		}
 		
 		slider.addMouseListener(new MouseAdapter() {
 			@Override public void mousePressed(MouseEvent e) {
@@ -65,59 +85,45 @@ public class WidgetSlider implements Widget {
 		});
 		
 		slider.addChangeListener(event -> {
-			int newValue = isLog2Mode ? (int) Math.pow(2, slider.getValue()) : slider.getValue();
+			int newValue = slider.getValue();
 			if(newValue == value)
 				return; // no change
 			value = newValue;
-			if(newValueHandler != null)
-				newValueHandler.accept(newValue);
+			if(newValueHandler != null) {
+				changeHandlerCalled = true;
+				newValueHandler.accept(get());
+			}
 		});
 		
 	}
 	
-	public WidgetSlider setLog2Mode() {
+	public WidgetSlider<T> withTickLabels(int maxTickCount) {
 		
-		isLog2Mode = true;
-		
-		// the slider always works in linear mode, so we need to map between linear/log to provide the illusion
-		int log2min   = (int) (Math.log(slider.getMinimum()) / Math.log(2));
-		int log2max   = (int) (Math.log(slider.getMaximum()) / Math.log(2));
-		int log2value = (int) (Math.log(slider.getValue())   / Math.log(2));
-		slider.setMinimum(log2min);
-		slider.setMaximum(log2max);
-		slider.setValue(log2value);
+		int incrementAmount = 1;
+		double range = (max - min + 1);
+		while(range / (incrementAmount + 1) > maxTickCount - 1)
+			incrementAmount++;
 		
 		Hashtable<Integer, JLabel> labels = new Hashtable<Integer, JLabel>();
-		int tickCount = (log2max - log2min + 1);
-		int incrementAmount = (int) Math.ceil(tickCount / 8.0); // max 8 tick labels, skip some labels if necessary
-		for(int i = log2min; i <= log2max; i += incrementAmount)
-			labels.put(i,  new JLabel("<html><font size=-2>" + (int) Math.pow(2, i) + "</font></html>"));
+		for(int i = min; i <= max; i += incrementAmount) {
+			String text = switch(mode) {
+				case INTEGER     -> Integer.toString(i);
+				case LOG_INTEGER -> Integer.toString((int) Math.pow(2, i));
+				case FLOAT       -> incrementAmount == 10 ? "%d".formatted((int) (i / 10.0)) :
+				                                            "%.1f".formatted(i / 10.0);
+			};
+			labels.put(i, new JLabel("<html><font size=-2>" + text + "</font></html>"));
+		}
+		slider.setMajorTickSpacing(incrementAmount);
+		slider.setPaintTicks(true);
+		slider.setPaintLabels(true);
 		slider.setLabelTable(labels);
 		
 		return this;
 		
 	}
 	
-	public WidgetSlider setDividedByTen() {
-		
-		isDividedByTen = true;
-		
-		Hashtable<Integer, JLabel> labels = new Hashtable<Integer, JLabel>();
-		int min = slider.getMinimum();
-		int max = slider.getMaximum();
-		int tickCount = (max - min + 1);
-		int incrementAmount = (int) Math.ceil(tickCount / 8.0); // max 8 tick labels, skip some labels if necessary
-		for(int i = min; i <= max; i += incrementAmount)
-			labels.put(i,  new JLabel("<html><font size=-2>" + ((i < 10)  ? "0." + i :
-			                                                    (i == 10) ? "1.0"    :
-			                                                    	        (int) (i / 10.0)) + "</font></html>"));
-		slider.setLabelTable(labels);
-		
-		return this;
-		
-	}
-	
-	public WidgetSlider setExportLabel(String label) {
+	public WidgetSlider<T> setExportLabel(String label) {
 		
 		importExportLabel = (label == null) ? "" : label;
 		return this;
@@ -127,14 +133,16 @@ public class WidgetSlider implements Widget {
 	/**
 	 * @param valueHandler    Will be called when the slider represents a new value. Can be null.
 	 */
-	public WidgetSlider onChange(Consumer<Integer> valueHandler) {
+	public WidgetSlider<T> onChange(Consumer<T> valueHandler) {
 		
 		newValueHandler = valueHandler;
 		
 		// call the value handler, but later, so the calling code can finish constructing things before the handler is triggered
 		SwingUtilities.invokeLater(() -> {
-			if(newValueHandler != null)
-				newValueHandler.accept(isLog2Mode ? (int) Math.pow(2, slider.getValue()) : slider.getValue());
+			if(newValueHandler != null && !changeHandlerCalled) {
+				changeHandlerCalled = true;
+				newValueHandler.accept(get());
+			}
 		});
 		
 		return this;
@@ -145,7 +153,7 @@ public class WidgetSlider implements Widget {
 	 * @param dragStartedHandler    Will be called when the mouse is pressed. Can be null.
 	 * @param dragEndedHandler      Will be called when the mouse is released. Can be null.
 	 */
-	public WidgetSlider onDrag(Consumer<Boolean> dragStartedHandler, Consumer<Boolean> dragEndedHandler) {
+	public WidgetSlider<T> onDrag(Consumer<Boolean> dragStartedHandler, Consumer<Boolean> dragEndedHandler) {
 		
 		mousePressedHandler = dragStartedHandler;
 		mouseReleasedHandler = dragEndedHandler;
@@ -155,26 +163,33 @@ public class WidgetSlider implements Widget {
 	
 	public void callHandler() {
 		
-		if(newValueHandler != null)
-			newValueHandler.accept(isLog2Mode ? (int) Math.pow(2, slider.getValue()) : slider.getValue());
+		if(newValueHandler != null) {
+			changeHandlerCalled = true;
+			newValueHandler.accept(get());
+		}
 		
 	}
 	
-	public void set(int newNumber) {
+	public void set(T newNumber) {
 		
-		slider.setValue(isLog2Mode ? (int) (Math.log(newNumber) / Math.log(2)) : newNumber);
+		int number = switch(mode) {
+			case INTEGER     -> (int) newNumber;
+			case LOG_INTEGER -> (int) (Math.log((int) newNumber) / Math.log(2));
+			case FLOAT       -> Math.round((float) newNumber * 10f);
+		};
+		number = Math.clamp(number, min, max);
+		slider.setValue(number);
 		
 	}
 	
-	public int get() {
+	@SuppressWarnings("unchecked")
+	public T get() {
 		
-		return value;
-		
-	}
-	
-	public float getFloat() {
-		
-		return isDividedByTen ? (value / 10f) : value;
+		return switch(mode) {
+			case INTEGER     -> (T) (Integer) value;
+			case LOG_INTEGER -> (T) (Integer) (int) Math.pow(2, value);
+			case FLOAT       -> (T) (Float)   (value / 10f);
+		};
 		
 	}
 
@@ -189,7 +204,7 @@ public class WidgetSlider implements Widget {
 
 	}
 
-	@Override public WidgetSlider setVisible(boolean isVisible) {
+	@Override public WidgetSlider<T> setVisible(boolean isVisible) {
 		
 		if(prefixLabel != null)
 			prefixLabel.setVisible(isVisible);
@@ -206,18 +221,25 @@ public class WidgetSlider implements Widget {
 		
 	}
 
+	@SuppressWarnings("unchecked")
 	@Override public void importFrom(Connections.QueueOfLines lines) throws AssertionError {
 
-		int number = lines.parseInteger(importExportLabel + " = %d");
-		set(number);
-		if(get() != number)
+		String text = lines.parseString(importExportLabel + " = %s");
+		set(switch(mode) {
+			case INTEGER     -> (T) (Integer) Integer.parseInt(text);
+			case LOG_INTEGER -> (T) (Integer) Integer.parseInt(text);
+			case FLOAT       -> (T) (Float)   Float.parseFloat(text);
+		});
+		
+		boolean accepted = get().toString().equals(text);
+		if(!accepted)
 			throw new AssertionError("Invalid setting for " + importExportLabel + ".\n");
 
 	}
 
 	@Override public void exportTo(PrintWriter file) {
 		
-		file.println("\t" + importExportLabel + " = " + get());
+		file.println("\t" + importExportLabel + " = " + get().toString());
 
 	}
 

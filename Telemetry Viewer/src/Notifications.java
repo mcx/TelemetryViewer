@@ -35,10 +35,10 @@ public class Notifications {
 		
 		public static Notification forMilliseconds(String level, String[] message, long milliseconds, boolean expiresOnConnection) {
 			Notification notification = new Notification();
-			Color color = level.equals("hint")    ? SettingsView.instance.hintsColorButton.get() :
-			              level.equals("warning") ? SettingsView.instance.warningsColorButton.get() :
-			              level.equals("failure") ? SettingsView.instance.failuresColorButton.get() :
-			                                        SettingsView.instance.devicesColorButton.get();
+			Color color = level.equals("hint")    ? Settings.GUI.hintsColor.get() :
+			              level.equals("warning") ? Settings.GUI.warningsColor.get() :
+			              level.equals("failure") ? Settings.GUI.failuresColor.get() :
+			                                        Settings.GUI.devicesColor.get();
 			notification.level = level;
 			notification.lines = message;
 			notification.glColor = new float[] {color.getRed() / 255f, color.getGreen() / 255f, color.getBlue() / 255f, 1.0f};
@@ -53,10 +53,10 @@ public class Notifications {
 		
 		public static Notification untilEvent(String level, String[] message, BooleanSupplier isExpired, boolean expiresOnConnection) {
 			Notification notification = new Notification();
-			Color color = level.equals("hint")    ? SettingsView.instance.hintsColorButton.get() :
-			              level.equals("warning") ? SettingsView.instance.warningsColorButton.get() :
-			              level.equals("failure") ? SettingsView.instance.failuresColorButton.get() :
-			                                        SettingsView.instance.devicesColorButton.get();
+			Color color = level.equals("hint")    ? Settings.GUI.hintsColor.get() :
+			              level.equals("warning") ? Settings.GUI.warningsColor.get() :
+			              level.equals("failure") ? Settings.GUI.failuresColor.get() :
+			                                        Settings.GUI.devicesColor.get();
 			notification.level = level;
 			notification.lines = message;
 			notification.glColor = new float[] {color.getRed() / 255f, color.getGreen() / 255f, color.getBlue() / 255f, 1.0f};
@@ -71,10 +71,10 @@ public class Notifications {
 		
 		public static Notification progressBar(String level, String[] message, AtomicLong currentAmount, long totalAmount) {
 			Notification notification = new Notification();
-			Color color = level.equals("hint")    ? SettingsView.instance.hintsColorButton.get() :
-			              level.equals("warning") ? SettingsView.instance.warningsColorButton.get() :
-			              level.equals("failure") ? SettingsView.instance.failuresColorButton.get() :
-			                                        SettingsView.instance.devicesColorButton.get();
+			Color color = level.equals("hint")    ? Settings.GUI.hintsColor.get() :
+			              level.equals("warning") ? Settings.GUI.warningsColor.get() :
+			              level.equals("failure") ? Settings.GUI.failuresColor.get() :
+			                                        Settings.GUI.devicesColor.get();
 			notification.level = level;
 			notification.lines = message;
 			notification.glColor = new float[] {color.getRed() / 255f, color.getGreen() / 255f, color.getBlue() / 255f, 1.0f};
@@ -152,7 +152,7 @@ public class Notifications {
 	public static void showHintForMilliseconds(String message, long milliseconds, boolean autoExpire) {
 
 		System.out.println(timestamp.format(new Date()) + "   [HINT    ]   " + message);
-		if(SettingsView.instance.hintsCheckbox.get())
+		if(Settings.GUI.hintsEnabled.isTrue())
 			notifications.add(Notification.forMilliseconds("hint", message.split("\\R"), milliseconds, autoExpire));
 		
 	}
@@ -168,7 +168,7 @@ public class Notifications {
 	public static void showHintUntil(String message, BooleanSupplier isExpired, boolean autoExpire) {
 
 		System.out.println(timestamp.format(new Date()) + "   [HINT    ]   " + message);
-		if(SettingsView.instance.hintsCheckbox.get())
+		if(Settings.GUI.hintsEnabled.isTrue())
 			notifications.add(Notification.untilEvent("hint", message.split("\\R"), isExpired, autoExpire));
 		
 	}
@@ -184,7 +184,7 @@ public class Notifications {
 	public static void showWarningForMilliseconds(String message, long milliseconds, boolean autoExpire) {
 
 		System.out.println(timestamp.format(new Date()) + "   [WARNING ]   " + message);
-		if(SettingsView.instance.warningsCheckbox.get())
+		if(Settings.GUI.warningsEnabled.isTrue())
 			notifications.add(Notification.forMilliseconds("warning", message.split("\\R"), milliseconds, autoExpire));
 		
 	}
@@ -200,7 +200,7 @@ public class Notifications {
 	public static void showFailureUntil(String message, BooleanSupplier isExpired, boolean autoExpire) {
 
 		System.out.println(timestamp.format(new Date()) + "   [FAILURE ]   " + message);
-		if(SettingsView.instance.failuresCheckbox.get()) {
+		if(Settings.GUI.failuresEnabled.isTrue()) {
 			notifications.add(Notification.untilEvent("failure", message.split("\\R"), isExpired, autoExpire));
 			Toolkit.getDefaultToolkit().beep();
 		}
@@ -218,7 +218,7 @@ public class Notifications {
 	public static void showFailureForMilliseconds(String message, long milliseconds, boolean autoExpire) {
 
 		System.out.println(timestamp.format(new Date()) + "   [FAILURE ]   " + message);
-		if(SettingsView.instance.failuresCheckbox.get()) {
+		if(Settings.GUI.failuresEnabled.isTrue()) {
 			notifications.add(Notification.forMilliseconds("failure", message.split("\\R"), milliseconds, autoExpire));
 			Toolkit.getDefaultToolkit().beep();
 		}
@@ -234,7 +234,7 @@ public class Notifications {
 	public static void showDevice(String message) {
 
 		System.out.println(timestamp.format(new Date()) + "   [DEVICE  ]   " + message);
-		if(SettingsView.instance.devicesCheckbox.get())
+		if(Settings.GUI.devicesEnabled.isTrue())
 			notifications.add(Notification.forMilliseconds("device", message.split("\\R"), 8000, false));
 		
 	}

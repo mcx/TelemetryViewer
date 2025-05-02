@@ -1,0 +1,439 @@
+import java.awt.Color;
+import java.awt.Dimension;
+import java.io.PrintWriter;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.SwingUtilities;
+
+import net.miginfocom.swing.MigLayout;
+
+/**
+ * Settings can be changed when the user interacts with the GUI or opens a Settings file.
+ * This class is the GUI that is optionally shown at the left side of the screen.
+ * The transmit GUIs are also drawn here because it's convenient to have them on the left side of the screen.
+ */
+@SuppressWarnings("serial")
+public class Settings extends JPanel {
+	
+	public static Settings GUI = new Settings();
+	
+	public WidgetCheckbox             hintsEnabled;
+	public WidgetColorPicker          hintsColor;
+	public WidgetCheckbox             warningsEnabled;
+	public WidgetColorPicker          warningsColor;
+	public WidgetCheckbox             failuresEnabled;
+	public WidgetColorPicker          failuresColor;
+	public WidgetCheckbox             devicesEnabled;
+	public WidgetColorPicker          devicesColor;
+	public WidgetCheckbox             autoReconnect;
+	public WidgetTextfield<Integer>   tileColumns;
+	public WidgetTextfield<Integer>   tileRows;
+	public WidgetCombobox<TimeFormat> timeFormat;
+	public WidgetCheckbox             timeFormat24hours;
+	public WidgetCheckbox             tooltipsEnabled;
+	public WidgetCheckbox             benchmarkingEnabled;
+	public WidgetSlider<Float>        scalingFactor;
+	public WidgetSlider<Integer>      antialiasingLevel;
+	
+	public float getChartScalingFactor() {
+		return Theme.osDpiScalingFactor * scalingFactor.get();
+	}
+	
+	public void importFrom(Connections.QueueOfLines lines) throws AssertionError {
+		
+		lines.parseExact("Settings:");
+		lines.parseExact("");
+		
+		hintsEnabled.importFrom(lines);
+		hintsColor.importFrom(lines);
+		warningsEnabled.importFrom(lines);
+		warningsColor.importFrom(lines);
+		failuresEnabled.importFrom(lines);
+		failuresColor.importFrom(lines);
+		devicesEnabled.importFrom(lines);
+		devicesColor.importFrom(lines);
+		autoReconnect.importFrom(lines);
+		tileColumns.importFrom(lines);
+		tileRows.importFrom(lines);
+		timeFormat.importFrom(lines);
+		timeFormat24hours.importFrom(lines);
+		tooltipsEnabled.importFrom(lines);
+		benchmarkingEnabled.importFrom(lines);
+		scalingFactor.importFrom(lines);
+		antialiasingLevel.importFrom(lines);
+		lines.parseExact("");
+		
+	}
+	
+	public void exportTo(PrintWriter file) {
+		
+		file.println("Settings:");
+		file.println("");
+		
+		hintsEnabled.exportTo(file);
+		hintsColor.exportTo(file);
+		warningsEnabled.exportTo(file);
+		warningsColor.exportTo(file);
+		failuresEnabled.exportTo(file);
+		failuresColor.exportTo(file);
+		devicesEnabled.exportTo(file);
+		devicesColor.exportTo(file);
+		autoReconnect.exportTo(file);
+		tileColumns.exportTo(file);
+		tileRows.exportTo(file);
+		timeFormat.exportTo(file);
+		timeFormat24hours.exportTo(file);
+		tooltipsEnabled.exportTo(file);
+		benchmarkingEnabled.exportTo(file);
+		scalingFactor.exportTo(file);
+		antialiasingLevel.exportTo(file);
+		file.println("");
+		
+	}
+	
+	public enum TimeFormat {
+		TIME_AND_YYYY_MM_DD { @Override public String toString() { return "Time and YYYY-MM-DD"; } },
+		TIME_AND_MM_DD_YYYY { @Override public String toString() { return "Time and MM-DD-YYYY"; } },
+		TIME_AND_DD_MM_YYYY { @Override public String toString() { return "Time and DD-MM-YYYY"; } },
+		ONLY_TIME           { @Override public String toString() { return "Only Time";           } };
+	};
+	private static SimpleDateFormat timestampFormatterMilliseconds = new SimpleDateFormat("hh:mm:ss.SSS a");
+	private static SimpleDateFormat timestampFormatterSeconds      = new SimpleDateFormat("hh:mm:ss a");
+	private static SimpleDateFormat timestampFormatterMinutes      = new SimpleDateFormat("hh:mm a");
+	private static SimpleDateFormat timestampFormatterCamera       = new SimpleDateFormat("yyyy-MM-dd hh:mm:ss.SSS a");
+	
+	/**
+	 * @param timestamp    The timestamp (milliseconds since 1970-01-01.)
+	 * @return             String representation with milliseconds resolution, always showing the date.
+	 */
+	public static String formatCameraTimestamp(long timestamp) { return timestampFormatterCamera.format(timestamp); }
+	
+	/**
+	 * @param timestamp    The timestamp (milliseconds since 1970-01-01.)
+	 * @return             String representation with milliseconds resolution.
+	 */
+	public static String formatTimestampToMilliseconds(long timestamp) { return timestampFormatterMilliseconds.format(timestamp); }
+	
+	/**
+	 * @param timestamp    The timestamp (milliseconds since 1970-01-01.)
+	 * @return             String representation with seconds resolution (no milliseconds.)
+	 */
+	public static String formatTimestampToSeconds(long timestamp) { return timestampFormatterSeconds.format(timestamp); }
+	
+	/**
+	 * @param timestamp    The timestamp (milliseconds since 1970-01-01.)
+	 * @return             String representation with minutes resolution (no seconds or milliseconds.)
+	 */
+	public static String formatTimestampToMinutes(long timestamp) { return timestampFormatterMinutes.format(timestamp); }
+	
+	public static boolean isTimeFormatTwoLines() { return !GUI.timeFormat.is(TimeFormat.ONLY_TIME); }
+	
+	private boolean isVisible = true;
+	private JScrollPane scrollablePanel;
+	private JPanel panel;
+	private List<JPanel> txGuis = new ArrayList<JPanel>();
+	
+	/**
+	 * Private constructor to enforce singleton usage.
+	 */
+	private Settings() {
+		
+		setLayout(new MigLayout("wrap 1, insets 0, filly")); // 1 column, no border
+		panel = new JPanel();
+		panel.setLayout(new MigLayout("hidemode 3, wrap 1, insets" + Theme.padding + " " + Theme.padding + " " + Theme.padding + " 0, gapy " + Theme.padding*2, "[fill,grow]"));
+		scrollablePanel = new JScrollPane(panel, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+		scrollablePanel.setBorder(null);
+		scrollablePanel.getVerticalScrollBar().setUnitIncrement(10);
+		add(scrollablePanel, "grow");
+		
+		hintsEnabled = new WidgetCheckbox("Show Hints", true)
+		                   .setExportLabel("show hint notifications")
+		                   .onChange(newVisibility -> {
+		                       if(!newVisibility)
+		                           Notifications.getNotifications().removeIf(note -> note.level.equals("hint"));
+		                   });
+		
+		hintsColor = new WidgetColorPicker("Hint Notifications", Color.GREEN)
+		                 .setIndicateUsedColors(false)
+		                 .onEvent(newColor -> {
+		                      Notifications.getNotifications().forEach(note -> {
+		                          if(note.level.equals("hint")) note.glColor = new float[] {newColor.getRed() / 255f, newColor.getGreen() / 255f, newColor.getBlue() / 255f, 0.2f};
+		                      });
+		                  });
+		
+		warningsEnabled = new WidgetCheckbox("Show Warnings", true)
+		                      .setExportLabel("show warning notifications")
+		                      .onChange(newVisibility -> {
+		                          if(!newVisibility)
+		                              Notifications.getNotifications().removeIf(note -> note.level.equals("warning"));
+		                      });
+		
+		warningsColor = new WidgetColorPicker("Warning Notifications", Color.YELLOW)
+		                    .setIndicateUsedColors(false)
+		                    .onEvent(newColor -> {
+		                        Notifications.getNotifications().forEach(note -> {
+		                            if(note.level.equals("warning"))
+		                                note.glColor = new float[] {newColor.getRed() / 255f, newColor.getGreen() / 255f, newColor.getBlue() / 255f, 0.2f};
+		                        });
+		                    });
+		
+		failuresEnabled = new WidgetCheckbox("Show Failures", true)
+		                      .setExportLabel("show failure notifications")
+		                      .onChange(newVisibility -> {
+		                          if(!newVisibility)
+		                              Notifications.getNotifications().removeIf(note -> note.level.equals("failure"));
+		                      });
+		
+		failuresColor = new WidgetColorPicker("Failure Notifications", Color.RED)
+		                    .setIndicateUsedColors(false)
+		                    .onEvent(newColor -> {
+		                        Notifications.getNotifications().forEach(note -> {
+		                            if(note.level.equals("failure"))
+		                                note.glColor = new float[] {newColor.getRed() / 255f, newColor.getGreen() / 255f, newColor.getBlue() / 255f, 0.2f};
+		                        });
+		                    });
+		
+		devicesEnabled = new WidgetCheckbox("Show Device Availability", true)
+		                     .setExportLabel("show device notifications")
+		                     .onChange(newVisibility -> {
+		                         if(!newVisibility)
+		                             Notifications.getNotifications().removeIf(note -> note.level.equals("verbose"));
+		                     });
+		
+		devicesColor = new WidgetColorPicker("Device Notifications", Color.CYAN)
+		                   .setIndicateUsedColors(false)
+		                   .onEvent(newColor -> {
+		                       Notifications.getNotifications().forEach(note -> {
+		                           if(note.level.equals("device"))
+		                               note.glColor = new float[] {newColor.getRed() / 255f, newColor.getGreen() / 255f, newColor.getBlue() / 255f, 0.2f};
+		                       });
+		                   });
+		
+		autoReconnect = new WidgetCheckbox("Automatically Reconnect After Failures", true);
+		
+		tileColumns = WidgetTextfield.ofInt(1, 15, 6)
+		                             .setPrefix("Tile Columns")
+		                             .setExportLabel("tile column count")
+		                             .onChange((newNumber, oldNumber) -> Charts.stream().noneMatch(chart -> chart.intersects(newNumber, 0, oldNumber, tileRows.get())));
+		
+		tileRows = WidgetTextfield.ofInt(1, 15, 6)
+		                          .setPrefix("Tile Rows")
+		                          .setExportLabel("tile row count")
+		                          .onChange((newNumber, oldNumber) -> Charts.stream().noneMatch(chart -> chart.intersects(0, newNumber, tileColumns.get(), oldNumber)));
+		
+		timeFormat = new WidgetCombobox<TimeFormat>("Time Format", Arrays.asList(TimeFormat.values()), TimeFormat.ONLY_TIME)
+		                 .setExportLabel("time format")
+		                 .onChange((newFormat, oldFormat) -> {
+		                     boolean is24hourMode = timeFormat24hours.isTrue();
+		                     switch(newFormat) {
+		                         case TIME_AND_YYYY_MM_DD -> {
+		                             timestampFormatterCamera       = new SimpleDateFormat(is24hourMode ? "yyyy-MM-dd kk:mm:ss.SSS"  : "yyyy-MM-dd hh:mm:ss.SSS a");
+		                             timestampFormatterMilliseconds = new SimpleDateFormat(is24hourMode ? "kk:mm:ss.SSS\nyyyy-MM-dd" : "hh:mm:ss.SSS a\nyyyy-MM-dd");
+		                             timestampFormatterSeconds      = new SimpleDateFormat(is24hourMode ? "kk:mm:ss\nyyyy-MM-dd"     : "hh:mm:ss a\nyyyy-MM-dd");
+		                             timestampFormatterMinutes      = new SimpleDateFormat(is24hourMode ? "kk:mm\nyyyy-MM-dd"        : "hh:mm a\nyyyy-MM-dd");
+		                         }
+		                         case TIME_AND_MM_DD_YYYY -> {
+		                             timestampFormatterCamera       = new SimpleDateFormat(is24hourMode ? "MM-dd-yyyy kk:mm:ss.SSS"  : "MM-dd-yyyy hh:mm:ss.SSS a");
+		                             timestampFormatterMilliseconds = new SimpleDateFormat(is24hourMode ? "kk:mm:ss.SSS\nMM-dd-yyyy" : "hh:mm:ss.SSS a\nMM-dd-yyyy");
+		                             timestampFormatterSeconds      = new SimpleDateFormat(is24hourMode ? "kk:mm:ss\nMM-dd-yyyy"     : "hh:mm:ss a\nMM-dd-yyyy");
+		                             timestampFormatterMinutes      = new SimpleDateFormat(is24hourMode ? "kk:mm\nMM-dd-yyyy"        : "hh:mm a\nMM-dd-yyyy");
+		                         }
+		                         case TIME_AND_DD_MM_YYYY -> {
+		                             timestampFormatterCamera       = new SimpleDateFormat(is24hourMode ? "dd-MM-yyyy kk:mm:ss.SSS"  : "dd-MM-yyyy hh:mm:ss.SSS a");
+		                             timestampFormatterMilliseconds = new SimpleDateFormat(is24hourMode ? "kk:mm:ss.SSS\ndd-MM-yyyy" : "hh:mm:ss.SSS a\ndd-MM-yyyy");
+		                             timestampFormatterSeconds      = new SimpleDateFormat(is24hourMode ? "kk:mm:ss\ndd-MM-yyyy"     : "hh:mm:ss a\ndd-MM-yyyy");
+		                             timestampFormatterMinutes      = new SimpleDateFormat(is24hourMode ? "kk:mm\ndd-MM-yyyy"        : "hh:mm a\ndd-MM-yyyy");
+		                         }
+		                         case ONLY_TIME -> {
+		                             timestampFormatterCamera       = new SimpleDateFormat(is24hourMode ? "yyyy-MM-dd kk:mm:ss.SSS"  : "yyyy-MM-dd hh:mm:ss.SSS a");
+		                             timestampFormatterMilliseconds = new SimpleDateFormat(is24hourMode ? "kk:mm:ss.SSS" : "hh:mm:ss.SSS a");
+		                             timestampFormatterSeconds      = new SimpleDateFormat(is24hourMode ? "kk:mm:ss"     : "hh:mm:ss a");
+		                             timestampFormatterMinutes      = new SimpleDateFormat(is24hourMode ? "kk:mm"        : "hh:mm a");
+		                         }
+		                     }
+		                     return true;
+		                 });
+
+		timeFormat24hours = new WidgetCheckbox("Show 24-Hour Time", false)
+		                        .setExportLabel("show 24-hour time")
+		                        .onChange(newValue -> {
+		                            boolean is24hourMode = newValue;
+		                            switch(timeFormat.get()) {
+		                                case TIME_AND_YYYY_MM_DD -> {
+		                                    timestampFormatterCamera       = new SimpleDateFormat(is24hourMode ? "yyyy-MM-dd kk:mm:ss.SSS"  : "yyyy-MM-dd hh:mm:ss.SSS a");
+		                                    timestampFormatterMilliseconds = new SimpleDateFormat(is24hourMode ? "kk:mm:ss.SSS\nyyyy-MM-dd" : "hh:mm:ss.SSS a\nyyyy-MM-dd");
+		                                    timestampFormatterSeconds      = new SimpleDateFormat(is24hourMode ? "kk:mm:ss\nyyyy-MM-dd"     : "hh:mm:ss a\nyyyy-MM-dd");
+		                                    timestampFormatterMinutes      = new SimpleDateFormat(is24hourMode ? "kk:mm\nyyyy-MM-dd"        : "hh:mm a\nyyyy-MM-dd");
+		                                }
+		                                case TIME_AND_MM_DD_YYYY -> {
+		                                    timestampFormatterCamera       = new SimpleDateFormat(is24hourMode ? "MM-dd-yyyy kk:mm:ss.SSS"  : "MM-dd-yyyy hh:mm:ss.SSS a ");
+		                                    timestampFormatterMilliseconds = new SimpleDateFormat(is24hourMode ? "kk:mm:ss.SSS\nMM-dd-yyyy" : "hh:mm:ss.SSS a\nMM-dd-yyyy");
+		                                    timestampFormatterSeconds      = new SimpleDateFormat(is24hourMode ? "kk:mm:ss\nMM-dd-yyyy"     : "hh:mm:ss a\nMM-dd-yyyy");
+		                                    timestampFormatterMinutes      = new SimpleDateFormat(is24hourMode ? "kk:mm\nMM-dd-yyyy"        : "hh:mm a\nMM-dd-yyyy");
+		                                }
+		                                case TIME_AND_DD_MM_YYYY -> {
+		                                    timestampFormatterCamera       = new SimpleDateFormat(is24hourMode ? "dd-MM-yyyy kk:mm:ss.SSS"  : "dd-MM-yyyy hh:mm:ss.SSS a");
+		                                    timestampFormatterMilliseconds = new SimpleDateFormat(is24hourMode ? "kk:mm:ss.SSS\ndd-MM-yyyy" : "hh:mm:ss.SSS a\ndd-MM-yyyy");
+		                                    timestampFormatterSeconds      = new SimpleDateFormat(is24hourMode ? "kk:mm:ss\ndd-MM-yyyy"     : "hh:mm:ss a\ndd-MM-yyyy");
+		                                    timestampFormatterMinutes      = new SimpleDateFormat(is24hourMode ? "kk:mm\ndd-MM-yyyy"        : "hh:mm a\ndd-MM-yyyy");
+		                                }
+		                                case ONLY_TIME -> {
+		                                    timestampFormatterCamera       = new SimpleDateFormat(is24hourMode ? "yyyy-MM-dd kk:mm:ss.SSS"  : "yyyy-MM-dd hh:mm:ss.SSS a");
+		                                    timestampFormatterMilliseconds = new SimpleDateFormat(is24hourMode ? "kk:mm:ss.SSS" : "hh:mm:ss.SSS a");
+		                                    timestampFormatterSeconds      = new SimpleDateFormat(is24hourMode ? "kk:mm:ss"     : "hh:mm:ss a");
+		                                    timestampFormatterMinutes      = new SimpleDateFormat(is24hourMode ? "kk:mm"        : "hh:mm a");
+		                                }
+		                            }
+		                        });
+		
+		tooltipsEnabled = new WidgetCheckbox("Show Plot Tooltips", true);
+		
+		benchmarkingEnabled = new WidgetCheckbox("Show Benchmarks", false)
+		                          .setExportLabel("benchmarking");
+		
+		scalingFactor = WidgetSlider.ofFloat("Scaling Factor", 1f, 8f, 1f)
+		                            .setExportLabel("chart scaling factor")
+		                            .withTickLabels(8)
+		                            .onChange(newValue -> OpenGLCharts.scalingFactor = newValue);
+		
+		antialiasingLevel = WidgetSlider.ofLogInt("Antialiasing", 1, 16, 8)
+		                                .setExportLabel("antialiasing level")
+		                                .withTickLabels(5)
+		                                .onChange(newLevel -> {
+		                                     if(newLevel != OpenGLCharts.GUI.aaLevel)
+		                                         OpenGLCharts.regenerate();
+		                                 });
+		
+		// populate with everything except the TX panels
+		panel.add(Theme.newWidgetsPanel("Notifications and Connections")
+		               .with(hintsEnabled, "split 2, grow x")
+		               .with(hintsColor)
+		               .with(warningsEnabled, "split 2, grow x")
+		               .with(warningsColor)
+		               .with(failuresEnabled, "split 2, grow x")
+		               .with(failuresColor)
+		               .with(devicesEnabled, "split 2, grow x")
+		               .with(devicesColor)
+		               .with(autoReconnect)
+		               .getPanel());
+		
+		panel.add(Theme.newWidgetsPanel("Charts")
+		               .with(tileColumns)
+		               .with(tileRows)
+		               .withGap(Theme.padding)
+		               .with(timeFormat)
+		               .with(timeFormat24hours)
+		               .withGap(Theme.padding)
+		               .with(tooltipsEnabled)
+		               .with(benchmarkingEnabled)
+		               .with(scalingFactor)
+		               .with(antialiasingLevel)
+		               .getPanel());
+		
+		// note: setVisible() must be called any time a connection is added/removed/connected/disconnected because it will update the TX panels
+		setVisible(false);
+		
+	}
+	
+	/**
+	 * Shows or hides this panel, and repopulates the panel to ensure everything is in sync.
+	 * 
+	 * @param visible    True or false.
+	 */
+	@Override public void setVisible(boolean visible) {
+		
+		txGuis.forEach(txGui -> panel.remove(txGui));
+		txGuis.clear();
+		
+		// if visible, also repopulate the panel with transmit GUIs
+		if(visible)
+			Connections.allConnections.forEach(connection -> {
+				JPanel txGui = connection.getUpdatedTransmitGUI();
+				if(txGui != null) {
+					panel.add(txGui);
+					txGuis.add(txGui);
+				}
+			});
+		
+		isVisible = visible;
+		revalidate();
+		repaint();
+		
+	}
+	
+	/**
+	 * @return    True if the panel is visible.
+	 */
+	@Override public boolean isVisible() {
+		
+		return isVisible;
+		
+	}
+	
+	/**
+	 * Redraws the SettingsView if it is visible. This should be done when any of the following events occur:
+	 * 
+	 *     When a connection is created/removed
+	 *         because the TX GUI will be added/removed
+	 *         
+	 *     When a connection connects/disconnects
+	 *         because the TX GUI becomes enabled/disabled
+	 *         
+	 *     When a TX packet is bookmarked/un-bookmarked
+	 *         because the TX GUI shows the bookmark list
+	 */
+	public void redraw() {
+		
+		Runnable task = () -> {
+			if(isVisible())
+				setVisible(true);
+		};
+		
+		// we can't assume we're on the EDT
+		if(SwingUtilities.isEventDispatchThread())
+			task.run();
+		else
+			SwingUtilities.invokeLater(task);
+		
+	}
+	
+	/**
+	 * Ensures this panel is sized correctly.
+	 */
+	@Override public Dimension getPreferredSize() {
+		
+		Dimension scrollSize = panel.getPreferredSize();
+		if(getSize().height < scrollSize.height) {
+			scrollSize.width += scrollablePanel.getVerticalScrollBar().getPreferredSize().width;
+			scrollablePanel.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
+		} else {
+			scrollablePanel.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_NEVER);
+		}
+		
+		// ignore the height of the TX panels
+		txGuis.forEach(gui -> {
+			scrollSize.height -= gui.getPreferredSize().height;
+			scrollSize.height -= 5*Theme.padding;
+		});
+		
+		// hide if not visible
+		if(!isVisible)
+			scrollSize.width = 0;
+		
+		// revalidate if the size changed
+		Dimension oldScrollSize = scrollablePanel.getPreferredSize();
+		if(!scrollSize.equals(oldScrollSize))
+			revalidate();
+		
+		// apply change
+		scrollablePanel.setPreferredSize(scrollSize);
+		return super.getPreferredSize();
+		
+	}
+
+}

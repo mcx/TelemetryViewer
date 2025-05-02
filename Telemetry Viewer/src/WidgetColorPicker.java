@@ -213,7 +213,7 @@ public class WidgetColorPicker implements Widget {
 			mouseOverColor = null;
 			this.indicateUsedColors = indicateUsedColors;
 			
-			setSize((int) (600 * Charts.getDisplayScalingFactorForGUI()), (int) (400 * Charts.getDisplayScalingFactorForGUI()));
+			setSize(600, 400);
 			setTitle("Pick a color for " + name);
 			setLayout(new BorderLayout());
 			add(new Palette(), BorderLayout.CENTER);
@@ -563,7 +563,7 @@ public class WidgetColorPicker implements Widget {
 					// draw a thick outline if mouseOver a swatch
 					Stroke originalStroke = g2.getStroke();
 					g2.setColor(outlineColor);
-					g2.setStroke(new BasicStroke(2*Charts.getDisplayScalingFactorForGUI()));
+					g2.setStroke(new BasicStroke(2));
 					g2.drawOval(outlineX, outlineY, swatchDiameter, swatchDiameter);
 					
 					// draw a tooltip if any datasets or bitfield states use this color
@@ -600,7 +600,7 @@ public class WidgetColorPicker implements Widget {
 						int boxHeight = textHeight*datasetNames.size() + gap;
 						int xBoxLeft = outlineX + swatchDiameter/2 - boxWidth/2;
 						if(xBoxLeft + boxWidth > width)
-							xBoxLeft = width - boxWidth - (int) Charts.getDisplayScalingFactorForGUI();
+							xBoxLeft = width - boxWidth;
 						if(xBoxLeft < 0)
 							xBoxLeft = 0;
 						int yBoxTop = outlineY - boxHeight;

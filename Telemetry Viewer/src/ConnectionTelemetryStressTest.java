@@ -29,10 +29,10 @@ public class ConnectionTelemetryStressTest extends ConnectionTelemetry {
 		
 		removeAllData();
 		Charts.removeAll();
-		SettingsView.instance.tileColumnsTextfield.set(6);
-		SettingsView.instance.tileRowsTextfield.set(6);
-		SettingsView.instance.hintsCheckbox.set(true);
-		SettingsView.instance.antialiasingSlider.set(1);
+		Settings.GUI.tileColumns.set(6);
+		Settings.GUI.tileRows.set(6);
+		Settings.GUI.hintsEnabled.set(true);
+		Settings.GUI.antialiasingLevel.set(1);
 		
 		OpenGLTimeDomainChart chart = (OpenGLTimeDomainChart) Charts.Type.TIME_DOMAIN.createAt(0, 0, 5, 5);
 		chart.datasetsAndDurationWidget.datasets.get(getDatasetByLocation(1)).set(true);

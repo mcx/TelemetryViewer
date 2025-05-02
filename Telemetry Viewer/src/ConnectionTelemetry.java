@@ -74,7 +74,6 @@ public abstract class ConnectionTelemetry extends Connection {
 	
 	public void setFieldsDefined(boolean isDefined) {
 		fieldsDefined = isDefined;
-		CommunicationView.instance.redraw(); // also redraw the bottom panel, because the Export button is enabled/disabled based on this
 	}
 	
 	public boolean isFieldsDefined() {
@@ -235,7 +234,7 @@ public abstract class ConnectionTelemetry extends Connection {
 			String bytesAsHexString = transmitData.getAsHexText(transmitAppendCR.get(), transmitAppendLF.get());
 			if(transmitSavedPackets.stream().noneMatch(packet -> packet.label.equals(label))) {
 				transmitSavedPackets.add(new Packet(label, bytes, bytesAsHexString));
-				SettingsView.instance.redraw(); // so this TX GUI gets redrawn
+				Settings.GUI.redraw(); // so this TX GUI gets redrawn
 			}
 			transmitData.set("");
 		});
@@ -360,7 +359,7 @@ public abstract class ConnectionTelemetry extends Connection {
 		                       transmitRepeatedlyMilliseconds.set(1000);
 		                   }
 		                   
-		                   SettingsView.instance.redraw(); // because the TX GUI is different for TC66 and non-TC66 protocols
+		                   Settings.GUI.redraw(); // because the TX GUI is different for TC66 and non-TC66 protocols
 		                   return true;
 		               });
 		
@@ -561,8 +560,8 @@ public abstract class ConnectionTelemetry extends Connection {
 		getDatasetsList().forEach(dataset -> dataset.floats.clear());
 		clearTimestamps();
 		
-		CommunicationView.instance.redraw();
-		OpenGLChartsView.instance.setPlayLive();
+		Connections.GUI.redraw();
+		OpenGLCharts.GUI.setPlayLive();
 		
 	}
 	
@@ -1190,7 +1189,7 @@ public abstract class ConnectionTelemetry extends Connection {
 									tc66firmwareVersion = "Firmware version: " + firmwareVersion;
 									tc66serialNumber = "Serial number: " + serialNumber;
 									tc66powerOnCount = "Power on count: " + powerOnCount;
-									SettingsView.instance.redraw();
+									Settings.GUI.redraw();
 //									Notifications.printInfo(String.format("Device: %s, Firmware Version: %s, Serial Number: %d, Power On Count: %d", device, firmwareVersion, serialNumber, powerOnCount));
 								}
 								
@@ -1462,7 +1461,7 @@ public abstract class ConnectionTelemetry extends Connection {
 		int oldSampleCount = sampleCount.getAndAdd(amount);
 		if(oldSampleCount == 0) {
 			firstTimestamp = timestamp;
-			CommunicationView.instance.redraw();
+			Connections.GUI.redraw();
 		}
 		lastTimestamp = timestamp;
 		
@@ -1482,7 +1481,7 @@ public abstract class ConnectionTelemetry extends Connection {
 		int oldSampleCount = sampleCount.getAndAdd(amount);
 		if(oldSampleCount == 0) {
 			firstTimestamp = timestamp;
-			CommunicationView.instance.redraw();
+			Connections.GUI.redraw();
 		}
 		lastTimestamp = timestamp;
 		
@@ -1718,7 +1717,7 @@ public abstract class ConnectionTelemetry extends Connection {
 			return "A field does not exist at location " + location + ".";
 		
 		// ensure the configure panel isn't open
-		ConfigureView.instance.close();
+		Configure.GUI.close();
 		
 		// remove any charts referencing the dataset
 		Charts.removeIf(chart -> chart.datasets.contains(field) || (chart.trigger != null && chart.trigger.datasets.contains(field)));
@@ -1731,8 +1730,8 @@ public abstract class ConnectionTelemetry extends Connection {
 		// remove timestamps if no other datasets are left
 		if(fields.isEmpty()) {
 			clearTimestamps();
-			CommunicationView.instance.redraw();
-			OpenGLChartsView.instance.setPlayLive();
+			Connections.GUI.redraw();
+			OpenGLCharts.GUI.setPlayLive();
 			
 			// if this is the only connection, also remove all charts because a timeline chart may still exist
 			if(Connections.allConnections.size() == 1)
@@ -1900,7 +1899,7 @@ public abstract class ConnectionTelemetry extends Connection {
 				removeButton.setBorder(Theme.narrowButtonBorder);
 				removeButton.addActionListener(click -> {
 					transmitSavedPackets.remove(packet);
-					SettingsView.instance.redraw(); // so this TX GUI gets redrawn
+					Settings.GUI.redraw(); // so this TX GUI gets redrawn
 				});
 				removeButton.setEnabled(isConnected());
 				gui.add(sendButton, "split 2, grow x, width 1:1:"); // min/pref width = 1px, so this doesn't widen the panel

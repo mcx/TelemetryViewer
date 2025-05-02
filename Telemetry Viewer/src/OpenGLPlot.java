@@ -178,7 +178,7 @@ public class OpenGLPlot {
 					Field d = allDatasets.get(i);
 					if(mouseX >= legendMouseoverCoordinates[i][0] && mouseX <= legendMouseoverCoordinates[i][2] && mouseY >= legendMouseoverCoordinates[i][1] && mouseY <= legendMouseoverCoordinates[i][3]) {
 						OpenGL.drawQuadOutline2D(gl, Theme.tickLinesColor, legendMouseoverCoordinates[i][0], legendMouseoverCoordinates[i][1], legendMouseoverCoordinates[i][2], legendMouseoverCoordinates[i][3]);
-						handler = EventHandler.onPress(event -> ConfigureView.instance.forDataset(d));
+						handler = EventHandler.onPress(event -> Configure.GUI.forDataset(d));
 					}
 					OpenGL.drawQuad2D(gl, d.color.getGl(), legendBoxCoordinates[i][0], legendBoxCoordinates[i][1], legendBoxCoordinates[i][2], legendBoxCoordinates[i][3]);
 					OpenGL.drawMediumText(gl, d.name.get(), (int) xLegendNameLeft[i], (int) yLegendTextBaseline, 0);
@@ -221,7 +221,7 @@ public class OpenGLPlot {
 				float yText1 = Theme.tilePadding;
 				float xText1b = chartWidth - Theme.tilePadding - OpenGL.smallTextWidth(gl, text1b);
 				float xPowerScaleRight = xText1b - Theme.tickTextPadding;
-				float xPowerScaleLeft  = xPowerScaleRight - (100 * Charts.getDisplayScalingFactor());
+				float xPowerScaleLeft  = xPowerScaleRight - (100 * Settings.GUI.getChartScalingFactor());
 				float xText1a = xPowerScaleLeft - Theme.tickTextPadding - OpenGL.smallTextWidth(gl, text1a);
 				float yText1Top = yText1 + OpenGL.smallTextHeight;
 				
@@ -274,7 +274,7 @@ public class OpenGLPlot {
 		}
 		
 		// if the x-axis ticks should be drawn below the plot, reserve space for them, and adjust yPlotBottom accordingly
-		boolean xAxisTicksTwoLines = xAxisTitle.equals("Time") && SettingsView.isTimeFormatTwoLines();
+		boolean xAxisTicksTwoLines = xAxisTitle.equals("Time") && Settings.isTimeFormatTwoLines();
 		if(xAxisStyle == AxisStyle.TITLED || xAxisStyle == AxisStyle.OUTER)
 			yPlotBottom += xAxisTicksTwoLines ? Theme.tickLength + Theme.tickTextPadding + 2.3f*OpenGL.smallTextHeight:
 			                                    Theme.tickLength + Theme.tickTextPadding +      OpenGL.smallTextHeight;
@@ -489,7 +489,7 @@ public class OpenGLPlot {
 					handler = h;
 			}
 			OpenGL.useMatrix(gl, chartMatrix);
-		} else if(SettingsView.instance.tooltipsVisibility.get() && mouseX >= 0 && mouseX <= plotWidth && mouseY >= 0 && mouseY <= plotHeight) {
+		} else if(Settings.GUI.tooltipsEnabled.isTrue() && mouseX >= 0 && mouseX <= plotWidth && mouseY >= 0 && mouseY <= plotHeight) {
 			// regular chart
 			gl.glScissor(chartScissorArgs[0] + (int) xPlotLeft, chartScissorArgs[1] + (int) yPlotBottom, (int) plotWidth, (int) plotHeight);
 			OpenGL.useMatrix(gl, plotMatrix);
@@ -783,10 +783,10 @@ public class OpenGLPlot {
 		
 		// determine how many divisions can fit on screen
 		// first try with milliseconds resolution
-		String leftLabel  = SettingsView.formatTimestampToMilliseconds(minTimestamp);
-		String rightLabel = SettingsView.formatTimestampToMilliseconds(maxTimestamp);
+		String leftLabel  = Settings.formatTimestampToMilliseconds(minTimestamp);
+		String rightLabel = Settings.formatTimestampToMilliseconds(maxTimestamp);
 		float maxLabelWidth = 0;
-		if(SettingsView.isTimeFormatTwoLines()) {
+		if(Settings.isTimeFormatTwoLines()) {
 			String[] leftLine = leftLabel.split("\n");
 			String[] rightLine = rightLabel.split("\n");
 			float leftMax  = Float.max(OpenGL.smallTextWidth(gl, leftLine[0]),  OpenGL.smallTextWidth(gl, leftLine[1]));
@@ -802,10 +802,10 @@ public class OpenGLPlot {
 		
 		// if the divisions are >1000ms apart, change to seconds resolution instead
 		if(millisecondsPerDivision > 1000) {
-			leftLabel  = SettingsView.formatTimestampToSeconds(minTimestamp);
-			rightLabel = SettingsView.formatTimestampToSeconds(maxTimestamp);
+			leftLabel  = Settings.formatTimestampToSeconds(minTimestamp);
+			rightLabel = Settings.formatTimestampToSeconds(maxTimestamp);
 			maxLabelWidth = 0;
-			if(SettingsView.isTimeFormatTwoLines()) {
+			if(Settings.isTimeFormatTwoLines()) {
 				String[] leftLine = leftLabel.split("\n");
 				String[] rightLine = rightLabel.split("\n");
 				float leftMax  = Float.max(OpenGL.smallTextWidth(gl, leftLine[0]),  OpenGL.smallTextWidth(gl, leftLine[1]));
@@ -824,10 +824,10 @@ public class OpenGLPlot {
 		
 		// if the divisions are >60000ms apart, change to minutes resolution instead
 		if(millisecondsPerDivision > 60000) {
-			leftLabel  = SettingsView.formatTimestampToMinutes(minTimestamp);
-			rightLabel = SettingsView.formatTimestampToMinutes(maxTimestamp);
+			leftLabel  = Settings.formatTimestampToMinutes(minTimestamp);
+			rightLabel = Settings.formatTimestampToMinutes(maxTimestamp);
 			maxLabelWidth = 0;
-			if(SettingsView.isTimeFormatTwoLines()) {
+			if(Settings.isTimeFormatTwoLines()) {
 				String[] leftLine = leftLabel.split("\n");
 				String[] rightLine = rightLabel.split("\n");
 				float leftMax  = Float.max(OpenGL.smallTextWidth(gl, leftLine[0]),  OpenGL.smallTextWidth(gl, leftLine[1]));
@@ -907,9 +907,9 @@ public class OpenGLPlot {
 		for(int divisionN = start; divisionN < divisionCount; divisionN++) {
 			long timestampN = firstDivisionTimestamp + (divisionN * millisecondsPerDivision);
 			float pixelX = (float) (timestampN - minTimestamp) / (float) millisecondsOnScreen * width;
-			String label = millisecondsPerDivision < 1000  ? SettingsView.formatTimestampToMilliseconds(timestampN) :
-			               millisecondsPerDivision < 60000 ? SettingsView.formatTimestampToSeconds(timestampN) :
-			                                                 SettingsView.formatTimestampToMinutes(timestampN);
+			String label = millisecondsPerDivision < 1000  ? Settings.formatTimestampToMilliseconds(timestampN) :
+			               millisecondsPerDivision < 60000 ? Settings.formatTimestampToSeconds(timestampN) :
+			                                                 Settings.formatTimestampToMinutes(timestampN);
 			if(pixelX <= width)
 				divisions.put(pixelX, label);
 			else

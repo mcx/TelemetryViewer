@@ -34,7 +34,7 @@ public abstract class Connection {
 	                                            
 	                                            // no need to replace this connection if just changing between UART ports
 	                                            if(oldName.startsWith("UART") && newName.startsWith("UART")) {
-	                                                SettingsView.instance.redraw(); // so the TX GUI shows the new port name
+	                                                Settings.GUI.redraw(); // so the TX GUI shows the new port name
 	                                                return true;
 	                                            }
 	                                            
@@ -68,7 +68,7 @@ public abstract class Connection {
 			if(!Connections.allConnections.contains(this)) {
 				// connection removed, so stop this timer
 				((Timer) event.getSource()).stop();
-			} else if(reconnect && SettingsView.instance.autoReconnectCheckbox.isFalse()) {
+			} else if(reconnect && Settings.GUI.autoReconnect.isFalse()) {
 				// auto reconnect disabled
 				reconnect = false;
 			} else if(reconnect && status == Status.DISCONNECTED) {
@@ -153,8 +153,8 @@ public abstract class Connection {
 			return;
 		
 		status = newStatus;
-		CommunicationView.instance.redraw(); // the import/export/configuration widgets will be enabled/disabled as needed
-		SettingsView.instance.redraw();      // the TX GUIs will be enabled/disabled as needed
+		Connections.GUI.redraw(); // the import/export/configuration widgets will be enabled/disabled as needed
+		Settings.GUI.redraw();    // the TX GUIs will be enabled/disabled as needed
 		
 		if(status == Status.CONNECTED && reconnect) {
 			Notifications.removeIfConnectionRelated();
@@ -162,12 +162,13 @@ public abstract class Connection {
 		} else if(status == Status.CONNECTED && showConfigurationGui && this instanceof ConnectionTelemetry c) {
 			c.setFieldsDefined(false);
 			Main.showDataStructureGui(c);
-		} else if(status == Status.CONNECTED && !showConfigurationGui){
+		} else if(status == Status.CONNECTED && !showConfigurationGui) {
 			SwingUtilities.invokeLater(() -> { // invokeLater because if importing, the charts will be created next
 				if(isConnected() && !Charts.exist()) // isConnected() because an error could have occurred while importing
 					Notifications.showHintUntil("Add a chart by clicking on a tile, or click-and-dragging across multiple tiles.", () -> Charts.exist(), true);
 			});
 		}
+		
 	}
 	
 	final public boolean isConnected()    { return status == Status.CONNECTED;    }
@@ -337,11 +338,13 @@ public abstract class Connection {
 					reconnect = !Connections.importing &&
 					            (errorMessage != null) &&
 					            (errorMessage != maxSampleCountErrorMessage) &&
-					            SettingsView.instance.autoReconnectCheckbox.isTrue();
+					            Settings.GUI.autoReconnect.isTrue();
 				
 				// show an error message if applicable
 				if(errorMessage != null)
 					Notifications.showFailureUntil(reconnect ? errorMessage + " Attempting to reconnect." : errorMessage, () -> false, true);
+				else
+					Notifications.removeIfConnectionRelated();
 				
 			}
 			

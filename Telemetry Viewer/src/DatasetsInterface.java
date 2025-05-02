@@ -459,7 +459,7 @@ public class DatasetsInterface {
 			if(clickable && mouseX >= baked.xBoxLeft() && mouseX <= baked.xBoxRight() && mouseY >= baked.yBoxBottom() && mouseY <= baked.yBoxTop()) {
 				int sampleNumber = closestTooltip.sampleNumber;
 				long timestamp = closestTooltip.timestamp;
-				clickHandler.set(EventHandler.onPress(event -> OpenGLChartsView.instance.setPaused(timestamp, connection, sampleNumber)));
+				clickHandler.set(EventHandler.onPress(event -> OpenGLCharts.GUI.setPaused(timestamp, connection, sampleNumber)));
 			}
 		}
 		
@@ -480,7 +480,7 @@ public class DatasetsInterface {
 			outlinesAsGlLines.rewind();
 			List<int[]> labelPositions = new ArrayList<int[]>(); // [0] = xLeft, [1] = xRight of the corresponding quad
 			int bitfieldN = bitfields.indexOf(state.bitfield);
-			float padding       = 6f * Charts.getDisplayScalingFactor();
+			float padding       = 6f * Settings.GUI.getChartScalingFactor();
 			float yBottom       = padding + ((bitfields.size() - 1 - bitfieldN) * (padding + OpenGL.smallTextHeight + padding));
 			float yTop          = yBottom + OpenGL.smallTextHeight + padding;
 			float yTextBaseline = yBottom + padding/2f;
@@ -513,7 +513,7 @@ public class DatasetsInterface {
 				if(xLeft + padding < xRight) // only draw a label if there is at least 1 pixel of space
 					labelPositions.add(new int[] {(int) xLeft, (int) xRight});
 				if(clickable && mouseX >= xLeft && mouseX <= xRight && mouseY >= yBottom && mouseY <= yTop) {
-					clickHandler.set(EventHandler.onPress(event -> OpenGLChartsView.instance.setPaused(range.startingTimestamp(), connection, range.startingSampleNumber())));
+					clickHandler.set(EventHandler.onPress(event -> OpenGLCharts.GUI.setPaused(range.startingTimestamp(), connection, range.startingSampleNumber())));
 					mouseOverOutline.rewind();
 					mouseOverOutline.put(xLeft);  mouseOverOutline.put(yBottom);
 					mouseOverOutline.put(xLeft);  mouseOverOutline.put(yTop);
@@ -542,10 +542,10 @@ public class DatasetsInterface {
 		
 		// draw a warning if there was not enough space for all edges or levels
 		if(insufficientSpace.get() == true) {
-			float gradientLength = 10 * Charts.getDisplayScalingFactor();
+			float gradientLength = 10 * Settings.GUI.getChartScalingFactor();
 			float[] red            = new float[] {1, 0, 0, 1};
 			float[] transparentRed = new float[] {1, 0, 0, 0};
-			float padding = 6f * Charts.getDisplayScalingFactor();
+			float padding = 6f * Settings.GUI.getChartScalingFactor();
 			
 			// top gradient
 			OpenGL.buffer.rewind();
@@ -935,10 +935,10 @@ public class DatasetsInterface {
 			}
 			
 			// also resize the ConfigureView if it's on screen
-			if(!ConfigureView.instance.getPreferredSize().equals(new Dimension(0, 0))) {
-				ConfigureView.instance.setPreferredSize(null);
-				ConfigureView.instance.revalidate();
-				ConfigureView.instance.repaint();
+			if(!Configure.GUI.getPreferredSize().equals(new Dimension(0, 0))) {
+				Configure.GUI.setPreferredSize(null);
+				Configure.GUI.revalidate();
+				Configure.GUI.repaint();
 			}
 			
 			return this;
