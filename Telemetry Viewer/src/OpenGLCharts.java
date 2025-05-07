@@ -39,7 +39,7 @@ public class OpenGLCharts extends JPanel {
 	static boolean firstRun = true;
 	
 	boolean openGLproblem = false;
-	int aaLevel = 1;
+	int aaLevel;
 	
 	List<Chart> chartsToDispose = new ArrayList<Chart>();
 	
@@ -121,20 +121,20 @@ public class OpenGLCharts extends JPanel {
 				throw new Exception();
 			capabilities = new GLCapabilities(GLProfile.get(GLProfile.GL3));
 			openGLES = false;
-			if(Settings.GUI.antialiasingLevel.get() > 1) {
+			aaLevel = Settings.GUI.antialiasingLevel.get();
+			if(aaLevel > 1) {
 				capabilities.setSampleBuffers(true);
-				capabilities.setNumSamples(Settings.GUI.antialiasingLevel.get());
-				aaLevel = Settings.GUI.antialiasingLevel.get();
+				capabilities.setNumSamples(aaLevel);
 			}
 		} catch(Error | Exception e) {
 			try {
 				// fall back to OpenGL ES
 				capabilities = new GLCapabilities(GLProfile.get(GLProfile.GLES3));
 				openGLES = true;
-				if(Settings.GUI.antialiasingLevel.get() > 1) {
+				aaLevel = Settings.GUI.antialiasingLevel.get();
+				if(aaLevel > 1) {
 					capabilities.setSampleBuffers(true);
-					capabilities.setNumSamples(Settings.GUI.antialiasingLevel.get());
-					aaLevel = Settings.GUI.antialiasingLevel.get();
+					capabilities.setNumSamples(aaLevel);
 				}
 			} catch(Error | Exception e2) {
 				Notifications.showCriticalFault("Unable to create the OpenGL context.\nThis may be due to a graphics driver problem, or an outdated graphics card.\n\"" + e.getMessage() + "\n\n" + e2.getMessage() + "\"");
@@ -155,12 +155,13 @@ public class OpenGLCharts extends JPanel {
 				// disable antialiasing when using OpenGL ES, because rendering to off-screen framebuffers doesn't seem to support MSAA in OpenGL ES 3.1
 				if(!gl.isGL3() && Settings.GUI.antialiasingLevel.get() > 1) {
 					Settings.GUI.antialiasingLevel.set(1);
+					regenerate();
 					openGLproblem = true;
 					return;
 				}
 				
 				// ensure the requested AA level is supported 
-				if(Settings.GUI.antialiasingLevel.get() > 1) {
+				if(aaLevel > 1) {
 					int[] number = new int[1];
 					gl.glGetIntegerv(GL3.GL_MAX_SAMPLES, number, 0);
 					if(number[0] < Settings.GUI.antialiasingLevel.get()) {
@@ -273,6 +274,11 @@ public class OpenGLCharts extends JPanel {
 				
 				if(eventHandler != null && !eventHandler.dragInProgress)
 					eventHandler = null;
+				
+				if(aaLevel != Settings.GUI.antialiasingLevel.get()) {
+					regenerate();
+					return;
+				}
 				
 				// prepare OpenGL
 				GL2ES3 gl = drawable.getGL().getGL2ES3();
@@ -1047,7 +1053,6 @@ public class OpenGLCharts extends JPanel {
 	public static void regenerate() {
 		
 		// important: must run this code with invokeLater() because the GLPanel might change the antialiasing level
-		// which would trigger the antialiasing widget's event handler, which will call this function
 		// but we must let the GLPanel finish drawing before regenerating, or an exception will occur!
 		
 		SwingUtilities.invokeLater(() -> {

@@ -303,11 +303,7 @@ public class Settings extends JPanel {
 		
 		antialiasingLevel = WidgetSlider.ofLogInt("Antialiasing", 1, 16, 8)
 		                                .setExportLabel("antialiasing level")
-		                                .withTickLabels(5)
-		                                .onChange(newLevel -> {
-		                                     if(newLevel != OpenGLCharts.GUI.aaLevel)
-		                                         OpenGLCharts.regenerate();
-		                                 });
+		                                .withTickLabels(5);
 		
 		// populate with everything except the TX panels
 		panel.add(Theme.newWidgetsPanel("Notifications and Connections")
