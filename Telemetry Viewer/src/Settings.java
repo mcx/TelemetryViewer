@@ -36,9 +36,10 @@ public class Settings extends JPanel {
 	public WidgetCombobox<TimeFormat> timeFormat;
 	public WidgetCheckbox             timeFormat24hours;
 	public WidgetCheckbox             tooltipsEnabled;
-	public WidgetCheckbox             benchmarkingEnabled;
 	public WidgetSlider<Float>        scalingFactor;
 	public WidgetSlider<Integer>      antialiasingLevel;
+	public WidgetCheckbox             cpuGpuMeasurementsEnabled;
+	public WidgetTextfield<Integer>   fpsLimit;
 	
 	public float getChartScalingFactor() {
 		return Theme.osDpiScalingFactor * scalingFactor.get();
@@ -63,9 +64,10 @@ public class Settings extends JPanel {
 		timeFormat.importFrom(lines);
 		timeFormat24hours.importFrom(lines);
 		tooltipsEnabled.importFrom(lines);
-		benchmarkingEnabled.importFrom(lines);
 		scalingFactor.importFrom(lines);
 		antialiasingLevel.importFrom(lines);
+		cpuGpuMeasurementsEnabled.importFrom(lines);
+		fpsLimit.importFrom(lines);
 		lines.parseExact("");
 		
 	}
@@ -89,9 +91,10 @@ public class Settings extends JPanel {
 		timeFormat.exportTo(file);
 		timeFormat24hours.exportTo(file);
 		tooltipsEnabled.exportTo(file);
-		benchmarkingEnabled.exportTo(file);
 		scalingFactor.exportTo(file);
 		antialiasingLevel.exportTo(file);
+		cpuGpuMeasurementsEnabled.exportTo(file);
+		fpsLimit.exportTo(file);
 		file.println("");
 		
 	}
@@ -293,9 +296,6 @@ public class Settings extends JPanel {
 		
 		tooltipsEnabled = new WidgetCheckbox("Show Plot Tooltips", true);
 		
-		benchmarkingEnabled = new WidgetCheckbox("Show Benchmarks", false)
-		                          .setExportLabel("benchmarking");
-		
 		scalingFactor = WidgetSlider.ofFloat("Scaling Factor", 1f, 8f, 1f)
 		                            .setExportLabel("chart scaling factor")
 		                            .withTickLabels(8)
@@ -304,6 +304,18 @@ public class Settings extends JPanel {
 		antialiasingLevel = WidgetSlider.ofLogInt("Antialiasing", 1, 16, 8)
 		                                .setExportLabel("antialiasing level")
 		                                .withTickLabels(5);
+		
+		cpuGpuMeasurementsEnabled = new WidgetCheckbox("Show CPU/GPU Usage", false)
+		                                .setExportLabel("show cpu/gpu usage");
+		
+		fpsLimit = WidgetTextfield.ofInt(1, 1000, 0, 0, "Unlimited")
+		                          .setPrefix("FPS Limit")
+		                          .setExportLabel("fps limit")
+		                          .setToolTipText("Use \"0\" for unlimited.")
+		                          .onChange((newValue, oldValue) -> {
+		                               OpenGLCharts.GUI.setFpsLimit(newValue);
+		                               return true;
+		                           });
 		
 		// populate with everything except the TX panels
 		panel.add(Theme.newWidgetsPanel("Notifications and Connections")
@@ -321,14 +333,13 @@ public class Settings extends JPanel {
 		panel.add(Theme.newWidgetsPanel("Charts")
 		               .with(tileColumns)
 		               .with(tileRows)
-		               .withGap(Theme.padding)
 		               .with(timeFormat)
 		               .with(timeFormat24hours)
-		               .withGap(Theme.padding)
 		               .with(tooltipsEnabled)
-		               .with(benchmarkingEnabled)
 		               .with(scalingFactor)
 		               .with(antialiasingLevel)
+		               .with(cpuGpuMeasurementsEnabled)
+		               .with(fpsLimit)
 		               .getPanel());
 		
 		// note: setVisible() must be called any time a connection is added/removed/connected/disconnected because it will update the TX panels

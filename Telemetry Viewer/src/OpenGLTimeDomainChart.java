@@ -44,15 +44,12 @@ public class OpenGLTimeDomainChart extends Chart {
 		
 		super(name, x1, y1, x2, y2);
 		
-		autoscale = new AutoScale(AutoScale.MODE_EXPONENTIAL, 30, 0.10f);
+		autoscale = new AutoScale(AutoScale.Mode.SMOOTH, 0.10f);
 		
 		legendVisibility = new WidgetCheckbox("Show Legend", true);
 		
 		cacheEnabled = new WidgetCheckbox("Cached Mode", false)
-		                   .onChange(isCached -> {
-		                                autoscale = isCached ? new AutoScale(AutoScale.MODE_STICKY,       1, 0.10f) :
-		                                                       new AutoScale(AutoScale.MODE_EXPONENTIAL, 30, 0.10f);
-		                            });
+		                   .onChange(isCached -> autoscale.setMode(isCached ? AutoScale.Mode.JUMPY : AutoScale.Mode.SMOOTH));
 		
 		xAxisStyle = new WidgetToggleButton<OpenGLPlot.AxisStyle>("", OpenGLPlot.AxisStyle.values(), OpenGLPlot.AxisStyle.OUTER)
 		                 .setExportLabel("x-axis style");

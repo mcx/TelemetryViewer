@@ -42,6 +42,8 @@ public abstract class Chart {
 		
 	}
 	
+	@Override public String toString() { return name; }
+	
 	/**
 	 * Checks if a certain tile region would overlap this chart.
 	 * 
@@ -80,7 +82,7 @@ public abstract class Chart {
 	private double cpuMillisecondsAccumulator;
 	private double gpuMillisecondsAccumulator;
 	private int count;
-	private final int SAMPLE_COUNT = 60;
+	private long endAveragingTimestamp = System.currentTimeMillis() + 1000;
 	private double averageCpuMilliseconds;
 	private double averageGpuMilliseconds;
 	private int[] gpuQueryHandles;
@@ -113,7 +115,7 @@ public abstract class Chart {
 		}
 		
 		// if measuring CPU/GPU usage, calculate CPU/GPU time for the *previous frame*
-		if(Settings.GUI.benchmarkingEnabled.isTrue()) {
+		if(Settings.GUI.cpuGpuMeasurementsEnabled.isTrue()) {
 			previousCpuMilliseconds = (cpuStopNanoseconds - cpuStartNanoseconds) / 1000000.0;
 			if(!openGLES) {
 				long[] gpuTimes = new long[2];
@@ -121,16 +123,16 @@ public abstract class Chart {
 				gl.glGetQueryObjecti64v(gpuQueryHandles[1], GL3.GL_QUERY_RESULT, gpuTimes, 1);
 				previousGpuMilliseconds = (gpuTimes[1] - gpuTimes[0]) / 1000000.0;
 			}
-			if(count < SAMPLE_COUNT) {
-				cpuMillisecondsAccumulator += previousCpuMilliseconds;
-				gpuMillisecondsAccumulator += previousGpuMilliseconds;
-				count++;
-			} else {
-				averageCpuMilliseconds = cpuMillisecondsAccumulator / SAMPLE_COUNT;
-				averageGpuMilliseconds = gpuMillisecondsAccumulator / SAMPLE_COUNT;
+			cpuMillisecondsAccumulator += previousCpuMilliseconds;
+			gpuMillisecondsAccumulator += previousGpuMilliseconds;
+			count++;
+			if(System.currentTimeMillis() >= endAveragingTimestamp) {
+				averageCpuMilliseconds = cpuMillisecondsAccumulator / count;
+				averageGpuMilliseconds = gpuMillisecondsAccumulator / count;
 				cpuMillisecondsAccumulator = 0;
 				gpuMillisecondsAccumulator = 0;
 				count = 0;
+				endAveragingTimestamp = System.currentTimeMillis() + 1000;
 			}
 			
 			// start timers for *this frame*
@@ -143,21 +145,18 @@ public abstract class Chart {
 		EventHandler handler = drawChart(gl, chartMatrix, width, height, endTimestamp, endSampleNumber, zoomLevel, mouseX, mouseY);
 		
 		// if measuring CPU/GPU usage, draw the CPU/GPU times over this chart
-		if(Settings.GUI.benchmarkingEnabled.isTrue()) {
+		if(Settings.GUI.cpuGpuMeasurementsEnabled.isTrue()) {
 			// stop timers for *this frame*
 			cpuStopNanoseconds = System.nanoTime();
 			if(!openGLES)
 				gl.glQueryCounter(gpuQueryHandles[1], GL3.GL_TIMESTAMP);
 			
 			// show times of *previous frame*
-			String line1 =             String.format("CPU = %.3fms (Average = %.3fms)", previousCpuMilliseconds, averageCpuMilliseconds);
-			String line2 = !openGLES ? String.format("GPU = %.3fms (Average = %.3fms)", previousGpuMilliseconds, averageGpuMilliseconds) :
-			                                         "GPU = unknown";
-			float textHeight = 2 * OpenGL.smallTextHeight + Theme.tickTextPadding;
-			float textWidth = Float.max(OpenGL.smallTextWidth(gl, line1), OpenGL.smallTextWidth(gl, line2));
-			OpenGL.drawBox(gl, Theme.neutralColor, Theme.tileShadowOffset, 0, textWidth + Theme.tickTextPadding*2, textHeight + Theme.tickTextPadding*2);
-			OpenGL.drawSmallText(gl, line1, (int) (Theme.tickTextPadding + Theme.tileShadowOffset), (int) (2 * Theme.tickTextPadding + OpenGL.smallTextHeight), 0);
-			OpenGL.drawSmallText(gl, line2, (int) (Theme.tickTextPadding + Theme.tileShadowOffset), (int) Theme.tickTextPadding, 0);
+			OpenGL.drawTextBox(gl, 0, 0, false, "This Chart:", List.of(
+			                                     String.format("CPU = %.3fms ", previousCpuMilliseconds),
+			                                     String.format("(%.3fms)",      averageCpuMilliseconds ),
+			                         !openGLES ? String.format("GPU = %.3fms ", previousGpuMilliseconds) : "GPU = unknown",
+			                         !openGLES ? String.format("(%.3fms)",      averageGpuMilliseconds ) : ""));
 		}
 		
 		// return the mouse event handler
@@ -781,5 +780,104 @@ public abstract class Chart {
 			
 		}
 	}
+	
+	/**
+	 * Auto-scales an axis.
+	 */
+	public static class AutoScale {
+		
+		public enum Mode {SMOOTH, STICKY, JUMPY};
+		private Mode mode;
+		final float hysteresis;
+		
+		private float min = Float.MAX_VALUE;
+		private float max = Float.MIN_VALUE;
+		private float idealMin;
+		private float idealMax;
+		private long previousFrameTimestamp = System.currentTimeMillis();
+		private long animationEndTimestamp  = 0;
+		
+		/**
+		 * Creates an object that takes the true min/max values for an axis, and outputs new min/max values that re-scale the axis based on some settings.
+		 * 
+		 * @param mode          SMOOTH to have the axis smoothly rescale, at all times.
+		 *                      STICKY to have the axis smoothly rescale, only when required.
+		 *                      JUMPY  to have the axis rescale only when required, with no animation.
+		 * @param hysteresis    When hitting an existing min/max, re-scale to leave this much extra room (relative to the new range),
+		 *                      When 1.5*this far from an existing min/max (relative to the new range), re-scale to leave only this much room.
+		 */
+		public AutoScale(Mode mode, float hysteresis) {
+			
+			this.mode = mode;
+			this.hysteresis = hysteresis;
+			
+		}
+		
+		/**
+		 * Changes the autoscaling mode and sets the min and max values to their ideal values.
+		 */
+		public void setMode(Mode newMode) {
+			
+			mode = newMode;
+			min = idealMin;
+			max = idealMax;
+			
+		}
+		
+		/**
+		 * Resets everything. This is useful if the axis is being reconfigured and you don't want the transition to be animated.
+		 */
+		public void reset() {
+			
+			min = Float.MAX_VALUE;
+			max = Float.MIN_VALUE;
+			
+		}
+		
+		/**
+		 * Updates state with the current min and max values. This method should be called every frame, before calling getMin() or getMax().
+		 * 
+		 * @param newMin    Current minimum.
+		 * @param newMax    Current maximum.
+		 */
+		public void update(float newMin, float newMax) {
+			
+			long now = System.currentTimeMillis();
+			
+			float newRange = Math.abs(newMax - newMin);
+			idealMin = newMin - (newRange * hysteresis);
+			idealMax = newMax + (newRange * hysteresis);
+				
+			if(newMin < min) {
+				min = (mode == Mode.JUMPY) ? idealMin : newMin;
+				animationEndTimestamp = now + Theme.animationMilliseconds;
+			} else if(newMin > min + 1.5f*hysteresis*newRange) {
+				min = (mode == Mode.JUMPY) ? idealMin : min;
+				animationEndTimestamp = now + Theme.animationMilliseconds;
+			}
+			
+			if(newMax > max) {
+				max = (mode == Mode.JUMPY) ? idealMax : newMax;
+				animationEndTimestamp = now + Theme.animationMilliseconds;
+			} else if(newMax < max - 1.5f*hysteresis*newRange) {
+				max = (mode == Mode.JUMPY) ? idealMax : max;
+				animationEndTimestamp = now + Theme.animationMilliseconds;
+			}
+			
+			if(mode == Mode.SMOOTH || (mode == Mode.STICKY && animationEndTimestamp >= now)) {
+				float percent = Math.clamp(2 * (float) ((now - previousFrameTimestamp) / Theme.animationMillisecondsDouble), 0, 1);
+				min += (idealMin - min) * percent;
+				max += (idealMax - max) * percent;
+			}
+				
+			previousFrameTimestamp = now;
+			
+		}
+		
+		public float getMin() { return min; }
+		public float getMax() { return max; }
+
+	}
+
 	
 }

@@ -70,7 +70,7 @@ public class OpenGLFrequencyDomainChart extends Chart {
 		
 		super(name, x1, y1, x2, y2);
 		
-		autoscalePower = new AutoScale(AutoScale.MODE_EXPONENTIAL, 90, 0.20f);
+		autoscalePower = new AutoScale(AutoScale.Mode.SMOOTH, 0.20f);
 		
 		// create the control widgets and event handlers
 		datasetsWidget = datasets.getCheckboxesWidget(newDatasets -> {});

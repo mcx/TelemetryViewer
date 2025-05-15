@@ -20,12 +20,14 @@ import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import com.jogamp.opengl.GL2ES3;
 import com.jogamp.opengl.GL3;
+import com.jogamp.opengl.GLAnimatorControl;
 import com.jogamp.opengl.GLAutoDrawable;
 import com.jogamp.opengl.GLCapabilities;
 import com.jogamp.opengl.GLEventListener;
 import com.jogamp.opengl.GLProfile;
 import com.jogamp.opengl.awt.GLCanvas;
 import com.jogamp.opengl.util.Animator;
+import com.jogamp.opengl.util.FPSAnimator;
 
 /**
  * Manages the grid region and all charts on the screen.
@@ -43,7 +45,7 @@ public class OpenGLCharts extends JPanel {
 	
 	List<Chart> chartsToDispose = new ArrayList<Chart>();
 	
-	Animator animator;
+	GLAnimatorControl animator;
 	GLCanvas glCanvas;
 	int canvasWidth;
 	int canvasHeight;
@@ -100,7 +102,7 @@ public class OpenGLCharts extends JPanel {
 	double averageGpuMilliseconds;
 	double averageFps;
 	int count;
-	final int SAMPLE_COUNT = 60;
+	long endAveragingTimestamp = System.currentTimeMillis() + 1000;
 	int[] gpuQueryHandles = new int[2];
 	long[] gpuTimes = new long[2];
 	boolean openGLES;
@@ -286,7 +288,7 @@ public class OpenGLCharts extends JPanel {
 				
 				// if benchmarking, calculate CPU/GPU time for the *previous frame*
 				// GPU benchmarking is not possible with OpenGL ES
-				if(Settings.GUI.benchmarkingEnabled.isTrue()) {
+				if(Settings.GUI.cpuGpuMeasurementsEnabled.isTrue()) {
 					previousCpuMilliseconds = (cpuStopNanoseconds - cpuStartNanoseconds) / 1000000.0;
 					if(!openGLES) {
 						gl.glGetQueryObjecti64v(gpuQueryHandles[0], GL3.GL_QUERY_RESULT, gpuTimes, 0);
@@ -294,19 +296,19 @@ public class OpenGLCharts extends JPanel {
 					}
 					previousGpuMilliseconds = (gpuTimes[1] - gpuTimes[0]) / 1000000.0;
 					previousFps = 1000000000.0 / (System.nanoTime() - cpuStartNanoseconds);
-					if(count < SAMPLE_COUNT) {
-						cpuMillisecondsAccumulator += previousCpuMilliseconds;
-						gpuMillisecondsAccumulator += previousGpuMilliseconds;
-						fpsAccumulator += previousFps;
-						count++;
-					} else {
-						averageCpuMilliseconds = cpuMillisecondsAccumulator / 60.0;
-						averageGpuMilliseconds = gpuMillisecondsAccumulator / 60.0;
-						averageFps = fpsAccumulator / 60.0;
+					cpuMillisecondsAccumulator += previousCpuMilliseconds;
+					gpuMillisecondsAccumulator += previousGpuMilliseconds;
+					fpsAccumulator             += previousFps;
+					count++;
+					if(System.currentTimeMillis() >= endAveragingTimestamp) {
+						averageCpuMilliseconds = cpuMillisecondsAccumulator / count;
+						averageGpuMilliseconds = gpuMillisecondsAccumulator / count;
+						averageFps             =             fpsAccumulator / count;
 						cpuMillisecondsAccumulator = 0;
 						gpuMillisecondsAccumulator = 0;
-						fpsAccumulator = 0;
+						fpsAccumulator             = 0;
 						count = 0;
+						endAveragingTimestamp = System.currentTimeMillis() + 1000;
 					}
 					
 					// start timers for *this frame*
@@ -636,41 +638,22 @@ public class OpenGLCharts extends JPanel {
 				
 				// if benchmarking, draw the CPU/GPU benchmarks
 				// GPU benchmarking is not possible with OpenGL ES
-				if(Settings.GUI.benchmarkingEnabled.isTrue()) {
+				if(Settings.GUI.cpuGpuMeasurementsEnabled.isTrue()) {
 					// stop timers for *this frame*
 					cpuStopNanoseconds = System.nanoTime();
 					if(!openGLES)
 						gl.glQueryCounter(gpuQueryHandles[1], GL3.GL_TIMESTAMP);
 					
 					// show times of *previous frame*
-					String line1 = "Entire Frame:";
-					String line2 =             String.format("CPU = %.3fms (Average = %.3fms)", previousCpuMilliseconds, averageCpuMilliseconds);
-					String line3 = !openGLES ? String.format("GPU = %.3fms (Average = %.3fms)", previousGpuMilliseconds, averageGpuMilliseconds) :
-					                                         "GPU = unknown";
-					String line4 =             String.format("FPS = %2.2f (Average = %2.2f)", previousFps, averageFps);
-					float textHeight = 4*OpenGL.smallTextHeight + 3*Theme.tickTextPadding;
-					float textWidth = Float.max(OpenGL.smallTextWidth(gl, line1), OpenGL.smallTextWidth(gl, line2));
-					textWidth = Float.max(textWidth, OpenGL.smallTextWidth(gl, line3));
-					textWidth = Float.max(textWidth, OpenGL.smallTextWidth(gl, line4));
-					float boxWidth = textWidth + 2*Theme.tickTextPadding;
-					float boxHeight = textHeight + 2*Theme.tickTextPadding;
-					int xBoxLeft = (canvasWidth / 2) - (int) (textWidth / 2);
-					int yBoxBottom = top.get() - (int) boxHeight;
-					int xTextLeft = xBoxLeft + (int) Theme.tickTextPadding;
-					int lineSpacing = (int) (Theme.tickTextPadding + OpenGL.smallTextHeight);
-					int yTextBaseline = top.get() - lineSpacing;
-					OpenGL.drawBox(gl, Theme.neutralColor, xBoxLeft, yBoxBottom, boxWidth, boxHeight);
-					OpenGL.drawSmallText(gl, line1, (canvasWidth / 2) - (int) (OpenGL.smallTextWidth(gl, line1) / 2), yTextBaseline, 0);
-					OpenGL.drawSmallText(gl, line2, xTextLeft, yTextBaseline - (lineSpacing * 1), 0);
-					OpenGL.drawSmallText(gl, line3, xTextLeft, yTextBaseline - (lineSpacing * 2), 0);
-					OpenGL.drawSmallText(gl, line4, xTextLeft, yTextBaseline - (lineSpacing * 3), 0);
-					
-//					String message = "Entire Frame: " + line2 + " " + line3;
-//					for(int i = 0; i < charts.size(); i++) {
-//						PositionedChart chart = charts.get(i);
-//						message += ",     Chart " + i + ": " + chart.line1 + " " + line3;
-//					}
-//					NotificationsController.showDebugMessage(message);
+					float xBoxCenter = (canvasWidth / 2f);
+					float yBoxTop = top.get();
+					OpenGL.drawTextBox(gl, xBoxCenter, yBoxTop, true, "Entire Frame:", List.of(
+					                                    String.format("CPU = %.3fms ", previousCpuMilliseconds),
+					                                    String.format("(%.3fms)",      averageCpuMilliseconds ),
+					                        !openGLES ? String.format("GPU = %.3fms ", previousGpuMilliseconds) : "GPU = unknown",
+					                        !openGLES ? String.format("(%.3fms)",      averageGpuMilliseconds ) : "",
+					                                    String.format("FPS = %.2f ",   previousFps),
+					                                    String.format("(%.2f)",        averageFps)));
 				}
 				
 			}
@@ -693,8 +676,8 @@ public class OpenGLCharts extends JPanel {
 		setLayout(new BorderLayout());
 		add(glCanvas, BorderLayout.CENTER);
 		
-		animator = new Animator(glCanvas);
-		animator.setUpdateFPSFrames(1, null);
+		// note: a regular Animator seems to work slightly better than an FPSAnimator when not limiting the FPS 
+		animator = Settings.GUI.fpsLimit.is(0) ? new Animator(glCanvas) : new FPSAnimator(glCanvas, Settings.GUI.fpsLimit.get());
 		animator.start();
 		
 		glCanvas.addMouseListener(new MouseListener() {
@@ -1003,6 +986,15 @@ public class OpenGLCharts extends JPanel {
 		
 	}
 	
+	public void setFpsLimit(int newValue) {
+		
+		animator.stop();
+		animator.remove(glCanvas);
+		animator = (newValue == 0) ? new Animator(glCanvas) : new FPSAnimator(glCanvas, newValue);
+		animator.start();
+		
+	}
+	
 	public WidgetTrigger.Result triggerDetails;
 	
 	/**
@@ -1065,6 +1057,7 @@ public class OpenGLCharts extends JPanel {
 	
 			// regenerate
 			GUI.animator.stop();
+			GUI.animator.remove(GUI.glCanvas);
 			GUI = new OpenGLCharts();
 			GUI.maximizedChart = maximizedChart;
 			

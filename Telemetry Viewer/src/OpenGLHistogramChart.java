@@ -47,7 +47,7 @@ public class OpenGLHistogramChart extends Chart {
 		
 		super(name, x1, y1, x2, y2);
 
-		yAutoscale = new AutoScale(AutoScale.MODE_EXPONENTIAL, 30, 0.20f);
+		yAutoscale = new AutoScale(AutoScale.Mode.SMOOTH, 0.20f);
 		
 		durationWidget = WidgetTextfield.ofInt(2, Integer.MAX_VALUE / 16, Connections.getDefaultChartDuration())
 		                                .setSuffix("Samples")

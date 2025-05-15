@@ -15,6 +15,7 @@ import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.stream.IntStream;
@@ -401,6 +402,53 @@ public class OpenGL {
 		gl.glBlendFunc(GL3.GL_ONE, GL3.GL_ONE_MINUS_SRC_ALPHA);
 		gl.glDrawArrays(GL3.GL_TRIANGLE_STRIP, 0, vertexCount);
 		gl.glBlendFunc(GL3.GL_SRC_ALPHA, GL3.GL_ONE_MINUS_SRC_ALPHA);
+		
+	}
+	
+	/**
+	 * Helper function that draws a text-filled box. This is used to show CPU/GPU usage details.
+	 * 
+	 * @param gl            The OpenGL context.
+	 * @param x             Anchor location, in pixels.
+	 * @param y             Anchor location, in pixels.
+	 * @param centered      If true,  the anchor is the top-center of this text box.
+	 *                      If false, the anchor is the bottom-left corner of this box.
+	 * @param title         Text to show, centered, at the top of the box. Can be null.
+	 * @param lineHalves    Pieces of text that will alternately be drawn left-aligned then right-aligned, with two pieces making up each line.
+	 */
+	public static void drawTextBox(GL2ES3 gl, float x, float y, boolean centered, String title, List<String> lineHalves) {
+		
+		int lineCount = (title == null ? 0 : 1) + (lineHalves.size() / 2);
+		int lineHeight = (int) (Theme.tickTextPadding + OpenGL.smallTextHeight);
+		float maxLineWidth = (title == null) ? 0 : smallTextWidth(gl, title);
+		for(int i = 0; i < lineHalves.size(); i += 2) {
+			float width = smallTextWidth(gl, lineHalves.get(i)) + smallTextWidth(gl, lineHalves.get(i + 1));
+			maxLineWidth = Math.max(maxLineWidth, width);
+		}
+		float boxWidth   = maxLineWidth + 2 * Theme.tickTextPadding;
+		float boxHeight  = Theme.tickTextPadding + (lineCount * lineHeight);
+		float xBoxLeft   = centered ? x - (boxWidth / 2) : x;
+		float yBoxBottom = centered ? y - boxHeight      : y;
+		xBoxLeft   += Theme.lineWidth/2;
+		yBoxBottom += Theme.lineWidth/2;
+		
+		OpenGL.drawBox       (gl, Theme.neutralColor,     xBoxLeft, yBoxBottom, boxWidth, boxHeight);
+		OpenGL.drawBoxOutline(gl, Theme.plotOutlineColor, xBoxLeft, yBoxBottom, boxWidth, boxHeight);
+		
+		int yTextBaseline = (int) (yBoxBottom + boxHeight - lineHeight);
+		if(title != null) {
+			float width = smallTextWidth(gl, title);
+			int xText = (int) (xBoxLeft + (boxWidth / 2) - (width / 2));
+			drawSmallText(gl, title, xText, yTextBaseline, 0);
+			yTextBaseline -= lineHeight;
+		}
+		for(int i = 0; i < lineHalves.size(); i += 2) {
+			int xLeftText  = (int) (xBoxLeft + Theme.tickTextPadding);
+			int xRightText = (int) (xBoxLeft + boxWidth - Theme.tickTextPadding - smallTextWidth(gl, lineHalves.get(i + 1)));
+			drawSmallText(gl, lineHalves.get(i),     xLeftText,  yTextBaseline, 0);
+			drawSmallText(gl, lineHalves.get(i + 1), xRightText, yTextBaseline, 0);
+			yTextBaseline -= lineHeight;
+		}
 		
 	}
 	

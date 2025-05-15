@@ -46,8 +46,8 @@ public class Theme {
 	// general openGL
 	public static float  lineWidth = 1.0f;
 	public static float  pointWidth = 3.0f;
-	public static long   animationMilliseconds = 300;
-	public static double animationMillisecondsDouble = 300.0;
+	public static long   animationMilliseconds = 250;
+	public static double animationMillisecondsDouble = 250.0;
 	
 	// charts region
 	public static float[] tileColor               = new float[] {0.8f, 0.8f, 0.8f, 1.0f};
