@@ -1715,290 +1715,290 @@ public class OpenGL {
 		String versionLine = gl.isGL3() ? "#version 150\n" : "#version 310 es\n";
 		
 		String[] vertexShaderVboY = new String[] {
-			versionLine,
-			"#ifdef GL_ES\n" +
-			"precision mediump float;\n" +
-			"precision mediump int;\n" +
-			"#endif\n" +
-			"in float y;\n",
-			"uniform mat4 matrix;\n",
-			"uniform int xOffset;\n",
-			"void main(void) {\n",
-			"	gl_Position = matrix * vec4(gl_VertexID + xOffset, y, 0, 1);\n",
-			"}\n"
+			versionLine, """
+			#ifdef GL_ES
+			precision mediump float;
+			precision mediump int;
+			#endif
+			in float y;
+			uniform mat4 matrix;
+			uniform int xOffset;
+			void main(void) {
+				gl_Position = matrix * vec4(gl_VertexID + xOffset, y, 0, 1);
+			}"""
 		};
 		String[] vertexShaderVboXvboY = new String[] {
-			versionLine,
-			"#ifdef GL_ES\n" +
-			"precision mediump float;\n" + 
-			"precision mediump int;\n" +
-			"#endif\n" +
-			"in float x;\n",
-			"in float y;\n",
-			"uniform mat4 matrix;\n",
-			"void main(void) {\n",
-			"	gl_Position = matrix * vec4(x, y, 0, 1);\n",
-			"}\n"
+			versionLine, """
+			#ifdef GL_ES
+			precision mediump float;
+			precision mediump int;
+			#endif
+			in float x;
+			in float y;
+			uniform mat4 matrix;
+			void main(void) {
+				gl_Position = matrix * vec4(x, y, 0, 1);
+			}"""
 		};
 		String[] vertexShaderVboXy = new String[] {
-			versionLine,
-			"#ifdef GL_ES\n" +
-			"precision mediump float;\n" + 
-			"precision mediump int;\n" +
-			"#endif\n" +
-			"in vec2 xy;\n",
-			"uniform mat4 matrix;\n",
-			"void main(void) {\n",
-			"	gl_Position = matrix * vec4(xy, 0, 1);\n",
-			"}\n"
+			versionLine, """
+			#ifdef GL_ES
+			precision mediump float;
+			precision mediump int;
+			#endif
+			in vec2 xy;
+			uniform mat4 matrix;
+			void main(void) {
+				gl_Position = matrix * vec4(xy, 0, 1);
+			}"""
 		};
 		String[] vertexShaderVboXyst = new String[] {
-			versionLine,
-			"#ifdef GL_ES\n" +
-			"precision mediump float;\n" + 
-			"precision mediump int;\n" +
-			"#endif\n" +
-			"in vec2 xy;\n",
-			"in vec2 st;\n",
-			"out vec2 texCoord;\n",
-			"uniform mat4 matrix;\n",
-			"void main(void) {\n",
-			"	gl_Position = matrix * vec4(xy, 0, 1);\n",
-			"	texCoord = st;\n",
-			"}\n"
+			versionLine, """
+			#ifdef GL_ES
+			precision mediump float;
+			precision mediump int;
+			#endif
+			in vec2 xy;
+			in vec2 st;
+			out vec2 texCoord;
+			uniform mat4 matrix;
+			void main(void) {
+				gl_Position = matrix * vec4(xy, 0, 1);
+				texCoord = st;
+			}"""
 		};
 		String[] vertexShaderVboXyrgba = new String[] {
-			versionLine,
-			"#ifdef GL_ES\n" +
-			"precision mediump float;\n" + 
-			"precision mediump int;\n" +
-			"#endif\n" +
-			"in vec2 xy;\n",
-			"in vec4 rgba;\n",
-			"out vec4 color;\n",
-			"uniform mat4 matrix;\n",
-			"void main(void) {\n",
-			"	gl_Position = matrix * vec4(xy, 0, 1);\n",
-			"	color = rgba;\n",
-			"}\n"
+			versionLine, """
+			#ifdef GL_ES
+			precision mediump float;
+			precision mediump int;
+			#endif
+			in vec2 xy;
+			in vec4 rgba;
+			out vec4 color;
+			uniform mat4 matrix;
+			void main(void) {
+				gl_Position = matrix * vec4(xy, 0, 1);
+				color = rgba;
+			}"""
 		};
 		String[] vertexShaderVboXyzuvw = new String[] {
-			versionLine,
-			"#ifdef GL_ES\n" +
-			"precision mediump float;\n" + 
-			"precision mediump int;\n" +
-			"#endif\n" +
-			"in vec3 xyz;\n",
-			"in vec3 uvw;\n",
-			"out vec3 normal;\n",
-			"uniform mat4 matrix;\n",
-			"void main(void) {\n",
-			"	gl_Position = matrix * vec4(xyz, 1);\n",
-			"	normal = uvw;\n",
-			"}\n"
+			versionLine, """
+			#ifdef GL_ES
+			precision mediump float;
+			precision mediump int;
+			#endif
+			in vec3 xyz;
+			in vec3 uvw;
+			out vec3 normal;
+			uniform mat4 matrix;
+			void main(void) {
+				gl_Position = matrix * vec4(xyz, 1);
+				normal = uvw;
+			}"""
 		};
 		String[] vertexShaderFontRenderer = new String[] {
-			versionLine,
-			"#ifdef GL_ES\n" +
-			"precision mediump float;\n" + 
-			"precision mediump int;\n" +
-			"#endif\n" +
-			"in vec2 xy;\n", // location of lower-left corner of a character, in pixels
-			"in vec3 stw;\n", // font texture atlas (s,t) and width, in pixels
-			"out vec3 atlas;\n",
-			"void main(void) {\n",
-			"	gl_Position = vec4(xy, 0, 1);\n",
-			"	atlas = stw;\n",
-			"}\n"
+			versionLine, """
+			#ifdef GL_ES
+			precision mediump float;
+			precision mediump int;
+			#endif
+			in vec2 xy;  // location of lower-left corner of a character, in pixels
+			in vec3 stw; // font texture atlas (s,t) and width, in pixels
+			out vec3 atlas;
+			void main(void) {
+				gl_Position = vec4(xy, 0, 1);
+				atlas = stw;
+			}"""
 		};
 		String[] geometryShaderThickLines = new String[] {
-			versionLine,
-			"#ifdef GL_ES\n" +
-			"#extension GL_EXT_geometry_shader : require\n" +
-			"precision mediump float;\n" + 
-			"precision mediump int;\n" +
-			"#endif\n" +
-			"layout (lines) in;\n",
-			"layout (triangle_strip, max_vertices = 4) out;\n",
-			"uniform float lineWidth;\n",
-			"uniform float widthPixels;\n",
-			"uniform float heightPixels;\n",
-			"void main(void) {\n",
-			"	float deltaX = (gl_in[1].gl_Position.x - gl_in[0].gl_Position.x) * widthPixels;\n",
-			"	float deltaY = (gl_in[1].gl_Position.y - gl_in[0].gl_Position.y) * heightPixels;\n",
-			"	float n = lineWidth / sqrt(deltaX*deltaX + deltaY*deltaY);\n",
-			"	float shiftX = n * deltaY / widthPixels;\n",
-			"	float shiftY = n * deltaX / heightPixels;\n",
-			"	gl_Position = vec4(gl_in[0].gl_Position.x + shiftX, gl_in[0].gl_Position.y - shiftY, 0, 1);    EmitVertex();\n",
-			"	gl_Position = vec4(gl_in[0].gl_Position.x - shiftX, gl_in[0].gl_Position.y + shiftY, 0, 1);    EmitVertex();\n",
-			"	gl_Position = vec4(gl_in[1].gl_Position.x + shiftX, gl_in[1].gl_Position.y - shiftY, 0, 1);    EmitVertex();\n",
-			"	gl_Position = vec4(gl_in[1].gl_Position.x - shiftX, gl_in[1].gl_Position.y + shiftY, 0, 1);    EmitVertex();\n",
-			"	EndPrimitive();\n",
-			"}\n"
+			versionLine, """
+			#ifdef GL_ES
+			#extension GL_EXT_geometry_shader : require
+			precision mediump float;
+			precision mediump int;
+			#endif
+			layout (lines) in;
+			layout (triangle_strip, max_vertices = 4) out;
+			uniform float lineWidth;
+			uniform float widthPixels;
+			uniform float heightPixels;
+			void main(void) {
+				float deltaX = (gl_in[1].gl_Position.x - gl_in[0].gl_Position.x) * widthPixels;
+				float deltaY = (gl_in[1].gl_Position.y - gl_in[0].gl_Position.y) * heightPixels;
+				float n = lineWidth / sqrt(deltaX*deltaX + deltaY*deltaY);
+				float shiftX = n * deltaY / widthPixels;
+				float shiftY = n * deltaX / heightPixels;
+				gl_Position = vec4(gl_in[0].gl_Position.x + shiftX, gl_in[0].gl_Position.y - shiftY, 0, 1);    EmitVertex();
+				gl_Position = vec4(gl_in[0].gl_Position.x - shiftX, gl_in[0].gl_Position.y + shiftY, 0, 1);    EmitVertex();
+				gl_Position = vec4(gl_in[1].gl_Position.x + shiftX, gl_in[1].gl_Position.y - shiftY, 0, 1);    EmitVertex();
+				gl_Position = vec4(gl_in[1].gl_Position.x - shiftX, gl_in[1].gl_Position.y + shiftY, 0, 1);    EmitVertex();
+				EndPrimitive();
+			}"""
 		};
 		String[] geometryShaderThickColoredLines = new String[] {
-			versionLine,
-			"#ifdef GL_ES\n" +
-			"#extension GL_EXT_geometry_shader : require\n" +
-			"precision mediump float;\n" + 
-			"precision mediump int;\n" +
-			"#endif\n" +
-			"layout (lines) in;\n",
-			"layout (triangle_strip, max_vertices = 4) out;\n",
-			"uniform float lineWidth;\n",
-			"uniform float widthPixels;\n",
-			"uniform float heightPixels;\n",
-			"in vec4 color[2];\n",
-			"out vec4 rgba;\n",
-			"void main(void) {\n",
-			"	float deltaX = gl_in[1].gl_Position.x - gl_in[0].gl_Position.x;\n",
-			"	float deltaY = gl_in[1].gl_Position.y - gl_in[0].gl_Position.y;\n",
-			"	float n = lineWidth / sqrt(deltaX*deltaX + deltaY*deltaY);\n",
-			"	float shiftX = n / widthPixels * deltaY;\n",
-			"	float shiftY = n / heightPixels * deltaX;\n",
-			"	gl_Position = vec4(gl_in[0].gl_Position.x + shiftX, gl_in[0].gl_Position.y - shiftY, 0, 1);    rgba = color[0];    EmitVertex();\n",
-			"	gl_Position = vec4(gl_in[0].gl_Position.x - shiftX, gl_in[0].gl_Position.y + shiftY, 0, 1);    rgba = color[0];    EmitVertex();\n",
-			"	gl_Position = vec4(gl_in[1].gl_Position.x + shiftX, gl_in[1].gl_Position.y - shiftY, 0, 1);    rgba = color[1];    EmitVertex();\n",
-			"	gl_Position = vec4(gl_in[1].gl_Position.x - shiftX, gl_in[1].gl_Position.y + shiftY, 0, 1);    rgba = color[1];    EmitVertex();\n",
-			"	EndPrimitive();\n",
-			"}\n"
+			versionLine, """
+			#ifdef GL_ES
+			#extension GL_EXT_geometry_shader : require
+			precision mediump float;
+			precision mediump int;
+			#endif
+			layout (lines) in;
+			layout (triangle_strip, max_vertices = 4) out;
+			uniform float lineWidth;
+			uniform float widthPixels;
+			uniform float heightPixels;
+			in vec4 color[2];
+			out vec4 rgba;
+			void main(void) {
+				float deltaX = gl_in[1].gl_Position.x - gl_in[0].gl_Position.x;
+				float deltaY = gl_in[1].gl_Position.y - gl_in[0].gl_Position.y;
+				float n = lineWidth / sqrt(deltaX*deltaX + deltaY*deltaY);
+				float shiftX = n / widthPixels * deltaY;
+				float shiftY = n / heightPixels * deltaX;
+				gl_Position = vec4(gl_in[0].gl_Position.x + shiftX, gl_in[0].gl_Position.y - shiftY, 0, 1);    rgba = color[0];    EmitVertex();
+				gl_Position = vec4(gl_in[0].gl_Position.x - shiftX, gl_in[0].gl_Position.y + shiftY, 0, 1);    rgba = color[0];    EmitVertex();
+				gl_Position = vec4(gl_in[1].gl_Position.x + shiftX, gl_in[1].gl_Position.y - shiftY, 0, 1);    rgba = color[1];    EmitVertex();
+				gl_Position = vec4(gl_in[1].gl_Position.x - shiftX, gl_in[1].gl_Position.y + shiftY, 0, 1);    rgba = color[1];    EmitVertex();
+				EndPrimitive();
+			}"""
 		};
 		String[] geometryShaderThickPoints = new String[] {
-			versionLine,
-			"#ifdef GL_ES\n" +
-			"#extension GL_EXT_geometry_shader : require\n" +
-			"precision mediump float;\n" + 
-			"precision mediump int;\n" +
-			"#endif\n" +
-			"layout (points) in;\n",
-			"layout (triangle_strip, max_vertices = 4) out;\n",
-			"uniform float pointWidth;\n",
-			"uniform float widthPixels;\n",
-			"uniform float heightPixels;\n",
-			"flat out vec4 center;\n",
-			"void main(void) {\n",
-			"	float shiftX = pointWidth / widthPixels;\n",
-			"	float shiftY = pointWidth / heightPixels;\n",
-			"	center = vec4((gl_in[0].gl_Position.x + 1.0) / 2.0 * widthPixels, (gl_in[0].gl_Position.y + 1.0) / 2.0 * heightPixels, 0, 1);\n",
-			"	gl_Position = vec4(gl_in[0].gl_Position.x - shiftX, gl_in[0].gl_Position.y + shiftY, 0, 1);    EmitVertex();\n",
-			"	gl_Position = vec4(gl_in[0].gl_Position.x - shiftX, gl_in[0].gl_Position.y - shiftY, 0, 1);    EmitVertex();\n",
-			"	gl_Position = vec4(gl_in[0].gl_Position.x + shiftX, gl_in[0].gl_Position.y + shiftY, 0, 1);    EmitVertex();\n",
-			"	gl_Position = vec4(gl_in[0].gl_Position.x + shiftX, gl_in[0].gl_Position.y - shiftY, 0, 1);    EmitVertex();\n",
-			"	EndPrimitive();\n",
-			"}\n"
+			versionLine, """
+			#ifdef GL_ES
+			#extension GL_EXT_geometry_shader : require
+			precision mediump float;
+			precision mediump int;
+			#endif
+			layout (points) in;
+			layout (triangle_strip, max_vertices = 4) out;
+			uniform float pointWidth;
+			uniform float widthPixels;
+			uniform float heightPixels;
+			flat out vec4 center;
+			void main(void) {
+				float shiftX = pointWidth / widthPixels;
+				float shiftY = pointWidth / heightPixels;
+				center = vec4((gl_in[0].gl_Position.x + 1.0) / 2.0 * widthPixels, (gl_in[0].gl_Position.y + 1.0) / 2.0 * heightPixels, 0, 1);
+				gl_Position = vec4(gl_in[0].gl_Position.x - shiftX, gl_in[0].gl_Position.y + shiftY, 0, 1);    EmitVertex();
+				gl_Position = vec4(gl_in[0].gl_Position.x - shiftX, gl_in[0].gl_Position.y - shiftY, 0, 1);    EmitVertex();
+				gl_Position = vec4(gl_in[0].gl_Position.x + shiftX, gl_in[0].gl_Position.y + shiftY, 0, 1);    EmitVertex();
+				gl_Position = vec4(gl_in[0].gl_Position.x + shiftX, gl_in[0].gl_Position.y - shiftY, 0, 1);    EmitVertex();
+				EndPrimitive();
+			}"""
 		};
 		String[] geometryShaderFontRenderer = new String[] {
-			versionLine,
-			"#ifdef GL_ES\n" +
-			"#extension GL_EXT_geometry_shader : require\n" +
-			"precision mediump float;\n" +
-			"precision mediump int;\n" +
-			"#endif\n" +
-			"layout (points) in;\n",
-			"layout (triangle_strip, max_vertices = 4) out;\n",
-			"in vec3 atlas[1];\n",
-			"out vec2 texCoord;\n",
-			"uniform mat4 matrix;\n",
-			"uniform float lineHeight;\n",
-			"void main(void) {\n",
-			"	gl_Position = matrix * vec4(gl_in[0].gl_Position.x + atlas[0].z, gl_in[0].gl_Position.y, 0, 1);\n",
-			"	texCoord = vec2(atlas[0].x+atlas[0].z, atlas[0].y + lineHeight);\n",
-			"	EmitVertex();\n",
-			"	gl_Position = matrix * vec4(gl_in[0].gl_Position.x + atlas[0].z, gl_in[0].gl_Position.y + lineHeight, 0, 1);\n",
-			"	texCoord = vec2(atlas[0].x+atlas[0].z, atlas[0].y);\n",
-			"	EmitVertex();\n",
-			"	gl_Position = matrix * vec4(gl_in[0].gl_Position.x, gl_in[0].gl_Position.y, 0, 1);\n",
-			"	texCoord = vec2(atlas[0].x, atlas[0].y + lineHeight);\n",
-			"	EmitVertex();\n",
-			"	gl_Position = matrix * vec4(gl_in[0].gl_Position.x, gl_in[0].gl_Position.y + lineHeight, 0, 1);\n",
-			"	texCoord = vec2(atlas[0].x, atlas[0].y);\n",
-			"	EmitVertex();\n",
-			"	EndPrimitive();\n",
-			"}\n"
+			versionLine, """
+			#ifdef GL_ES
+			#extension GL_EXT_geometry_shader : require
+			precision mediump float;
+			precision mediump int;
+			#endif
+			layout (points) in;
+			layout (triangle_strip, max_vertices = 4) out;
+			in vec3 atlas[1];
+			out vec2 texCoord;
+			uniform mat4 matrix;
+			uniform float lineHeight;
+			void main(void) {
+				gl_Position = matrix * vec4(gl_in[0].gl_Position.x + atlas[0].z, gl_in[0].gl_Position.y, 0, 1);
+				texCoord = vec2(atlas[0].x+atlas[0].z, atlas[0].y + lineHeight);
+				EmitVertex();
+				gl_Position = matrix * vec4(gl_in[0].gl_Position.x + atlas[0].z, gl_in[0].gl_Position.y + lineHeight, 0, 1);
+				texCoord = vec2(atlas[0].x+atlas[0].z, atlas[0].y);
+				EmitVertex();
+				gl_Position = matrix * vec4(gl_in[0].gl_Position.x, gl_in[0].gl_Position.y, 0, 1);
+				texCoord = vec2(atlas[0].x, atlas[0].y + lineHeight);
+				EmitVertex();
+				gl_Position = matrix * vec4(gl_in[0].gl_Position.x, gl_in[0].gl_Position.y + lineHeight, 0, 1);
+				texCoord = vec2(atlas[0].x, atlas[0].y);
+				EmitVertex();
+				EndPrimitive();
+			}"""
 		};
 		String[] fragmentShaderUniformColor = new String[] {
-			versionLine,
-			"#ifdef GL_ES\n" +
-			"precision mediump float;\n" + 
-			"precision mediump int;\n" +
-			"#endif\n" +
-			"uniform vec4 rgba;\n",
-			"out vec4 fragColor;\n",
-			"void main(void) {\n",
-			"	fragColor = rgba;\n",
-			"}\n"
+			versionLine, """
+			#ifdef GL_ES
+			precision mediump float;
+			precision mediump int;
+			#endif
+			uniform vec4 rgba;
+			out vec4 fragColor;
+			void main(void) {
+				fragColor = rgba;
+			}"""
 		};
 		String[] fragmentShaderVaryingColor = new String[] {
-			versionLine,
-			"#ifdef GL_ES\n" +
-			"precision mediump float;\n" + 
-			"precision mediump int;\n" +
-			"#endif\n" +
-			"in vec4 color;\n",
-			"out vec4 fragColor;\n",
-			"void main(void) {\n",
-			"	fragColor = color;\n",
-			"}\n"
+			versionLine, """
+			#ifdef GL_ES
+			precision mediump float;
+			precision mediump int;
+			#endif
+			in vec4 color;
+			out vec4 fragColor;
+			void main(void) {
+				fragColor = color;
+			}"""
 		};
 		String[] fragmentShaderVaryingColorFromGeom = new String[] {
-			versionLine,
-			"#ifdef GL_ES\n" +
-			"precision mediump float;\n" + 
-			"precision mediump int;\n" +
-			"#endif\n" +
-			"in vec4 rgba;\n",
-			"out vec4 fragColor;\n",
-			"void main(void) {\n",
-			"	fragColor = rgba;\n",
-			"}\n"
+			versionLine, """
+			#ifdef GL_ES
+			precision mediump float;
+			precision mediump int;
+			#endif
+			in vec4 rgba;
+			out vec4 fragColor;
+			void main(void) {
+				fragColor = rgba;
+			}"""
 		};
 		String[] fragmentShaderUniformColorPoints = new String[] {
-			versionLine,
-			"#ifdef GL_ES\n" +
-			"precision mediump float;\n" + 
-			"precision mediump int;\n" +
-			"#endif\n" +
-			"uniform vec4 rgba;\n",
-			"uniform float pointWidth;\n",
-			"flat in vec4 center;\n",
-			"out vec4 fragColor;\n",
-			"void main(void) {\n",
-			"	float d = distance(center, gl_FragCoord) - (pointWidth / 2.0);\n",
-			"	d = clamp(d, 0.0, 1.0);\n",
-			"	fragColor = vec4(rgba.rgb, 1.0 - d);\n",
-			"}\n"
+			versionLine, """
+			#ifdef GL_ES
+			precision mediump float;
+			precision mediump int;
+			#endif
+			uniform vec4 rgba;
+			uniform float pointWidth;
+			flat in vec4 center;
+			out vec4 fragColor;
+			void main(void) {
+				float d = distance(center, gl_FragCoord) - (pointWidth / 2.0);
+				d = clamp(d, 0.0, 1.0);
+				fragColor = vec4(rgba.rgb, 1.0 - d);
+			}"""
 		};
 		String[] fragmentShaderTex2D = new String[] {
-			versionLine,
-			"#ifdef GL_ES\n" +
-			"precision mediump float;\n" + 
-			"precision mediump int;\n" + 
-			"precision mediump sampler2D;\n" +
-			"#endif\n" +
-			"in vec2 texCoord;\n",
-			"uniform sampler2D tex;\n",
-			"out vec4 fragColor;\n",
-			"void main(void) {\n",
-			"	fragColor = texture(tex, texCoord);\n",
-			"}\n"
+			versionLine, """
+			#ifdef GL_ES
+			precision mediump float;
+			precision mediump int;
+			precision mediump sampler2D;
+			#endif
+			in vec2 texCoord;
+			uniform sampler2D tex;
+			out vec4 fragColor;
+			void main(void) {
+				fragColor = texture(tex, texCoord);
+			}"""
 		};
 		String[] fragmentShaderHistogram = new String[] {
-				versionLine,
-				"#ifdef GL_ES\n" +
-				"precision mediump float;\n" + 
-				"precision mediump int;\n" + 
-				"precision mediump isampler2D;\n" +
-				"#endif\n" +
-				"in vec2 texCoord;\n",
-				"uniform isampler2D tex;\n",
-				"uniform vec4 color;\n",
-				"uniform float fullScale;\n",
-				"uniform float gamma;\n",
-				"out vec4 fragColor;\n",
-				"void main(void) {\n",
-				"	float a = pow(float(texture(tex, texCoord).r) / fullScale, gamma);\n",
-				"	fragColor = vec4(color.r * a, color.g * a, color.b * a, a);\n",
-				"}\n"
+				versionLine, """
+				#ifdef GL_ES
+				precision mediump float;
+				precision mediump int;
+				precision mediump isampler2D;
+				#endif
+				in vec2 texCoord;
+				uniform isampler2D tex;
+				uniform vec4 color;
+				uniform float fullScale;
+				uniform float gamma;
+				out vec4 fragColor;
+				void main(void) {
+					float a = pow(float(texture(tex, texCoord).r) / fullScale, gamma);
+					fragColor = vec4(color.r * a, color.g * a, color.b * a, a);
+				}"""
 			};
 		int msaaLevel = Settings.GUI.antialiasingLevel.get();
 		String[] fragmentShaderTex2DMS = new String[] {
@@ -2024,40 +2024,40 @@ public class OpenGL {
 			"}\n"
 		};
 		String[] fragmentShaderLights3D = new String[] {
-			versionLine,
-			"#ifdef GL_ES\n" +
-			"precision mediump float;\n" + 
-			"precision mediump int;\n" +
-			"#endif\n" +
-			"in vec3 normal;\n",
-			"uniform mat4 matrix;\n",
-			"out vec4 fragColor;\n",
-			"void main(void) {\n",
-			"	vec3 nor = normalize(normal);\n",
-			"	vec3 redDirection   = vec3(-1, 0, 0);\n", // red light at the left edge
-			"	vec3 greenDirection = vec3( 0, 0, 1);\n", // green light at the top edge
-			"	vec3 blueDirection  = vec3( 1, 0, 0);\n", // blue light at the right edge
-			"	float redDiffuse   = 0.8 * max(dot(nor, redDirection),   0.0);\n",
-			"	float greenDiffuse = 0.8 * max(dot(nor, greenDirection), 0.0);\n",
-			"	float blueDiffuse  = 0.8 * max(dot(nor, blueDirection),  0.0);\n",
-			"	fragColor = vec4(redDiffuse, greenDiffuse, blueDiffuse, 1);\n",
-			"}\n"
+			versionLine, """
+			#ifdef GL_ES
+			precision mediump float;
+			precision mediump int;
+			#endif
+			in vec3 normal;
+			uniform mat4 matrix;
+			out vec4 fragColor;
+			void main(void) {
+				vec3 nor = normalize(normal);
+				vec3 redDirection   = vec3(-1, 0, 0); // red light at the left edge
+				vec3 greenDirection = vec3( 0, 0, 1); // green light at the top edge
+				vec3 blueDirection  = vec3( 1, 0, 0); // blue light at the right edge
+				float redDiffuse   = 0.8 * max(dot(nor, redDirection),   0.0);
+				float greenDiffuse = 0.8 * max(dot(nor, greenDirection), 0.0);
+				float blueDiffuse  = 0.8 * max(dot(nor, blueDirection),  0.0);
+				fragColor = vec4(redDiffuse, greenDiffuse, blueDiffuse, 1);
+			}"""
 		};
 		String[] fragmentShaderFontRenderer = new String[] {
-			versionLine,
-			"#ifdef GL_ES\n" +
-			"precision mediump float;\n" + 
-			"precision mediump int;\n" + 
-			"precision mediump sampler2D;\n" +
-			"#endif\n" +
-			"in vec2 texCoord;\n",
-			"uniform sampler2D tex;\n",
-			"uniform float opacity;\n",
-			"out vec4 fragColor;\n",
-			"void main(void) {\n",
-			"	float alpha = opacity * texelFetch(tex, ivec2(texCoord), 0).r;\n", // alpha = texture's red channel * requested opacity
-			"	fragColor = vec4(0,0,0,alpha);\n", // color = black
-			"}\n"
+			versionLine, """
+			#ifdef GL_ES
+			precision mediump float;
+			precision mediump int;
+			precision mediump sampler2D;
+			#endif
+			in vec2 texCoord;
+			uniform sampler2D tex;
+			uniform float opacity;
+			out vec4 fragColor;
+			void main(void) {
+				float alpha = opacity * texelFetch(tex, ivec2(texCoord), 0).r; // alpha = texture's red channel * requested opacity
+				fragColor = vec4(0,0,0,alpha);                                 // color = black
+			}"""
 		};
 		
 		int[] handle = new int[1];

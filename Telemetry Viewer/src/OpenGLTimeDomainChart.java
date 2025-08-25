@@ -241,7 +241,7 @@ public class OpenGLTimeDomainChart extends Chart {
 		                    OpenGL.useMatrix(gl, plot.matrix());
 		                    
 		                } else {
-		                    
+		                	
 		                    // cache enabled, so start off assuming we need to draw the entire x-axis range
 		                    long firstX = plotMinX;
 		                    long lastX  = plotMaxX;
@@ -296,105 +296,79 @@ public class OpenGLTimeDomainChart extends Chart {
 		                    long xAmountElapsed = plotMaxX - firstValidX;
 		                    long xSplittingValue = xAmountElapsed - (xAmountElapsed % plotDomain) + firstValidX;
 		                    
+		                    record DrawDetails(int[] scissor, long xOffset, FloatBuffer bufferX, FloatBuffer[] buffersY) {
+		                    	
+		                    	public static DrawDetails calculate(long firstX, long lastX, long firstValidX, long lastValidX, long plotDomain, int plotWidth, int plotHeight, float lineWidth, boolean sampleCountMode, DatasetsInterface datasets) {
+		                    		
+				                    // in theory, we only need to draw from firstX to lastX, inclusive, but...
+				                    
+				                    // we need to draw the corresponding range of *pixels*, being sure to round down and round up to fully enclose them
+				                    int firstPixel = (int) Math.floor((double) ((firstX - firstValidX) % plotDomain) / (double) plotDomain * (double) plotWidth);
+				                    int lastPixel  = (int) Math.ceil ((double) ((lastX  - firstValidX) % plotDomain) / (double) plotDomain * (double) plotWidth);
+				                    if(lastPixel == 0) // lastX is at the wrap around point
+				                    	lastPixel = plotWidth;
+				                    lastPixel--; // this prevents a 1px gap at the edge of the plot, but i don't know why
+				                    
+				                    // and we need to draw (lineWidth/2)'s amount of extra pixels on each side to ensure the full stroke width can be drawn
+				                    int halfLineWidth = (int) Math.ceil(lineWidth / 2);
+				                    firstPixel -= halfLineWidth;
+				                    lastPixel  += halfLineWidth;
+				                    
+				                    // now we know what *pixels* need to be redrawn
+				                    firstPixel = Math.clamp(firstPixel, 0, plotWidth);
+				                    lastPixel  = Math.clamp(lastPixel,  0, plotWidth);
+				                    int[] scissor = new int[] {firstPixel, 0, (lastPixel - firstPixel), plotHeight};
+			                        
+			                        // we'll need to draw extra samples before and after, because adjacent samples affect the edges
+			                        double unitsPerPixel = Math.ceil((double) plotDomain / (double) plotWidth); // samples or milliseconds
+			                        long extraUnitsNeeded = (long) Math.ceil(unitsPerPixel * lineWidth * 2);    // samples or milliseconds
+			                        
+			                        // when drawing, the x values will be auto-generated, starting at 0.
+			                        // but we're drawing a ring buffer, so we need to apply an offset instead of starting at 0.
+			                        long xOffset = sampleCountMode ? (firstX % plotDomain) - extraUnitsNeeded:
+			                                                         firstValidX + ((firstX - firstValidX) / plotDomain * plotDomain);
+			                        
+			                        firstX = Guava.saturatedSubtract(firstX, extraUnitsNeeded);
+			                        lastX  = Math.min(lastValidX,  Guava.saturatedAdd(lastX, extraUnitsNeeded));
+			                        if(firstX < firstValidX) {
+			                            firstX = firstValidX;
+			                            xOffset = firstValidX;
+			                        }
+			                        
+			                        // acquire the samples
+			                        int firstSampleNumber = sampleCountMode ? (int) firstX : datasets.getClosestSampleNumberAtOrBefore(firstX, (int) lastValidX);
+			                        int  lastSampleNumber = sampleCountMode ? (int)  lastX : datasets.getClosestSampleNumberAfter(lastX);
+			                        FloatBuffer bufferX   = sampleCountMode ?         null : datasets.getTimestampsBuffer(firstSampleNumber, lastSampleNumber, xOffset);
+			                        FloatBuffer[] buffersY = new FloatBuffer[datasets.normalsCount()];
+			                        for(int i = 0; i < datasets.normalsCount(); i++)
+			                            buffersY[i] = datasets.getSamplesBuffer(datasets.getNormal(i), firstSampleNumber, lastSampleNumber);
+				                    
+				                    return new DrawDetails(scissor, xOffset, bufferX, buffersY);
+				                    
+		                    	}
+		                    	
+		                    }
+		                    
 		                    // get the samples
-		                    int[]         draw1scissor  = null;
-		                    int[]         draw2scissor  = null;
-		                    long          draw1xOffset  = 0;
-		                    long          draw2xOffset  = 0;
-		                    FloatBuffer   draw1bufferX  = null;
-		                    FloatBuffer   draw2bufferX  = null;
-		                    FloatBuffer[] draw1buffersY = new FloatBuffer[datasetsCount];
-		                    FloatBuffer[] draw2buffersY = new FloatBuffer[datasetsCount];
+		                    DrawDetails draw1 = null;
+		                    DrawDetails draw2 = null;
 		                    
 		                    if(firstX == lastX) {
 		                        
 		                        // nothing to draw
 		                        
 		                    } else if(lastX <= xSplittingValue || firstX >= xSplittingValue) {
-		                        
-		                        // only 1 draw call required (no need to wrap around the ring buffer)
-		                        // determine the pixels corresponding to the draw call
-		                        draw1scissor = calculateScissorArgs(firstX, lastX, plotDomain, (int) plot.width(), (int) plot.height());
-		                        
-		                        // we'll need to draw extra samples before and after, because adjacent samples affect the edges of this region
-		                        double unitsPerPixel = (double) (plotDomain + 1) / (double) plot.width();  // samples or milliseconds
-		                        long extraUnitsNeeded = (long) Math.ceil(unitsPerPixel * Theme.lineWidth); // samples or milliseconds
-		                        
-		                        // when drawing, the x values will be auto-generated, starting at 0.
-		                        // but we're drawing a ring buffer, so we need to apply an offset instead of starting at 0.
-		                        draw1xOffset = sampleCountMode ? (firstX % plotDomain) - extraUnitsNeeded :
-		                                                         firstValidX + ((firstX - firstValidX) / plotDomain * plotDomain);
-		                        
-		                        // expand the range based on the extra amount needed
-		                        // and clip the range to ensure valid values (0 to maxSampleNumber)
-		                        firstX = Guava.saturatedSubtract(firstX, extraUnitsNeeded);
-		                        lastX  = Math.min(lastValidX, Guava.saturatedAdd(lastX, extraUnitsNeeded));
-		                        if(firstX < firstValidX) {
-		                            firstX = firstValidX;
-		                            draw1xOffset = firstValidX;
-		                        }
-		                        
-		                        // acquire the samples
-		                        int firstSampleNumber = sampleCountMode ? (int) firstX : datasets.getClosestSampleNumberAtOrBefore(firstX, (int) maxSampleNumber);
-		                        int  lastSampleNumber = sampleCountMode ? (int)  lastX : datasets.getClosestSampleNumberAfter(lastX);
-		                        if(!sampleCountMode)
-		                            draw1bufferX = datasets.getTimestampsBuffer(firstSampleNumber, lastSampleNumber, draw1xOffset);
-		                        for(int i = 0; i < datasetsCount; i++)
-		                            draw1buffersY[i] = datasets.getSamplesBuffer(datasets.getNormal(i), firstSampleNumber, lastSampleNumber);
-		                        cachedMaxX = sampleCountMode ? lastSampleNumber : datasets.getTimestamp(lastSampleNumber);
+		                    	
+		                    	// only 1 draw call needed
+		                    	draw1 = DrawDetails.calculate(firstX, lastX, firstValidX, lastValidX, plotDomain, plot.width(), plot.height(), Theme.lineWidth, sampleCountMode, datasets);
+		                        cachedMaxX = Math.min(lastValidX, plotMaxX);
 		                        
 		                    } else {
-		                        
+		                    	
 		                        // 2 draw calls required because we need to wrap around the ring buffer
-		                        // determine the pixels corresponding to each draw call
-		                        draw1scissor = calculateScissorArgs(firstX, xSplittingValue, plotDomain, (int) plot.width(), (int) plot.height());
-		                        draw2scissor = calculateScissorArgs(xSplittingValue,  lastX, plotDomain, (int) plot.width(), (int) plot.height());
-		                        
-		                        // we'll need to draw extra samples before and after, because adjacent samples affect the edges of each region
-		                        double unitsPerPixel = (double) (plotDomain + 1) / (double) plot.width();  // samples or milliseconds
-		                        long extraUnitsNeeded = (long) Math.ceil(unitsPerPixel * Theme.lineWidth); // samples or milliseconds
-		                        
-		                        // when drawing, the x values will be auto-generated, starting at 0.
-		                        // but we're drawing a ring buffer, so we need to apply an offset instead of starting at 0.
-		                        draw1xOffset = sampleCountMode ? (firstX % plotDomain) - extraUnitsNeeded :
-		                                                         firstValidX + ((firstX - firstValidX) / plotDomain * plotDomain);
-		                        draw2xOffset = sampleCountMode ? (xSplittingValue % plotDomain) - extraUnitsNeeded :
-		                                                         firstValidX + ((xSplittingValue - firstValidX) / plotDomain * plotDomain);
-		                        
-		                        
-		                        // expand the range based on the extra amount needed
-		                        // and clip the range to ensure valid values (0 to maxSampleNumber)
-		                        long draw1firstX = Guava.saturatedSubtract(firstX, extraUnitsNeeded);
-		                        long draw1lastX  = Math.min(lastValidX, Guava.saturatedAdd(xSplittingValue, extraUnitsNeeded));
-		                        long draw2firstX = Guava.saturatedSubtract(xSplittingValue, extraUnitsNeeded);
-		                        long draw2lastX  = Math.min(lastValidX, Guava.saturatedAdd(lastX, extraUnitsNeeded));
-		                        if(draw1firstX < firstValidX) {
-		                            draw1firstX = firstValidX;
-		                            draw1xOffset = firstValidX;
-		                        }
-		                        if(draw2firstX < firstValidX) {
-		                            draw2firstX = firstValidX;
-		                            draw2xOffset = firstValidX;
-		                        }
-		                        
-		                        // acquire the samples
-		                        int firstSampleNumber1 = sampleCountMode ? (int) draw1firstX : datasets.getClosestSampleNumberAtOrBefore(draw1firstX, (int) maxSampleNumber);
-		                        int  lastSampleNumber1 = sampleCountMode ? (int)  draw1lastX : datasets.getClosestSampleNumberAfter(draw1lastX);
-		                        int firstSampleNumber2 = sampleCountMode ? (int) draw2firstX : datasets.getClosestSampleNumberAtOrBefore(draw2firstX, (int) maxSampleNumber);
-		                        int  lastSampleNumber2 = sampleCountMode ? (int)  draw2lastX : datasets.getClosestSampleNumberAfter(draw2lastX);
-		                        if(!sampleCountMode) {
-		                            draw1bufferX = datasets.getTimestampsBuffer(firstSampleNumber1, lastSampleNumber1, draw1xOffset);
-		                            draw2bufferX = datasets.getTimestampsBuffer(firstSampleNumber2, lastSampleNumber2, draw2xOffset);
-		                        }
-		                        // important: getSamplesBuffer() returns a *view* (not a copy) of the cache
-		                        // but we will call that function twice (for draw1 and draw2) before "using" the samples it returns
-		                        // so we must first ask for the full range of samples, to prevent a possible cache flush *between* the first and second calls!
-		                        for(int i = 0; i < datasetsCount; i++) {
-		                            datasets.getSamplesBuffer(datasets.getNormal(i), firstSampleNumber1, lastSampleNumber2);
-		                            draw1buffersY[i] = datasets.getSamplesBuffer(datasets.getNormal(i), firstSampleNumber1, lastSampleNumber1);
-		                            draw2buffersY[i] = datasets.getSamplesBuffer(datasets.getNormal(i), firstSampleNumber2, lastSampleNumber2);
-		                        }
-		                        cachedMaxX = sampleCountMode ? lastSampleNumber2 : datasets.getTimestamp(lastSampleNumber2);
+		                    	draw1 = DrawDetails.calculate(firstX, xSplittingValue, firstValidX, lastValidX, plotDomain, plot.width(), plot.height(), Theme.lineWidth, sampleCountMode, datasets);
+		                    	draw2 = DrawDetails.calculate(xSplittingValue, lastX, firstValidX, lastValidX, plotDomain, plot.width(), plot.height(), Theme.lineWidth, sampleCountMode, datasets);
+		                        cachedMaxX = Math.min(lastValidX, plotMaxX);
 		                        
 		                    }
 		                    
@@ -403,8 +377,8 @@ public class OpenGLTimeDomainChart extends Chart {
 		                    cachedEdgeStates     = List.copyOf(datasets.edgeStates);
 		                    cachedLevelStates    = List.copyOf(datasets.levelStates);
 		                    cachedLineWidth      = Theme.lineWidth;
-		                    cachedPlotWidth      = (int) plot.width();
-		                    cachedPlotHeight     = (int) plot.height();
+		                    cachedPlotWidth      = plot.width();
+		                    cachedPlotHeight     = plot.height();
 		                    cachedPlotMinX       = plotMinX;
 		                    cachedPlotMaxX       = plotMaxX;
 		                    cachedPlotMinY       = plotMinY;
@@ -421,33 +395,33 @@ public class OpenGLTimeDomainChart extends Chart {
 		                    // draw on the off-screen framebuffer
 		                    float[] offscreenMatrix = new float[16];
 		                    OpenGL.makeOrthoMatrix(offscreenMatrix, 0, plot.width(), 0, plot.height(), -1, 1);
-		                    OpenGL.startDrawingOffscreen(gl, offscreenMatrix, fbHandle, texHandle, (int) plot.width(), (int) plot.height(), !cacheIsValid);
+		                    OpenGL.startDrawingOffscreen(gl, offscreenMatrix, fbHandle, texHandle, plot.width(), plot.height(), !cacheIsValid);
 		                    
 		                    // erase the invalid parts of the framebuffer
 		                    gl.glClearColor(0, 0, 0, 0);
 		                    if(plotMinX < firstValidX) {
 		                        // if x<firstSample is on screen, erase the x<firstSample region because it may have old data on it
-		                        int[] args = calculateScissorArgs(plotMaxX, plotMaxX + plotDomain, plotDomain, (int) plot.width(), (int) plot.height());
+		                        int[] args = calculateScissorArgs(plotMaxX, plotMaxX + plotDomain, plotDomain, plot.width(), plot.height());
 		                        gl.glScissor(args[0], args[1], args[2], args[3]);
 		                        gl.glClear(GL3.GL_COLOR_BUFFER_BIT);
 		                    }
 		                    if(plotMaxX > lastValidX) {
 		                        // if x>lastSample is on screen, erase the x>lastSample region because it may have old data on it
-		                        int[] args = calculateScissorArgs(lastValidX, plotMaxX, plotDomain, (int) plot.width(), (int) plot.height());
+		                        int[] args = calculateScissorArgs(lastValidX, plotMaxX, plotDomain, plot.width(), plot.height());
 		                        gl.glScissor(args[0], args[1], args[2], args[3]);
 		                        gl.glClear(GL3.GL_COLOR_BUFFER_BIT);
 		                        if((plotMaxX - firstValidX) % plotDomain < (lastValidX - firstValidX) % plotDomain) {
-		                            args = calculateScissorArgs(plotMaxX - ((plotMaxX - firstValidX) % plotDomain), plotMaxX, plotDomain, (int) plot.width(), (int) plot.height());
+		                            args = calculateScissorArgs(plotMaxX - ((plotMaxX - firstValidX) % plotDomain), plotMaxX, plotDomain, plot.width(), plot.height());
 		                            gl.glScissor(args[0], args[1], args[2], args[3]);
 		                            gl.glClear(GL3.GL_COLOR_BUFFER_BIT);
 		                        }
 		                    }
-		                    if(draw1scissor != null) {
-                                gl.glScissor(draw1scissor[0], draw1scissor[1], draw1scissor[2], draw1scissor[3]);
+		                    if(draw1 != null) {
+                                gl.glScissor(draw1.scissor[0], draw1.scissor[1], draw1.scissor[2], draw1.scissor[3]);
                                 gl.glClear(GL3.GL_COLOR_BUFFER_BIT);
 		                    }
-		                    if(draw2scissor != null) {
-                                gl.glScissor(draw2scissor[0], draw2scissor[1], draw2scissor[2], draw2scissor[3]);
+		                    if(draw2 != null) {
+                                gl.glScissor(draw2.scissor[0], draw2.scissor[1], draw2.scissor[2], draw2.scissor[3]);
                                 gl.glClear(GL3.GL_COLOR_BUFFER_BIT);
 		                    }
 		                    
@@ -459,53 +433,58 @@ public class OpenGLTimeDomainChart extends Chart {
 		                    OpenGL.useMatrix(gl, offscreenMatrix);
 		                    
 		                    // draw each dataset
-		                    if(draw1scissor != null || draw2scissor != null) {
+		                    if(draw1 != null || draw2 != null) {
 		                        boolean fewSamplesOnScreen = (plot.width() / (float) plotDomain) > (2 * Theme.pointWidth);
 		                        for(int i = 0; i < datasetsCount; i++) {
 		                            float[] glColor = datasets.getNormal(i).color.getGl();
-		                            if(draw1scissor != null) {
-		                                gl.glScissor(draw1scissor[0], draw1scissor[1], draw1scissor[2], draw1scissor[3]);
+		                            if(draw1 != null) {
+		                                gl.glScissor(draw1.scissor[0], draw1.scissor[1], draw1.scissor[2], draw1.scissor[3]);
 		                                if(sampleCountMode) {
-		                                    OpenGL.drawLinesY(gl, GL3.GL_LINE_STRIP, glColor, draw1buffersY[i], draw1buffersY[i].capacity(), (int) draw1xOffset);
+		                                    OpenGL.drawLinesY(gl, GL3.GL_LINE_STRIP, glColor, draw1.buffersY[i], draw1.buffersY[i].capacity(), (int) draw1.xOffset);
 		                                    if(fewSamplesOnScreen)
-		                                        OpenGL.drawPointsY(gl, glColor, draw1buffersY[i], draw1buffersY[i].capacity(), (int) draw1xOffset);
+		                                        OpenGL.drawPointsY(gl, glColor, draw1.buffersY[i], draw1.buffersY[i].capacity(), (int) draw1.xOffset);
 		                                } else {
-		                                    OpenGL.drawLinesX_Y(gl, GL3.GL_LINE_STRIP, glColor, draw1bufferX, draw1buffersY[i], draw1buffersY[i].capacity());
+		                                    OpenGL.drawLinesX_Y(gl, GL3.GL_LINE_STRIP, glColor, draw1.bufferX, draw1.buffersY[i], draw1.buffersY[i].capacity());
 		                                    if(fewSamplesOnScreen)
-		                                        OpenGL.drawPointsX_Y(gl, glColor, draw1bufferX, draw1buffersY[i], draw1buffersY[i].capacity());
+		                                        OpenGL.drawPointsX_Y(gl, glColor, draw1.bufferX, draw1.buffersY[i], draw1.buffersY[i].capacity());
 		                                }
 		                            }
-		                            if(draw2scissor != null) {
-		                                gl.glScissor(draw2scissor[0], draw2scissor[1], draw2scissor[2], draw2scissor[3]);
+		                            if(draw2 != null) {
+		                                gl.glScissor(draw2.scissor[0], draw2.scissor[1], draw2.scissor[2], draw2.scissor[3]);
 		                                if(sampleCountMode) {
-		                                    OpenGL.drawLinesY(gl, GL3.GL_LINE_STRIP, glColor, draw2buffersY[i], draw2buffersY[i].capacity(), (int) draw2xOffset);
+		                                    OpenGL.drawLinesY(gl, GL3.GL_LINE_STRIP, glColor, draw2.buffersY[i], draw2.buffersY[i].capacity(), (int) draw2.xOffset);
 		                                    if(fewSamplesOnScreen)
-		                                        OpenGL.drawPointsY(gl, glColor, draw2buffersY[i], draw2buffersY[i].capacity(), (int) draw2xOffset);
+		                                        OpenGL.drawPointsY(gl, glColor, draw2.buffersY[i], draw2.buffersY[i].capacity(), (int) draw2.xOffset);
 		                                } else {
-		                                    OpenGL.drawLinesX_Y(gl, GL3.GL_LINE_STRIP, glColor, draw2bufferX, draw2buffersY[i], draw2buffersY[i].capacity());
+		                                    OpenGL.drawLinesX_Y(gl, GL3.GL_LINE_STRIP, glColor, draw2.bufferX, draw2.buffersY[i], draw2.buffersY[i].capacity());
 		                                    if(fewSamplesOnScreen)
-		                                        OpenGL.drawPointsX_Y(gl, glColor, draw2bufferX, draw2buffersY[i], draw2buffersY[i].capacity());
+		                                        OpenGL.drawPointsX_Y(gl, glColor, draw2.bufferX, draw2.buffersY[i], draw2.buffersY[i].capacity());
 		                                }
 		                            }
 		                        }
 		                    }
 		                    
 //		                    // draw color bars at the bottom edge of the plot to indicate draw call regions
+//		                    gl.glDisable(GL3.GL_SCISSOR_TEST);
 //		                    OpenGL.makeOrthoMatrix(offscreenMatrix, 0, plot.width(), 0, plot.height(), -1, 1);
 //		                    OpenGL.useMatrix(gl, offscreenMatrix);
 //		                    float[] randomColor1 = new float[] {(float) Math.random(), (float) Math.random(), (float) Math.random(), 0.5f};
 //		                    float[] randomColor2 = new float[] {(float) Math.random(), (float) Math.random(), (float) Math.random(), 0.5f};
-//		                    if(draw1scissor != null)
-//		                        OpenGL.drawBox(gl, randomColor1, draw1scissor[0] + 0.5f, 0, draw1scissor[2], 10);
-//		                    if(draw2scissor != null)
-//		                        OpenGL.drawBox(gl, randomColor2, draw2scissor[0] + 0.5f, 0, draw2scissor[2], 10);
+//		                    if(draw1 != null)
+//		                        OpenGL.drawBox(gl, randomColor1, draw1.scissor[0], 0, draw1.scissor[2], 10);
+//		                    if(draw2 != null)
+//		                        OpenGL.drawBox(gl, randomColor2, draw2.scissor[0], 0, draw2.scissor[2], 10);
+//		                    gl.glEnable(GL3.GL_SCISSOR_TEST);
 		                    
 		                    // switch back to the screen framebuffer and draw the texture on screen
 		                    OpenGL.stopDrawingOffscreen(gl, plot.matrix());
-		                    float startX = (float) ((plotMaxX - firstValidX) % plotDomain) / plotDomain;
-		                    OpenGL.drawRingbufferTexturedBox(gl, texHandle, 0, 0, plot.width(), plot.height(), startX);
+		                    int firstPixel = (int) Math.floor((double) ((plotMinX - firstValidX) % plotDomain) / (double) plotDomain * (double) plot.width());
+		                    float firstPixelPercentage = (float) firstPixel / (float) plot.width();
+		                    if(firstPixelPercentage < 0)
+		                    	firstPixelPercentage += 1; // because modulo returns a negative number when plotMinX is negative
+		                    OpenGL.drawRingbufferTexturedBox(gl, texHandle, 0, 0, plot.width(), plot.height(), firstPixelPercentage);
 		                    
-//		                    //draw the framebuffer without ringbuffer wrapping, 10 pixels above the plot
+//		                    // draw the framebuffer without ringbuffer wrapping, 10 pixels above the plot
 //		                    gl.glDisable(GL3.GL_SCISSOR_TEST);
 //		                    OpenGL.drawTexturedBox(gl, texHandle, true, 0, plot.height() + 10, plot.width(), plot.height(), 0, false);
 //		                    gl.glEnable(GL3.GL_SCISSOR_TEST);
@@ -533,7 +512,7 @@ public class OpenGLTimeDomainChart extends Chart {
 		                            mouseOverTriggerMarkers = true;
 		                            handler = EventHandler.onPressOrDrag(dragStarted -> trigger.setPaused(true),
 		                                                                 newLocation -> {
-		                                                                     float newTriggerLevel = Math.clamp((newLocation.y - plot.yBottom()) / plot.height() * plotRange + plotMinY, plotMinY, plotMaxY);
+		                                                                     float newTriggerLevel = Math.clamp((newLocation.y - plot.yBottom()) / (float) plot.height() * plotRange + plotMinY, plotMinY, plotMaxY);
 		                                                                     trigger.level.set(newTriggerLevel);
 		                                                                 },
 		                                                                 dragEnded -> trigger.setPaused(false),
@@ -556,7 +535,7 @@ public class OpenGLTimeDomainChart extends Chart {
 		                                mouseOverTriggerMarkers = true;
 		                                handler = EventHandler.onPressOrDrag(dragStarted -> trigger.setPaused(true),
 		                                                                     newLocation -> {
-		                                                                         float newPrePostRatio = Math.clamp((newLocation.x - plot.xLeft()) / plot.width(), 0, 1);
+		                                                                         float newPrePostRatio = Math.clamp((newLocation.x - plot.xLeft()) / (float) plot.width(), 0, 1);
 		                                                                         trigger.prePostRatio.set(Math.round(newPrePostRatio * 10000));
 		                                                                     },
 		                                                                     dragEnded -> trigger.setPaused(false),
@@ -672,14 +651,12 @@ public class OpenGLTimeDomainChart extends Chart {
 			maxX -= datasets.connection.getFirstTimestamp();
 		}
 		
-		// important: adding a 1px margin to the left and right edges, to prevent occasional 1px glitches when rewinding
-		
 		// convert the minX (sample number or milliseconds elapsed) into a pixel number on the framebuffer, keeping in mind that it's a ring buffer
 		long rbSampleNumber = minX % plotDomain;
-		int rbPixelX = (int) (rbSampleNumber * plotWidth / plotDomain) - 1; // -1 for some margin
+		int rbPixelX = (int) (rbSampleNumber * plotWidth / plotDomain);
 		
 		// convert the range (sample count or milliseconds) into a pixel count
-		int pixelWidth = (int) Math.ceil((double) (maxX - minX) * (double) plotWidth / (double) plotDomain) + 2; // +2 for some margin
+		int pixelWidth = (int) Math.ceil((double) (maxX - minX) * (double) plotWidth / (double) plotDomain);
 		
 		int[] args = new int[4];
 		args[0] = rbPixelX;

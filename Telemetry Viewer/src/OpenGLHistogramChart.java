@@ -379,7 +379,7 @@ public class OpenGLHistogramChart extends Chart {
 		                                          /* SAMPLE COUNT or BOTH */             (float) bins[datasetN][binN];
 		                            float xBarCenter = ((center - xAxisMin) / xAxisRange * plot.width());
 		                            float yBarTop = (value - yAxisMin) / yAxisRange * plot.height();
-		                            float halfBarWidth = plot.width() / binsCount / 2f;
+		                            float halfBarWidth = (float) plot.width() / binsCount / 2f;
 		                            
 		                            float x1 = xBarCenter - halfBarWidth; // top-left
 		                            float y1 = yBarTop;

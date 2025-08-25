@@ -18,7 +18,7 @@ public class OpenGLPlot {
 		TITLED { @Override public String toString() { return "Titled"; } }
 	}
 	enum AxisScale {LINEAR, LOG}
-	record PlotDetails(int mouseX, int mouseY, float width, float height, float xLeft, float yBottom, float[] matrix, EventHandler existingHandler) {}
+	record PlotDetails(int mouseX, int mouseY, int width, int height, int xLeft, int yBottom, float[] matrix, EventHandler existingHandler) {}
 	
 	final float[] chartMatrix;
 	final int chartWidth;
@@ -280,6 +280,8 @@ public class OpenGLPlot {
 			                                    Theme.tickLength + Theme.tickTextPadding +      OpenGL.smallTextHeight;
 		
 		// the plot height is now constrained
+		yPlotTop    = Math.round(yPlotTop);
+		yPlotBottom = Math.round(yPlotBottom);
 		float plotHeight = yPlotTop - yPlotBottom;
 		
 		// if the y-axis title should be drawn, draw it if there's space, and adjust xPlotLeft accordingly
@@ -304,6 +306,8 @@ public class OpenGLPlot {
 		}
 		
 		// the plot width is now constrained
+		xPlotLeft = Math.round(xPlotLeft);
+		xPlotRight = Math.round(xPlotRight);
 		float plotWidth = xPlotRight - xPlotLeft;
 		
 		// stop if the plot is too small to draw
@@ -380,7 +384,7 @@ public class OpenGLPlot {
 		mouseY -= yPlotBottom;
 		
 		// let the calling code draw the plot
-		PlotDetails details = new PlotDetails(mouseX, mouseY, xPlotRight - xPlotLeft, yPlotTop - yPlotBottom, xPlotLeft, yPlotBottom, plotMatrix, null);
+		PlotDetails details = new PlotDetails(mouseX, mouseY, (int) plotWidth, (int) plotHeight, (int) xPlotLeft, (int) yPlotBottom, plotMatrix, null);
 		if(plotDrawer != null) {
 			EventHandler h = plotDrawer.apply(details);
 			if(h != null)
@@ -479,7 +483,7 @@ public class OpenGLPlot {
 		}
 		
 		// let the calling code draw the tooltip
-		details = new PlotDetails(mouseX, mouseY, xPlotRight - xPlotLeft, yPlotTop - yPlotBottom, xPlotLeft, yPlotBottom, plotMatrix, handler);
+		details = new PlotDetails(mouseX, mouseY, (int) plotWidth, (int) plotHeight, (int) xPlotLeft, (int) yPlotBottom, plotMatrix, handler);
 		if(yAxisType == null && mouseX >= 0 && mouseX <= plotWidth && mouseY >= -yPlotBottom && mouseY <= plotHeight) {
 			// timeline chart, so don't clip to the plot region, and allow the mouse to be below the plot region
 			OpenGL.useMatrix(gl, plotMatrix);

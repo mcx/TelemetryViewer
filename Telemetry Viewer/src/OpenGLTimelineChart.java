@@ -177,13 +177,13 @@ public class OpenGLTimelineChart extends Chart {
 		                               float yTimeBaseline2 = useTwoLines ? yTimeBaseline1 - (1.3f * OpenGL.largeTextHeight) : yTimeBaseline1;
 		                               if(useTwoLines) {
 		                                   String[] timeTextLine = timeText.split("\n");
-		                                   float xTimeLeft1 = (plot.width() / 2) - (OpenGL.largeTextWidth(gl, timeTextLine[0]) / 2);
-		                                   float xTimeLeft2 = (plot.width() / 2) - (OpenGL.largeTextWidth(gl, timeTextLine[1]) / 2);
+		                                   float xTimeLeft1 = (plot.width() / 2f) - (OpenGL.largeTextWidth(gl, timeTextLine[0]) / 2);
+		                                   float xTimeLeft2 = (plot.width() / 2f) - (OpenGL.largeTextWidth(gl, timeTextLine[1]) / 2);
 		                                   OpenGL.drawLargeText(gl, timeTextLine[0], (int) xTimeLeft1, (int) yTimeBaseline1, 0);
 		                                   OpenGL.drawLargeText(gl, timeTextLine[1], (int) xTimeLeft2, (int) yTimeBaseline2, 0);
 		                               } else {
 		                                   timeText = timeText.replace('\n', ' ');
-		                                   float xTimeLeft1 = (plot.width() / 2) - (OpenGL.largeTextWidth(gl, timeText) / 2);
+		                                   float xTimeLeft1 = (plot.width() / 2f) - (OpenGL.largeTextWidth(gl, timeText) / 2);
 		                                   OpenGL.drawLargeText(gl, timeText, (int) xTimeLeft1, (int) yTimeBaseline1, 0);
 		                               }
 		                               yTop = yTimeBaseline2;
@@ -228,7 +228,7 @@ public class OpenGLTimelineChart extends Chart {
 		                           if(showTimeline.isFalse() || !haveTelemetry)
 		                               return null;
 		                           
-		                           double mousePercentage = plot.mouseX() / plot.width();
+		                           double mousePercentage = (double) plot.mouseX() / plot.width();
 		                           long mouseTimestamp = minTimestamp + (long) (mousePercentage * (double) plotDomain);
 		                           float yAnchor = timelineThickness / 2;
 		                           

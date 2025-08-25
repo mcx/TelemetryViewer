@@ -152,22 +152,22 @@ public abstract class Connection {
 		if(status == Status.DISCONNECTING && newStatus != Status.DISCONNECTED)
 			return;
 		
-		status = newStatus;
-		Connections.GUI.redraw(); // the import/export/configuration widgets will be enabled/disabled as needed
-		Settings.GUI.redraw();    // the TX GUIs will be enabled/disabled as needed
-		
-		if(status == Status.CONNECTED && reconnect) {
+		if(newStatus == Status.CONNECTED && reconnect) {
 			Notifications.removeIfConnectionRelated();
 			Notifications.showHintForMilliseconds("Automatically reconnected to " + getName() + ".", 5000, true);
-		} else if(status == Status.CONNECTED && showConfigurationGui && this instanceof ConnectionTelemetry c) {
+		} else if(newStatus == Status.CONNECTED && showConfigurationGui && this instanceof ConnectionTelemetry c) {
 			c.setFieldsDefined(false);
 			Main.showDataStructureGui(c);
-		} else if(status == Status.CONNECTED && !showConfigurationGui) {
+		} else if(newStatus == Status.CONNECTED && !showConfigurationGui) {
 			SwingUtilities.invokeLater(() -> { // invokeLater because if importing, the charts will be created next
 				if(isConnected() && !Charts.exist()) // isConnected() because an error could have occurred while importing
 					Notifications.showHintUntil("Add a chart by clicking on a tile, or click-and-dragging across multiple tiles.", () -> Charts.exist(), true);
 			});
 		}
+		
+		status = newStatus;
+		Connections.GUI.redraw(); // the import/export/configuration widgets will be enabled/disabled as needed
+		Settings.GUI.redraw();    // the TX GUIs will be enabled/disabled as needed
 		
 	}
 	

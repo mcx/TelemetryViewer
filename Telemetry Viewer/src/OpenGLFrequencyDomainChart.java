@@ -321,10 +321,10 @@ public class OpenGLFrequencyDomainChart extends Chart {
 		               } else if(fft.exists && chartStyle.is(ChartStyle.HISTOGRAM)) {
 		                   
 		                   int xBinCount = fft.binCount;
-		                   int yBinCount = yAxisBinsAutomatic.get() ? (int) plot.height() / 2 : yAxisBins;
+		                   int yBinCount = yAxisBinsAutomatic.get() ? plot.height() / 2 : yAxisBins;
 		                   
 		                   fftBinsPerPlotBin = 1;
-		                   while((xAxisBinsAutomatic.get() && xBinCount > plot.width() / 2) || (!xAxisBinsAutomatic.get() && xBinCount > xAxisBins)) {
+		                   while((xAxisBinsAutomatic.get() && xBinCount > plot.width() / 2f) || (!xAxisBinsAutomatic.get() && xBinCount > xAxisBins)) {
 		                       fftBinsPerPlotBin++;
 		                       xBinCount = (int) Math.ceil((double) fft.binCount / (double) fftBinsPerPlotBin);
 		                   }
@@ -359,7 +359,7 @@ public class OpenGLFrequencyDomainChart extends Chart {
 		                               OpenGL.createHistogramTexture(gl, histogramTexHandle, xBinCount, yBinCount);
 		                           }
 		                           OpenGL.writeHistogramTexture(gl, histogramTexHandle, xBinCount, yBinCount, bytes.rewind());
-		                           OpenGL.drawHistogram(gl, histogramTexHandle, datasets.normalDatasets.get(datasetN).color.getGl(), fullScale, gamma.get(), 0, 0, (int) plot.width(), (int) plot.height(), 1f/xBinCount/2f);
+		                           OpenGL.drawHistogram(gl, histogramTexHandle, datasets.normalDatasets.get(datasetN).color.getGl(), fullScale, gamma.get(), 0, 0, plot.width(), plot.height(), 1f/xBinCount/2f);
 		                       }
 		                   }
 		                   
@@ -368,7 +368,7 @@ public class OpenGLFrequencyDomainChart extends Chart {
 		                   int binCount = fft.binCount;
 		                   
 		                   fftBinsPerPlotBin = 1;
-		                   while((xAxisBinsAutomatic.get() && binCount > plot.width() / 2) || (!xAxisBinsAutomatic.get() && binCount > xAxisBins)) {
+		                   while((xAxisBinsAutomatic.get() && binCount > plot.width() / 2f) || (!xAxisBinsAutomatic.get() && binCount > xAxisBins)) {
 		                       fftBinsPerPlotBin++;
 		                       binCount = (int) Math.ceil((double) fft.binCount / (double) fftBinsPerPlotBin);
 		                   }
@@ -426,7 +426,7 @@ public class OpenGLFrequencyDomainChart extends Chart {
 		                           OpenGL.createTexture(gl, waterfallTexHandle, binCount, fftCount.get(), GL3.GL_RGBA, GL3.GL_FLOAT, false);
 		                       }
 		                       OpenGL.writeTexture(gl, waterfallTexHandle, binCount, fftCount.get(), GL3.GL_RGBA, GL3.GL_FLOAT, bytes);
-		                       OpenGL.drawTexturedBox(gl, waterfallTexHandle, false, 0, 0, (int) plot.width(), (int) plot.height(), 1f/binCount/2f, false);
+		                       OpenGL.drawTexturedBox(gl, waterfallTexHandle, false, 0, 0, plot.width(), plot.height(), 1f/binCount/2f, false);
 		                   }
 		                   
 		               }
