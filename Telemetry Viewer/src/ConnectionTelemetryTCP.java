@@ -62,6 +62,10 @@ public class ConnectionTelemetryTCP extends ConnectionTelemetry {
 					long previousTimestamp = System.currentTimeMillis();
 					int previousSampleNumber = getSampleCount();
 					while(true) {
+						// stop if requested
+						if(!isConnected())
+							throw new Exception();
+						
 						int byteCount = is.available();
 						if(byteCount > 0) {
 							byte[] buffer = new byte[byteCount];
