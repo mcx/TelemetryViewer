@@ -129,7 +129,7 @@ public class Field implements Comparable<Field> {
 		                   }
 		               }
 		               // if changing away from a sync word, clear the name
-		               if(isSyncWord() && !isSyncWord)
+		               if(oldDatatype.isSyncWord() && !isSyncWord)
 		                   SwingUtilities.invokeLater(() -> { // invokeLater so the datatype can change before the name event handler gets called
 		                       if(name.get().toLowerCase().startsWith("0x"))
 		                           name.set("");
@@ -203,9 +203,9 @@ public class Field implements Comparable<Field> {
 		                                .onEnter(event -> addButton.doClick());
 		
 		addButton.addActionListener(event -> {
-			// the field name must be unique within this connection
+			// the name of a dataset must be unique within this connection
 			List<String> usedNames = connection.getDatasetsList().stream().map(field -> field.name.get()).toList();
-			if(usedNames.contains(name.get())) {
+			if(type.get().isDataset() && usedNames.contains(name.get())) {
 				if(insertHandler != null)
 					insertHandler.accept("The dataset name must be unique.");
 				return;
@@ -321,6 +321,10 @@ public class Field implements Comparable<Field> {
 	public boolean isSyncWord() { return type.get().isSyncWord(); }
 	public boolean isDataset()  { return type.get().isDataset();  }
 	public boolean isChecksum() { return type.get().isChecksum(); }
+	
+	public String getExampleVariableName() {
+		return name.get().toLowerCase().replace(' ', '_');
+	}
 	
 	public void exportTo(PrintWriter file) {
 		
@@ -730,55 +734,43 @@ public class Field implements Comparable<Field> {
 	}
 	
 	enum Type {
-		UINT8_SYNC_WORD { @Override public String toString()                        { return "uint8 Sync Word";                  }
-		                  @Override public String getJavaTypeName()                 { return "Byte";                             }
-		                  @Override public boolean isLittleEndian()                 { return true;                               }
-		                  @Override public int getByteCount()                       { return 1;                                  }
-		                  @Override public boolean isSyncWord()                     { return true;                               }
-		                  @Override public boolean testSyncWord(byte[] buffer, int offset, byte syncWord) { return buffer[offset] == syncWord;} },
+		UINT8_SYNC_WORD    { @Override public String toString()  { return "uint8 Sync Word"; }
+		                     @Override public int getByteCount() { return 1;                 }
+		                     @Override public boolean testSyncWord(byte[] buffer, int offset, byte syncWord) {
+		                         return buffer[offset] == syncWord;
+		                     }},
 
-		UINT8          { @Override public String toString()                        { return "uint8";                            }
-		                 @Override public String getJavaTypeName()                 { return "Byte";                             }
-		                 @Override public boolean isLittleEndian()                 { return true;                               }
-		                 @Override public int getByteCount()                       { return 1;                                  }
-		                 @Override public boolean isDataset()                      { return true;                               }
-		                 @Override public float parse(byte[] buffer, int offset) { return (float)
-		                                                                             (0xFF & buffer[offset]);                   } },
+		UINT8              { @Override public String toString()  { return "uint8";           }
+		                     @Override public int getByteCount() { return 1;                 }
+		                     @Override public float parse(byte[] buffer, int offset) {
+		                         return (float) (0xFF & buffer[offset]);
+		                     }},
 
-		UINT16_LE      { @Override public String toString()                        { return "uint16 LSB First";                 }
-		                 @Override public String getJavaTypeName()                 { return "Short";                            }
-		                 @Override public boolean isLittleEndian()                 { return true;                               }
-		                 @Override public int getByteCount()                       { return 2;                                  }
-		                 @Override public boolean isDataset()                      { return true;                               }
-		                 @Override public float parse(byte[] buffer, int offset) { return (float)
-		                                                                             (((0xFF & buffer[0+offset]) << 0) |
-		                                                                              ((0xFF & buffer[1+offset]) << 8));        } },
+		UINT16_LE          { @Override public String toString()  { return "uint16 LSB First"; }
+		                     @Override public int getByteCount() { return 2;                  }
+		                     @Override public float parse(byte[] buffer, int offset) {
+		                         return (float) (((0xFF & buffer[0+offset]) << 0) |
+		                                         ((0xFF & buffer[1+offset]) << 8));
+		                     }},
 
-		UINT16_BE      { @Override public String toString()                        { return "uint16 MSB First";                 }
-		                 @Override public String getJavaTypeName()                 { return "Short";                            }
-		                 @Override public boolean isLittleEndian()                 { return false;                              }
-		                 @Override public int getByteCount()                       { return 2;                                  }
-		                 @Override public boolean isDataset()                      { return true;                               }
-		                 @Override public float parse(byte[] buffer, int offset) { return (float)
-		                                                                             (((0xFF & buffer[1+offset]) << 0) |
-		                                                                              ((0xFF & buffer[0+offset]) << 8));        } },
+		UINT16_BE          { @Override public String toString()  { return "uint16 MSB First"; }
+		                     @Override public int getByteCount() { return 2;                  }
+		                     @Override public float parse(byte[] buffer, int offset) {
+		                         return (float) (((0xFF & buffer[1+offset]) << 0) |
+		                                         ((0xFF & buffer[0+offset]) << 8));
+		                     }},
 
-		UINT32_LE      { @Override public String toString()                        { return "uint32 LSB First";                 }
-		                 @Override public String getJavaTypeName()                 { return "Int";                              }
-		                 @Override public boolean isLittleEndian()                 { return true;                               }
-		                 @Override public int getByteCount()                       { return 4;                                  }
-		                 @Override public boolean isDataset()                      { return true;                               }
-		                 @Override public float parse(byte[] buffer, int offset) { return (float)
-		                                                                             (((long)(0xFF & buffer[0+offset]) << 0)  |
-		                                                                              ((long)(0xFF & buffer[1+offset]) << 8)  |
-		                                                                              ((long)(0xFF & buffer[2+offset]) << 16) |
-		                                                                              ((long)(0xFF & buffer[3+offset]) << 24)); } },
+		UINT32_LE          { @Override public String toString()  { return "uint32 LSB First"; }
+		                     @Override public int getByteCount() { return 4;                  }
+		                     @Override public float parse(byte[] buffer, int offset) {
+		                         return (float) (((long)(0xFF & buffer[0+offset]) << 0)  |
+		                                         ((long)(0xFF & buffer[1+offset]) << 8)  |
+		                                         ((long)(0xFF & buffer[2+offset]) << 16) |
+		                                         ((long)(0xFF & buffer[3+offset]) << 24));
+		                     }},
 		
 		UINT32_BE      { @Override public String toString()                        { return "uint32 MSB First";                 }
-		                 @Override public String getJavaTypeName()                 { return "Int";                              }
-		                 @Override public boolean isLittleEndian()                 { return false;                              }
 		                 @Override public int getByteCount()                       { return 4;                                  }
-		                 @Override public boolean isDataset()                      { return true;                               }
 		                 @Override public float parse(byte[] buffer, int offset) { return (float)
 		                                                                             (((long)(0xFF & buffer[3+offset]) << 0)  |
 		                                                                              ((long)(0xFF & buffer[2+offset]) << 8)  |
@@ -786,36 +778,24 @@ public class Field implements Comparable<Field> {
 		                                                                              ((long)(0xFF & buffer[0+offset]) << 24)); } },
 		
 		INT8           { @Override public String toString()                        { return "int8";                             }
-		                 @Override public String getJavaTypeName()                 { return "Byte";                             }
-		                 @Override public boolean isLittleEndian()                 { return true;                               }
 		                 @Override public int getByteCount()                       { return 1;                                  }
-		                 @Override public boolean isDataset()                      { return true;                               }
 		                 @Override public float parse(byte[] buffer, int offset) { return (float)(byte)
 		                                                                             (0xFF & buffer[offset]);                   } },
 		
 		INT16_LE       { @Override public String toString()                        { return "int16 LSB First";                  }
-		                 @Override public String getJavaTypeName()                 { return "Short";                            }
-		                 @Override public boolean isLittleEndian()                 { return true;                               }
 		                 @Override public int getByteCount()                       { return 2;                                  }
-		                 @Override public boolean isDataset()                      { return true;                               }
 		                 @Override public float parse(byte[] buffer, int offset) { return (float)(short)
 		                                                                             (((0xFF & buffer[0+offset]) << 0) |
 		                                                                              ((0xFF & buffer[1+offset]) << 8));        } },
 		
 		INT16_BE       { @Override public String toString()                        { return "int16 MSB First";                  }
-		                 @Override public String getJavaTypeName()                 { return "Short";                            }
-		                 @Override public boolean isLittleEndian()                 { return false;                              }
 		                 @Override public int getByteCount()                       { return 2;                                  }
-		                 @Override public boolean isDataset()                      { return true;                               }
 		                 @Override public float parse(byte[] buffer, int offset) { return (float)(short)
 		                                                                             (((0xFF & buffer[1+offset]) << 0) |
 		                                                                              ((0xFF & buffer[0+offset]) << 8));        } },
 		
 		INT32_LE       { @Override public String toString()                        { return "int32 LSB First";                  } 
-		                 @Override public String getJavaTypeName()                 { return "Int";                              }
-		                 @Override public boolean isLittleEndian()                 { return true;                               }
 		                 @Override public int getByteCount()                       { return 4;                                  }
-		                 @Override public boolean isDataset()                      { return true;                               }
 		                 @Override public float parse(byte[] buffer, int offset) { return (float)
 		                                                                             (((0xFF & buffer[0+offset]) << 0)  |
 		                                                                              ((0xFF & buffer[1+offset]) << 8)  |
@@ -823,10 +803,7 @@ public class Field implements Comparable<Field> {
 		                                                                              ((0xFF & buffer[3+offset]) << 24));       } },
 		
 		INT32_BE       { @Override public String toString()                        { return "int32 MSB First";                  }
-		                 @Override public String getJavaTypeName()                 { return "Int";                              }
-		                 @Override public boolean isLittleEndian()                 { return false;                              }
 		                 @Override public int getByteCount()                       { return 4;                                  }
-		                 @Override public boolean isDataset()                      { return true;                               }
 		                 @Override public float parse(byte[] buffer, int offset) { return (float)
 		                                                                             (((0xFF & buffer[3+offset]) << 0)  |
 		                                                                              ((0xFF & buffer[2+offset]) << 8)  |
@@ -834,10 +811,7 @@ public class Field implements Comparable<Field> {
 		                                                                              ((0xFF & buffer[0+offset]) << 24));       } },
 		
 		FLOAT32_LE     { @Override public String toString()                        { return "float32 LSB First";                }
-		                 @Override public String getJavaTypeName()                 { return "Float";                            }
-		                 @Override public boolean isLittleEndian()                 { return true;                               }
 		                 @Override public int getByteCount()                       { return 4;                                  }
-		                 @Override public boolean isDataset()                      { return true;                               }
 		                 @Override public float parse(byte[] buffer, int offset) { return Float.intBitsToFloat(
 		                                                                             ((0xFF & buffer[0+offset]) <<  0) |
 		                                                                             ((0xFF & buffer[1+offset]) <<  8) |
@@ -845,10 +819,7 @@ public class Field implements Comparable<Field> {
 		                                                                             ((0xFF & buffer[3+offset]) << 24));        } },
 		
 		FLOAT32_BE     { @Override public String toString()                        { return "float32 MSB First";                }
-		                 @Override public String getJavaTypeName()                 { return "Float";                            }
-		                 @Override public boolean isLittleEndian()                 { return false;                              }
 		                 @Override public int getByteCount()                       { return 4;                                  }
-		                 @Override public boolean isDataset()                      { return true;                               }
 		                 @Override public float parse(byte[] buffer, int offset) { return Float.intBitsToFloat(
 		                                                                             ((0xFF & buffer[3+offset]) <<  0) |
 		                                                                             ((0xFF & buffer[2+offset]) <<  8) |
@@ -856,18 +827,12 @@ public class Field implements Comparable<Field> {
 		                                                                             ((0xFF & buffer[0+offset]) << 24));        } },
 		
 		UINT8_BITFIELD { @Override public String toString()                        { return "uint8 Bitfield";                   }
-		                 @Override public String getJavaTypeName()                 { return "Byte";                             }
-		                 @Override public boolean isLittleEndian()                 { return true;                               }
 		                 @Override public int getByteCount()                       { return 1;                                  }
-		                 @Override public boolean isDataset()                      { return true;                               }
 		                 @Override public float parse(byte[] buffer, int offset) { return (float)
 		                                                                             (0xFF & buffer[offset]);                   } },
 		
 		UINT8_CHECKSUM { @Override public String toString()                        { return "uint8 Checksum"; }
-		                 @Override public String getJavaTypeName()                 { return "Byte"; }
-		                 @Override public boolean isLittleEndian()                 { return true; }
 		                 @Override public int getByteCount()                       { return 1; }
-		                 @Override public boolean isChecksum()                     { return true;                               }
 		                 @Override public boolean testChecksum(byte[] bytes, int offset, int packetLength, int syncWordByteCount) {
 		                     // skip past the sync word
 		                     offset += syncWordByteCount;
@@ -886,10 +851,7 @@ public class Field implements Comparable<Field> {
 		                 } },
 
 		UINT16_LE_CHECKSUM { @Override public String toString()                    { return "uint16 Checksum LSB First"; }
-		                     @Override public String getJavaTypeName()             { return "Short"; }
-		                     @Override public boolean isLittleEndian()             { return true; }
 		                     @Override public int getByteCount()                   { return 2; }
-		                     @Override public boolean isChecksum()                 { return true;                               }
 		                     @Override public boolean testChecksum(byte[] bytes, int offset, int packetLength, int syncWordByteCount) {
 		                         // skip past the sync word
 		                         offset += syncWordByteCount;
@@ -920,13 +882,11 @@ public class Field implements Comparable<Field> {
 		                         // test
 		                         return (sum == checksum);
 		                     } };
-
-		abstract String getJavaTypeName();
-		abstract boolean isLittleEndian();
+		
 		abstract int getByteCount();
-		boolean isSyncWord() { return false; }                                                                    /* sync words should @Override this and return true! */
-		boolean isDataset()  { return false; }                                                                    /* datasets should @Override this and return true! */
-		boolean isChecksum() { return false; }                                                                    /* checksums should @Override this and return true! */
+		final boolean isSyncWord() { return toString().toLowerCase().contains("sync"); }
+		final boolean isDataset()  { return !toString().toLowerCase().contains("sync") && !toString().toLowerCase().contains("checksum"); }
+		final boolean isChecksum() { return toString().toLowerCase().contains("checksum"); }
 		boolean testSyncWord(byte[] buffer, int offset, byte syncWord) { return false; }                          /* sync words should @Override this and test if the sync word exists! */
 		float parse(byte[] buffer, int offset) { return 0; }                                                      /* datasets should @Override this and return a number! */
 		boolean testChecksum(byte[] bytes, int offset, int packetLength, int syncWordByteCount) { return false; } /* checksums should @Override this and test if the checksum is valid! */

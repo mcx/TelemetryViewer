@@ -2,10 +2,6 @@ import java.io.InputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 public class ConnectionTelemetryTCP extends ConnectionTelemetry {
 	
@@ -107,71 +103,6 @@ public class ConnectionTelemetryTCP extends ConnectionTelemetry {
 		receiverThread.setPriority(Thread.MAX_PRIORITY);
 		receiverThread.setName("TCP Server");
 		receiverThread.start();
-		
-	}
-	
-	@Override public Map<String, String> getExampleCode() {
-		
-		if(protocol.is(Protocol.CSV) && getDatasetCount() == 0) {
-			
-			return Map.of("Java Software", "[ Define at least one CSV column to see example software. ]");
-			
-		} else if(protocol.is(Protocol.CSV) && getDatasetCount() > 0) {
-		
-			List<Field> datasets           = getDatasetsList();
-			List<String> names             = datasets.stream().map(dataset -> dataset.name.get().toLowerCase().replace(' ', '_')).toList(); // example: "a" "b"
-			String printfIntArgs           = names.stream().collect(Collectors.joining(", "));                                              // example: "a, b"
-			String printfFloatFormatString = IntStream.rangeClosed(0, datasets.get(datasets.size() - 1).location.get())
-			                                          .mapToObj(location -> getDatasetByLocation(location) == null ? "0" : "%f")
-			                                          .collect(Collectors.joining(","));                                                    // example: "%f,%f" or "%f,0,%f" if sparse
-			
-			return Map.of("Java Software", """
-				import java.io.PrintWriter;
-				import java.net.Socket;
-				
-				public class Main {
-				
-					public static void main(String[] args) throws InterruptedException {
-					
-						// enter an infinite loop that tries to connect to the TCP server once every 3 seconds
-						while(true) {
-						
-							try(Socket socket = new Socket("%s", %d)) { // EDIT THIS LINE
-							
-								// enter another infinite loop that sends packets of telemetry
-								PrintWriter output = new PrintWriter(socket.getOutputStream(), true);
-								while(true) {
-				%s
-									output.println(String.format("%s", %s));
-									if(output.checkError())
-										throw new Exception();
-									Thread.sleep(%d); // EDIT THIS LINE
-								}
-								
-							} catch(Exception e) {
-							
-								Thread.sleep(3000);
-								
-							}
-							
-						}
-						
-					}
-					
-				}
-				""".formatted(ConnectionTelemetry.localIp,
-				              portNumber.get(),
-				              names.stream().map(name -> "\t\t\t\t\tfloat " + name + " = ...; // EDIT THIS LINE\n").collect(Collectors.joining()),
-				              printfFloatFormatString,
-				              printfIntArgs,
-				              Math.round(1000.0 / getSampleRate()),
-				              1));
-		
-		} else {
-			
-			return Map.of(); // no example firmware
-			
-		}
 		
 	}
 	

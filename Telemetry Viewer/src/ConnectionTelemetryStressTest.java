@@ -1,8 +1,6 @@
 import java.awt.Color;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.util.Map;
-
 import javax.swing.JFrame;
 
 public class ConnectionTelemetryStressTest extends ConnectionTelemetry {
@@ -97,12 +95,6 @@ public class ConnectionTelemetryStressTest extends ConnectionTelemetry {
 		receiverThread.setPriority(Thread.MAX_PRIORITY);
 		receiverThread.setName("Stress Test Simulator Thread");
 		receiverThread.start();
-		
-	}
-	
-	@Override public Map<String, String> getExampleCode() {
-		
-		return Map.of();
 		
 	}
 	

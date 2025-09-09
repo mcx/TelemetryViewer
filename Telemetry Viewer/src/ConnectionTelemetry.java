@@ -59,6 +59,9 @@ import net.miginfocom.swing.MigLayout;
 
 public abstract class ConnectionTelemetry extends Connection {
 	
+	enum Type {UART, DEMO_MODE, TCP, UDP, STRESS_TEST};
+	final Type type;
+	
 	enum Protocol {
 		CSV    { @Override public String toString() { return "CSV Mode";    } },
 		BINARY { @Override public String toString() { return "Binary Mode"; } },
@@ -69,7 +72,7 @@ public abstract class ConnectionTelemetry extends Connection {
 	private volatile String tc66serialNumber = "Serial number: unknown";
 	private volatile String tc66powerOnCount = "Power on count: unknown";
 	
-	protected Map<Integer, Field> fields = new TreeMap<Integer, Field>(); // <location, field>
+	protected TreeMap<Integer, Field> fields = new TreeMap<Integer, Field>(); // <location, field>
 	private volatile boolean fieldsDefined = false;
 	
 	public void setFieldsDefined(boolean isDefined) {
@@ -131,6 +134,13 @@ public abstract class ConnectionTelemetry extends Connection {
 	 * Prepares, but does not connect to, a connection that can receive "normal telemetry" (a stream of numbers to visualize.)
 	 */
 	public ConnectionTelemetry() {
+		
+		type = switch(this) { case ConnectionTelemetryUART       c -> Type.UART;
+		                      case ConnectionTelemetryDemo       c -> Type.DEMO_MODE;
+		                      case ConnectionTelemetryTCP        c -> Type.TCP;
+		                      case ConnectionTelemetryUDP        c -> Type.UDP;
+		                      case ConnectionTelemetryStressTest c -> Type.STRESS_TEST;
+		                      default                              -> Type.STRESS_TEST; };
 		
 		// sample rate defaults to 0 (automatic mode)
 		sampleRate = WidgetTextfield.ofInt(1, Integer.MAX_VALUE, 0, 0, "Automatic")
@@ -399,7 +409,7 @@ public abstract class ConnectionTelemetry extends Connection {
 			                                                                                                getFirstAvailableLocation();
 			pending.setLocation(location)
 			       .setType(deriveFrom.type.get())
-			       .setName(deriveFrom.name.get())
+			       .setName(deriveFrom.type.get().isSyncWord() && !pending.type.get().isSyncWord() ? "" : deriveFrom.name.get())
 			       .setColor(deriveFrom.color.get())
 			       .setUnit(deriveFrom.unit.get())
 			       .setScalingFactors(deriveFrom.scalingFactorA.get(), deriveFrom.scalingFactorB.get());
@@ -411,9 +421,8 @@ public abstract class ConnectionTelemetry extends Connection {
 		// repopulate the panel
 		dsPanel.removeAll();
 		
-		dsPanel.add(new JLabel((this instanceof ConnectionTelemetryDemo) ?
-			"<html><font size=+0><b>Data Structure Definition: (Not Editable in Demo Mode)</b></font></html>" :
-			"<html><font size=+0><b>Data Structure Definition:</b></font></html>"), "span");
+		dsPanel.add(new JLabel((type == Type.DEMO_MODE) ? "<html><font size=+0><b>" + protocol.get().toString().split(" ")[0] + " Data Structure: (Not Editable in Demo Mode)</b></font></html>" :
+		                                                  "<html><font size=+0><b>" + protocol.get().toString().split(" ")[0] + " Data Structure:</b></font></html>"), "span");
 
 		pending.location.appendTo(dsPanel, "gapafter " + 2 * Theme.padding);
 		pending.type.appendTo(dsPanel, "gapafter " + 2 * Theme.padding);
@@ -439,14 +448,15 @@ public abstract class ConnectionTelemetry extends Connection {
 			code.setTabSize(4);
 			code.setFont(new Font("Consolas", Font.PLAIN, dsPanel.getFont().getSize()));
 			code.setCaretPosition(0); // scroll back to the top
-			exampleCodePane.add(tabName, new JScrollPane(code));
+			exampleCodePane.add("Example " + tabName + " Code", new JScrollPane(code));
 		});
 		
-		dsPanel.add(new JLabel("<html><font size=+0><b>Example Firmware / Software:</b></font></html>"), "span, gaptop 10px");
 		dsPanel.add(exampleCodePane, "grow, span, width 100%"); // 100% ensures the prefWidth getting massive doesn't shrink the other widgets
 		
-		if(!pending.location.is(-1) && !(this instanceof ConnectionTelemetryDemo))
+		if(!pending.location.is(-1) && type != Type.DEMO_MODE)
 			SwingUtilities.invokeLater(() -> pending.name.requestFocus());
+		else
+			SwingUtilities.invokeLater(() -> pending.doneButton.requestFocus());
 		
 		dsPanel.revalidate();
 		dsPanel.repaint();
@@ -461,7 +471,7 @@ public abstract class ConnectionTelemetry extends Connection {
 			return dsPanel;
 		}
 		
-		dsPanel = new JPanel(new MigLayout("hidemode 3, fill, insets " + Theme.padding + ", gap " + Theme.padding, "", "[][sgy,fill][50%][][50%]0")); // "sgy,fill" stretches the components to all have the same height
+		dsPanel = new JPanel(new MigLayout("hidemode 3, fill, insets " + Theme.padding + ", gap " + Theme.padding, "", "[][sgy,fill][50%][50%]0")); // "sgy,fill" stretches the components to all have the same height
 		
 		dataStructureTable = new JTable(new AbstractTableModel() {
 			@Override public int getRowCount()                { return fields.size(); }
@@ -499,7 +509,7 @@ public abstract class ConnectionTelemetry extends Connection {
 		dataStructureTable.getColumn("").setCellRenderer(new TableCellRenderer() {
 			@Override public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
 				JButton b = new JButton("Remove");
-				b.setEnabled(!(ConnectionTelemetry.this instanceof ConnectionTelemetryDemo));
+				b.setEnabled(type != Type.DEMO_MODE);
 				return b;
 			}
 		});
@@ -510,7 +520,7 @@ public abstract class ConnectionTelemetry extends Connection {
 		
 		dataStructureTable.addMouseListener(new MouseListener() {
 			@Override public void mousePressed(MouseEvent e) {
-				if(ConnectionTelemetry.this instanceof ConnectionTelemetryDemo)
+				if(type == Type.DEMO_MODE)
 					return;
 				Field field = getFieldByIndex(dataStructureTable.getSelectedRow());
 				String message = field.type.get().isSyncWord() ? "Remove the sync word?" :
@@ -536,7 +546,531 @@ public abstract class ConnectionTelemetry extends Connection {
 		
 	}
 	
-	abstract Map<String, String> getExampleCode(); // <tabName, sourceCode>
+	Map<String, String> getExampleCode() {
+		
+		Map<String, String> map = new TreeMap<String, String>(); // using a TreeMap to keep it ordered alphabetically
+		map.put("Arduino / ESP32", getExampleArduinoCode());
+		map.put("Java",            getExampleJavaCode());
+		return map;
+		
+	}
+	
+	String getExampleArduinoCode() {
+		
+		if(getDatasetCount() == 0)
+			return "[ Define at least one dataset to see example code. ]";
+		
+		String preamble = switch(type) { case UART, DEMO_MODE -> "";
+		                                 case TCP             -> """
+		                                                         
+		                                                         #include <WiFi.h>
+		                                                         #include <WiFiClient.h>
+		                                                         WiFiClient tcp;
+		                                                         """;
+		                                 case UDP             -> """
+		                                                         
+		                                                         #include <WiFi.h>
+		                                                         #include <NetworkUdp.h>
+		                                                         NetworkUDP udp;
+		                                                         """;
+		                                 case STRESS_TEST     -> ""; };
+		
+		String prepare  = switch(type) { case UART, DEMO_MODE -> "Serial.begin(" + baudRate.get().split(" ")[0] + ");";
+		                                 case TCP             -> "WiFi.begin(\"network\", \"password\"); // EDIT THIS LINE";
+		                                 case UDP             -> "WiFi.begin(\"network\", \"password\"); // EDIT THIS LINE";
+		                                 case STRESS_TEST     -> ""; };
+		
+		String bufferSize = protocol.is(Protocol.CSV) ? "strlen(buffer)" : "sizeof(buffer)";
+		                                 
+		String transmit = switch(type) { case UART, DEMO_MODE -> "Serial.write(buffer, %s);".formatted(bufferSize);
+		                                 case TCP             -> """
+		                                                         if(!tcp.connected())
+		                                                         	tcp.connect("%s", %d); // EDIT THIS LINE IF NEEDED
+		                                                         tcp.write(buffer, %s);""".formatted(localIp, portNumber.get(), bufferSize);
+		                                 case UDP             -> """
+		                                                         udp.beginPacket("%s", %d); // EDIT THIS LINE IF NEEDED
+		                                                         udp.write((uint8_t*) buffer, %s);
+		                                                         udp.endPacket();""".formatted(localIp, portNumber.get(), bufferSize);
+		                                 case STRESS_TEST     -> ""; };
+		
+		int lastLocation          = getDatasetsList().getLast().location.get();
+		List<String> names        = getDatasetsList().stream().map(dataset -> dataset.getExampleVariableName()).toList();                              // example: "a" "b"
+		
+		if(protocol.is(Protocol.CSV)) {
+			
+			String intVariables       = names.stream().map(name -> "int "     + name + " = ...; // EDIT THIS LINE").collect(Collectors.joining("\n"));     // example: "int a = ..."
+			String floatVariables     = names.stream().map(name -> "float "   + name + " = ...; // EDIT THIS LINE").collect(Collectors.joining("\n"));     // example: "float a = ..."
+			String floatTextVariables = names.stream().map(name -> "char "    + name + "_text[30];").collect(Collectors.joining("\n"));                    // example: "char a_text[30]; ..."
+			String floatConversions   = names.stream().map(name -> "dtostrf(" + name + ", 10, 10, " + name + "_text);").collect(Collectors.joining("\n")); // example: "dtostrf(a, 10, 10, a_text); ..."
+			String intPrintfArgs      = names.stream().collect(Collectors.joining(", "));                                                                  // example: "a, b"
+			String floatPrintfArgs    = names.stream().map(name -> name + "_text").collect(Collectors.joining(", "));                                      // example: "a_text, b_text"
+			String intFormatString    = IntStream.rangeClosed(0, lastLocation).mapToObj(loc -> getDatasetByLocation(loc) == null ? "0" : "%d").collect(Collectors.joining(",", "", "\\n")); // example: "%d,%d\n" or "%d,0,%d\n" if sparse
+			String floatFormatString  = IntStream.rangeClosed(0, lastLocation).mapToObj(loc -> getDatasetByLocation(loc) == null ? "0" : "%f").collect(Collectors.joining(",", "", "\\n")); // example: "%f,%f\n" or "%f,0,%f\n" if sparse
+			int intStringLength       = IntStream.rangeClosed(0, lastLocation).map(location -> getDatasetByLocation(location) == null ? 2 : 7).sum() + 2;  // 2 bytes per unused location, 7 bytes per location, +2 for \n\0
+			int floatStringLength     = IntStream.rangeClosed(0, lastLocation).map(location -> getDatasetByLocation(location) == null ? 2 : 31).sum() + 2; // 2 bytes per unused location, 31 bytes per location, +2 for \n\0
+			
+			return """
+					// example firmware showing how to send telemetry to this computer from an arduino or esp32 board
+					// this code is meant to be easy to understand, it is not the most efficient or fault-tolerant way of doing things
+					%s
+					void setup() {
+					%s
+					}
+					
+					// use this loop if sending integers
+					void loop() {
+					%s
+						
+						char buffer[%d];
+						snprintf(buffer, sizeof(buffer), "%s", %s);
+						
+					%s
+						
+						delay(...); // EDIT THIS LINE
+					}
+					
+					// or use this loop if sending floats
+					void loop() {
+					%s
+					
+					%s
+					
+					%s
+					
+						char buffer[%d];
+						snprintf(buffer, sizeof(buffer), "%s", %s);
+						
+					%s
+						
+						delay(...); // EDIT THIS LINE
+					}
+					
+					// developer notes:
+					//
+					// install and run the arduino ide: https://arduino.cc/en/software
+					// select your serial port and board type: toolbar > select board
+					// replace the default code with this template, edit it as needed, then upload it to your board
+					//
+					// if using an esp32:
+					// install the esp32 library: tools > board > boards manager > search for "esp32" > install "esp32 by espressif systems"
+					// the serial bootloader mode (GPIO0 = ground) must be active to upload your firmware
+					// the normal execution mode (GPIO0 = floating) must be active to run your firmware
+					""".formatted(preamble,
+					              prepare.lines().map(           line -> "\t" + line).collect(Collectors.joining("\n")),
+					              intVariables.lines().map(      line -> "\t" + line).collect(Collectors.joining("\n")),
+					              intStringLength,
+					              intFormatString,
+					              intPrintfArgs,
+					              transmit.lines().map(          line -> "\t" + line).collect(Collectors.joining("\n")),
+					              floatVariables.lines().map(    line -> "\t" + line).collect(Collectors.joining("\n")),
+					              floatTextVariables.lines().map(line -> "\t" + line).collect(Collectors.joining("\n")),
+					              floatConversions.lines().map(  line -> "\t" + line).collect(Collectors.joining("\n")),
+					              floatStringLength,
+					              floatFormatString,
+					              floatPrintfArgs,
+					              transmit.lines().map(          line -> "\t" + line).collect(Collectors.joining("\n")));
+			
+		} else {
+			
+			String variables = fields.values().stream()
+			                                  .map(field -> {
+			                                       String varName = field.getExampleVariableName();
+			                                       return switch(field.type.get()) { case UINT8_SYNC_WORD    -> "uint8_t sync = %s;".formatted(field.name.get());
+			                                                                         case UINT8              -> "uint8_t %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                                                         case UINT16_LE          -> "uint16_t %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                                                         case UINT16_BE          -> "uint16_t %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                                                         case UINT32_LE          -> "uint32_t %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                                                         case UINT32_BE          -> "uint32_t %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                                                         case INT8               -> "int8_t %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                                                         case INT16_LE           -> "int16_t %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                                                         case INT16_BE           -> "int16_t %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                                                         case INT32_LE           -> "int32_t %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                                                         case INT32_BE           -> "int32_t %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                                                         case FLOAT32_LE         -> "float32_t %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                                                         case FLOAT32_BE         -> "float32_t %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                                                         case UINT8_BITFIELD     -> "uint8_t %s = 0;\n".formatted(varName) +
+			                                                                                                    field.bitfields.stream().map(bitfield -> "%s |= ... << %d; // EDIT THIS LINE".formatted(varName, bitfield.LSBit)).collect(Collectors.joining("\n"));
+			                                                                         case UINT8_CHECKSUM     -> "uint8_t sum = 0;";
+			                                                                         case UINT16_LE_CHECKSUM -> "uint16_t sum = 0;";
+			                                  };})
+			                                  .collect(Collectors.joining("\n"));
+			
+			String populateBuffer = "uint8_t buffer[%d];\n".formatted(fields.lastKey() + fields.lastEntry().getValue().type.get().getByteCount()) +
+			                        fields.values().stream()
+			                              .map(field -> {
+			                                   String name = field.getExampleVariableName();
+			                                   int offset = field.location.get();
+			                                   return switch(field.type.get()) {
+			                                       case UINT8_SYNC_WORD    -> "buffer[%d] = sync;\n".formatted(offset);
+			                                       case UINT8              -> "buffer[%d] = (%s >>  0);\n".formatted(offset, name);
+			                                       case UINT16_LE          -> """
+			                                                                  buffer[%d] = (%s >>  0);
+			                                                                  buffer[%d] = (%s >>  8);
+			                                                                  """.formatted(offset,     name,
+			                                                                                offset + 1, name);
+			                                       case UINT16_BE          -> """
+			                                                                  buffer[%d] = (%s >>  8);
+			                                                                  buffer[%d] = (%s >>  0);
+			                                                                  """.formatted(offset,     name,
+			                                                                                offset + 1, name);
+			                                       case UINT32_LE          -> """
+			                                                                  buffer[%d] = (%s >>  0);
+			                                                                  buffer[%d] = (%s >>  8);
+			                                                                  buffer[%d] = (%s >> 16);
+			                                                                  buffer[%d] = (%s >> 24);
+			                                                                  """.formatted(offset,     name,
+			                                                                                offset + 1, name,
+			                                                                                offset + 2, name,
+			                                                                                offset + 3, name);
+			                                       case UINT32_BE          -> """
+			                                                                  buffer[%d] = (%s >> 24);
+			                                                                  buffer[%d] = (%s >> 16);
+			                                                                  buffer[%d] = (%s >>  8);
+			                                                                  buffer[%d] = (%s >>  0);
+			                                                                  """.formatted(offset,     name,
+			                                                                                offset + 1, name,
+			                                                                                offset + 2, name,
+			                                                                                offset + 3, name);
+			                                       case INT8               -> "buffer[%d] = (%s >>  0)\n;".formatted(offset, name);
+			                                       case INT16_LE           -> """
+			                                                                  buffer[%d] = (%s >>  0);
+			                                                                  buffer[%d] = (%s >>  8);
+			                                                                  """.formatted(offset,     name,
+			                                                                                offset + 1, name);
+			                                       case INT16_BE           -> """
+			                                                                  buffer[%d] = (%s >>  8);
+			                                                                  buffer[%d] = (%s >>  0);
+			                                                                  """.formatted(offset,     name,
+			                                                                                offset + 1, name);
+			                                       case INT32_LE           -> """
+			                                                                  buffer[%d] = (%s >>  0);
+			                                                                  buffer[%d] = (%s >>  8);
+			                                                                  buffer[%d] = (%s >> 16);
+			                                                                  buffer[%d] = (%s >> 24);
+			                                                                  """.formatted(offset,     name,
+			                                                                                offset + 1, name,
+			                                                                                offset + 2, name,
+			                                                                                offset + 3, name);
+			                                       case INT32_BE           -> """
+			                                                                  buffer[%d] = (%s >> 24);
+			                                                                  buffer[%d] = (%s >> 16);
+			                                                                  buffer[%d] = (%s >>  8);
+			                                                                  buffer[%d] = (%s >>  0);
+			                                                                  """.formatted(offset,     name,
+			                                                                                offset + 1, name,
+			                                                                                offset + 2, name,
+			                                                                                offset + 3, name);
+			                                       case FLOAT32_LE         -> """
+			                                                                  buffer[%d] = (%s >>  0);
+			                                                                  buffer[%d] = (%s >>  8);
+			                                                                  buffer[%d] = (%s >> 16);
+			                                                                  buffer[%d] = (%s >> 24);
+			                                                                  """.formatted(offset,     name,
+			                                                                                offset + 1, name,
+			                                                                                offset + 2, name,
+			                                                                                offset + 3, name);
+			                                       case FLOAT32_BE         -> """
+			                                                                  buffer[%d] = (%s >> 24);
+			                                                                  buffer[%d] = (%s >> 16);
+			                                                                  buffer[%d] = (%s >>  8);
+			                                                                  buffer[%d] = (%s >>  0);
+			                                                                  """.formatted(offset,     name,
+			                                                                                offset + 1, name,
+			                                                                                offset + 2, name,
+			                                                                                offset + 3, name);
+			                                       case UINT8_BITFIELD     -> "buffer[%d] = (%s >>  0);\n".formatted(offset, name);
+			                                       case UINT8_CHECKSUM     -> """
+			                                                                  for(int i = %d; i < %d; i++)
+			                                                                  	sum += buffer[i];
+			                                                                  buffer[%d] = sum;
+			                                                                  """.formatted(fields.firstEntry().getValue().isSyncWord() ? fields.firstEntry().getValue().type.get().getByteCount() : 0,
+			                                                                                fields.lastEntry().getValue().location.get(),
+			                                                                                fields.lastEntry().getValue().location.get());
+			                                       case UINT16_LE_CHECKSUM -> """
+			                                                                  for(int i = %d; i < %d; i += 2) {
+			                                                                  	sum += buffer[i] | (buffer[i+1] << 8);
+			                                                                  buffer[%d] = (sum >> 0);
+			                                                                  buffer[%d] = (sum >> 8);
+			                                                                  """.formatted(fields.firstEntry().getValue().isSyncWord() ? fields.firstEntry().getValue().type.get().getByteCount() : 0,
+			                                                                                fields.lastEntry().getValue().location.get(),
+			                                                                                fields.lastEntry().getValue().location.get(),
+			                                                                                fields.lastEntry().getValue().location.get() + 1);
+			                          }; })
+			                          .collect(Collectors.joining());
+			
+			return """
+					// example firmware showing how to send telemetry to this computer from an arduino or esp32 board
+					// this code is meant to be easy to understand, it is not the most efficient or fault-tolerant way of doing things
+					%s
+					void setup() {
+					%s
+					}
+					
+					void loop() {
+						// ideally binary mode would be used to match your existing data structure, so you would memcpy() your struct instead of doing this byte-by-byte
+						// but here is how to do it manually if needed
+					
+					%s
+						
+					%s
+						
+					%s
+						
+						delay(...); // EDIT THIS LINE
+					}
+					
+					// developer notes:
+					//
+					// install and run the arduino ide: https://arduino.cc/en/software
+					// select your serial port and board type: toolbar > select board
+					// replace the default code with this template, edit it as needed, then upload it to your board
+					//
+					// if using an esp32:
+					// install the esp32 library: tools > board > boards manager > search for "esp32" > install "esp32 by espressif systems"
+					// the serial bootloader mode (GPIO0 = ground) must be active to upload your firmware
+					// the normal execution mode (GPIO0 = floating) must be active to run your firmware
+					""".formatted(preamble,
+					              prepare.lines().map(       line -> "\t" + line).collect(Collectors.joining("\n")),
+					              variables.lines().map(     line -> "\t" + line).collect(Collectors.joining("\n")),
+					              populateBuffer.lines().map(line -> "\t" + line).collect(Collectors.joining("\n")),
+					              transmit.lines().map(      line -> "\t" + line).collect(Collectors.joining("\n")));
+			
+		}
+		
+	}
+	
+	String getExampleJavaCode() {
+		
+		if(getDatasetCount() == 0)
+			return "[ Define at least one dataset to see example code. ]";
+		
+		String preamble = switch(type) { case UART, DEMO_MODE -> """
+		                                                         import com.fazecast.jSerialComm.SerialPort; // download the jar from https://fazecast.github.io/jSerialComm/
+		                                                         import java.util.concurrent.Executors;
+		                                                         import java.util.concurrent.TimeUnit;
+		                                                         """;
+		                                 case TCP             -> """
+		                                                         import java.net.Socket;
+		                                                         import java.net.InetAddress;
+		                                                         import java.util.concurrent.Executors;
+		                                                         import java.util.concurrent.TimeUnit;
+		                                                         """;
+		                                 case UDP             -> """
+		                                                         import java.net.DatagramPacket;
+		                                                         import java.net.DatagramSocket;
+		                                                         import java.net.InetAddress;
+		                                                         import java.util.concurrent.Executors;
+		                                                         import java.util.concurrent.TimeUnit;
+		                                                         """;
+		                                 case STRESS_TEST     -> ""; };
+		
+		String prepare  = switch(type) { case UART, DEMO_MODE -> "static SerialPort port;";
+		                                 case TCP             -> "static Socket socket;";
+		                                 case UDP             -> "static DatagramSocket socket;";
+		                                 case STRESS_TEST     -> ""; };
+		
+		String transmit = switch(type) { case UART, DEMO_MODE -> """
+		                                                         if(port == null) {
+		                                                         	port = SerialPort.getCommPort("COM1"); // EDIT THIS LINE
+		                                                         	port.setBaudRate(%s);
+		                                                         	port.openPort();
+		                                                         }
+		                                                         port.getOutputStream().write(buffer);""".formatted(baudRate.get().split(" ")[0]);
+		                                 case TCP             -> """
+		                                                         if(socket == null)
+		                                                         	socket = new Socket(InetAddress.getByName("%s"), %d); // EDIT THIS LINE IF NEEDED
+		                                                         socket.getOutputStream().write(buffer);""".formatted(localIp, portNumber.get());
+		                                 case UDP             -> """
+		                                                         if(socket == null)
+		                                                         	socket = new DatagramSocket();
+		                                                         socket.send(new DatagramPacket(buffer, buffer.length, InetAddress.getByName("%s"), %d)); // EDIT THIS LINE IF NEEDED""".formatted(localIp, portNumber.get());
+		                                 case STRESS_TEST     -> ""; };
+		                                 
+		String reset =  switch(type) { case UART, DEMO_MODE -> "port = null;";
+		                               case TCP             -> "socket = null;";
+		                               case UDP             -> "socket = null;";
+		                               case STRESS_TEST     -> ""; };
+		
+		String notice = protocol.is(Protocol.CSV) ? "" :
+		                                            """
+		                                            
+		                                            // ideally binary mode would be used to match your existing data structure, so you would memcpy() your struct instead of doing this byte-by-byte
+		                                            // but here is how to do it manually if needed
+		                                            // also keep in mind that java doesn't generally support unsigned numbers, so ensure the underlying bits are what you expect
+		                                            
+		                                            """;
+		String variables = fields.values().stream().map(field -> {
+			String varName = field.getExampleVariableName();
+			return protocol.is(Protocol.CSV) ?                           "double %s = ...; // EDIT THIS LINE".formatted(varName) :
+			       switch(field.type.get()) { case UINT8_SYNC_WORD    -> "byte sync = (byte) %s;".formatted(field.name.get());
+			                                  case UINT8              -> "byte %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                  case UINT16_LE          -> "short %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                  case UINT16_BE          -> "short %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                  case UINT32_LE          -> "int %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                  case UINT32_BE          -> "int %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                  case INT8               -> "byte %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                  case INT16_LE           -> "short %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                  case INT16_BE           -> "short %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                  case INT32_LE           -> "int %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                  case INT32_BE           -> "int %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                  case FLOAT32_LE         -> "float %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                  case FLOAT32_BE         -> "float %s = ...; // EDIT THIS LINE".formatted(varName);
+			                                  case UINT8_BITFIELD     -> "byte %s = 0;\n".formatted(varName) +
+			                                                             field.bitfields.stream().map(bitfield -> "%s |= ... << %d; // EDIT THIS LINE".formatted(varName, bitfield.LSBit)).collect(Collectors.joining("\n"));
+			                                  case UINT8_CHECKSUM     -> "byte sum = 0;";
+			                                  case UINT16_LE_CHECKSUM -> "short sum = 0;";
+		};
+		}).collect(Collectors.joining("\n"));
+		
+		String data = protocol.is(Protocol.CSV) ? IntStream.rangeClosed(0, getDatasetsList().getLast().location.get())
+		                                                   .mapToObj(loc -> getDatasetByLocation(loc) == null ? "\"0\"" : getDatasetByLocation(loc).getExampleVariableName())
+		                                                   .collect(Collectors.joining(" + \",\" + ", "", " + \"\\n\"")) : // example: "a + "," + b + "\n"" or "a + "," + "0" + "," + b + "\n"" if sparse
+		                                          fields.values().stream()
+		                                                .map(field -> {
+		                                                     String name = field.getExampleVariableName();
+		                                                     int offset = field.location.get();
+		                                                     return switch(field.type.get()) {
+		                                                         case UINT8_SYNC_WORD    -> "buffer[%d] = sync;\n".formatted(offset);
+		                                                         case UINT8              -> "buffer[%d] = %s;\n".formatted(offset, name);
+		                                                         case UINT16_LE          -> """
+		                                                                                    buffer[%d] = (byte) ((%s >>  0) & 0xFF);
+		                                                                                    buffer[%d] = (byte) ((%s >>  8) & 0xFF);
+		                                                                                    """.formatted(offset,     name,
+		                                                                                                  offset + 1, name);
+		                                                         case UINT16_BE          -> """
+		                                                                                    buffer[%d] = (byte) ((%s >>  8) & 0xFF);
+		                                                                                    buffer[%d] = (byte) ((%s >>  0) & 0xFF);
+		                                                                                    """.formatted(offset,     name,
+		                                                                                                  offset + 1, name);
+		                                                         case UINT32_LE          -> """
+		                                                                                    buffer[%d] = (byte) ((%s >>  0) & 0xFF);
+		                                                                                    buffer[%d] = (byte) ((%s >>  8) & 0xFF);
+		                                                                                    buffer[%d] = (byte) ((%s >> 16) & 0xFF);
+		                                                                                    buffer[%d] = (byte) ((%s >> 24) & 0xFF);
+		                                                                                    """.formatted(offset,     name,
+		                                                                                                  offset + 1, name,
+		                                                                                                  offset + 2, name,
+		                                                                                                  offset + 3, name);
+		                                                         case UINT32_BE          -> """
+		                                                                                    buffer[%d] = (byte) ((%s >> 24) & 0xFF);
+		                                                                                    buffer[%d] = (byte) ((%s >> 16) & 0xFF);
+		                                                                                    buffer[%d] = (byte) ((%s >>  8) & 0xFF);
+		                                                                                    buffer[%d] = (byte) ((%s >>  0) & 0xFF);
+		                                                                                    """.formatted(offset,     name,
+		                                                                                                 offset + 1, name,
+		                                                                                                 offset + 2, name,
+		                                                                                                 offset + 3, name);
+		                                                         case INT8               -> "buffer[%d] = %s\n;".formatted(offset, name);
+		                                                         case INT16_LE           -> """
+		                                                                                    buffer[%d] = (byte) ((%s >>  0) & 0xFF);
+		                                                                                    buffer[%d] = (byte) ((%s >>  8) & 0xFF);
+		                                                                                    """.formatted(offset,     name,
+		                                                                                                  offset + 1, name);
+		                                                         case INT16_BE           -> """
+		                                                                                    buffer[%d] = (byte) ((%s >>  8) & 0xFF);
+		                                                                                    buffer[%d] = (byte) ((%s >>  0) & 0xFF);
+		                                                                                    """.formatted(offset,     name,
+		                                                                                                  offset + 1, name);
+		                                                         case INT32_LE           -> """
+		                                                                                    buffer[%d] = (byte) ((%s >>  0) & 0xFF);
+		                                                                                    buffer[%d] = (byte) ((%s >>  8) & 0xFF);
+		                                                                                    buffer[%d] = (byte) ((%s >> 16) & 0xFF);
+		                                                                                    buffer[%d] = (byte) ((%s >> 24) & 0xFF);
+		                                                                                    """.formatted(offset,     name,
+		                                                                                                  offset + 1, name,
+		                                                                                                  offset + 2, name,
+		                                                                                                  offset + 3, name);
+		                                                         case INT32_BE           -> """
+		                                                                                    buffer[%d] = (byte) ((%s >> 24) & 0xFF);
+		                                                                                    buffer[%d] = (byte) ((%s >> 16) & 0xFF);
+		                                                                                    buffer[%d] = (byte) ((%s >>  8) & 0xFF);
+		                                                                                    buffer[%d] = (byte) ((%s >>  0) & 0xFF);
+		                                                                                    """.formatted(offset,     name,
+		                                                                                                  offset + 1, name,
+		                                                                                                  offset + 2, name,
+		                                                                                                  offset + 3, name);
+		                                                         case FLOAT32_LE         -> """
+		                                                                                    buffer[%d] = (byte) ((Float.floatToIntBits(%s) >>  0) & 0xFF);
+		                                                                                    buffer[%d] = (byte) ((Float.floatToIntBits(%s) >>  8) & 0xFF);
+		                                                                                    buffer[%d] = (byte) ((Float.floatToIntBits(%s) >> 16) & 0xFF);
+		                                                                                    buffer[%d] = (byte) ((Float.floatToIntBits(%s) >> 24) & 0xFF);
+		                                                                                    """.formatted(offset,     name,
+		                                                                                                  offset + 1, name,
+		                                                                                                  offset + 2, name,
+		                                                                                                  offset + 3, name);
+		                                                         case FLOAT32_BE         -> """
+		                                                                                    buffer[%d] = (byte) ((Float.floatToIntBits(%s) >> 24) & 0xFF);
+		                                                                                    buffer[%d] = (byte) ((Float.floatToIntBits(%s) >> 16) & 0xFF);
+		                                                                                    buffer[%d] = (byte) ((Float.floatToIntBits(%s) >>  8) & 0xFF);
+		                                                                                    buffer[%d] = (byte) ((Float.floatToIntBits(%s) >>  0) & 0xFF);
+		                                                                                    """.formatted(offset,     name,
+		                                                                                                  offset + 1, name,
+		                                                                                                  offset + 2, name,
+		                                                                                                  offset + 3, name);
+		                                                         case UINT8_BITFIELD     -> "buffer[%d] = %s;\n".formatted(offset, name);
+		                                                         case UINT8_CHECKSUM     -> """
+		                                                                                    for(int i = %d; i < %d; i++)
+		                                                                                    	sum += buffer[i];
+		                                                                                    buffer[%d] = sum;
+		                                                                                    """.formatted(fields.firstEntry().getValue().isSyncWord() ? fields.firstEntry().getValue().type.get().getByteCount() : 0,
+		                                                                                                  fields.lastEntry().getValue().location.get(),
+		                                                                                                  fields.lastEntry().getValue().location.get());
+		                                                         case UINT16_LE_CHECKSUM -> """
+		                                                                                    for(int i = %d; i < %d; i += 2)
+		                                                                                    	sum += buffer[i] | (buffer[i+1] << 8);
+		                                                                                    buffer[%d] = (byte) ((sum >> 0) & 0xFF);
+		                                                                                    buffer[%d] = (byte) ((sum >> 8) & 0xFF);
+		                                                                                    """.formatted(fields.firstEntry().getValue().isSyncWord() ? fields.firstEntry().getValue().type.get().getByteCount() : 0,
+		                                                                                                  fields.lastEntry().getValue().location.get(),
+		                                                                                                  fields.lastEntry().getValue().location.get(),
+		                                                                                                  fields.lastEntry().getValue().location.get() + 1);
+		                                                 }; })
+		                                                .collect(Collectors.joining());
+		
+		String populateBuffer = protocol.is(Protocol.CSV) ? """
+		                                                    String text = %s;
+		                                                    byte[] buffer = text.getBytes();
+		                                                    """.formatted(data) :
+		                                                    "byte[] buffer = new byte[%d];\n".formatted(fields.lastKey() + fields.lastEntry().getValue().type.get().getByteCount()) +
+		                                                    data;
+		
+		return """
+				// example software showing how to send telemetry to this computer from java
+				// this code is meant to be easy to understand, it is not the most efficient or fault-tolerant way of doing things
+				
+				%s
+				public class Main {
+				
+				%s
+				
+					public static void main(String[] args) {
+				
+						Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(() -> {
+				%s
+				%s
+				
+				%s
+				
+							try {
+				%s
+							} catch(Exception e) {
+				%s
+							}
+							
+						}, 0, ..., TimeUnit.MILLISECONDS); // EDIT THIS LINE
+						
+					}
+				
+				}
+				""".formatted(preamble,
+				              prepare.lines().map(       line -> "\t"       + line).collect(Collectors.joining("\n")),
+				              notice.lines().map(        line -> "\t\t\t"   + line).collect(Collectors.joining("\n")),
+				              variables.lines().map(     line -> "\t\t\t"   + line).collect(Collectors.joining("\n")),
+				              populateBuffer.lines().map(line -> "\t\t\t"   + line).collect(Collectors.joining("\n")),
+				              transmit.lines().map(      line -> "\t\t\t\t" + line).collect(Collectors.joining("\n")),
+				              reset.lines().map(         line -> "\t\t\t\t" + line).collect(Collectors.joining("\n")));
+		
+	}
 	
 	@Override public long readFirstTimestamp(String path) {
 		
@@ -882,18 +1416,18 @@ public abstract class ConnectionTelemetry extends Connection {
 			List<Field> datasets = getDatasetsList();
 			
 			// if no telemetry after 100ms, notify the user
-			String waitingForTelemetry = (this instanceof ConnectionTelemetryUART) ? name.get().substring(6) + " is connected. Send telemetry." :
-			                             (this instanceof ConnectionTelemetryTCP)  ? "The TCP server is running. Send telemetry to " + localIp + ":" + portNumber.get() :
-			                             (this instanceof ConnectionTelemetryUDP)  ? "The UDP listener is running. Send telemetry to " + localIp + ":" + portNumber.get() :
-			                                                                         "";
-			String receivingTelemetry  = (this instanceof ConnectionTelemetryUART) ? name.get().substring(6) + " is connected and receiving telemetry." :
-			                             (this instanceof ConnectionTelemetryTCP)  ? "The TCP server is running and receiving telemetry." :
-			                             (this instanceof ConnectionTelemetryUDP)  ? "The UDP listener is running and receiving telemetry." :
-			                                                                         "";
+			String waitingForTelemetry = (type == Type.UART) ? getName() + " is connected. Send telemetry." :
+			                             (type == Type.TCP)  ? "The TCP server is running. Send telemetry to " + localIp + ":" + portNumber.get() :
+			                             (type == Type.UDP)  ? "The UDP listener is running. Send telemetry to " + localIp + ":" + portNumber.get() :
+			                                                   "";
+			String receivingTelemetry  = (type == Type.UART) ? getName() + " is connected and receiving telemetry." :
+			                             (type == Type.TCP)  ? "The TCP server is running and receiving telemetry." :
+			                             (type == Type.UDP)  ? "The UDP listener is running and receiving telemetry." :
+			                                                   "";
 			int oldSampleCount = getSampleCount();
 			Timer t = new Timer(100, event -> {
 				
-				if((this instanceof ConnectionTelemetryDemo) || (this instanceof ConnectionTelemetryStressTest))
+				if(type == Type.DEMO_MODE || type == Type.STRESS_TEST)
 					return;
 				
 				if(isConnected()) {

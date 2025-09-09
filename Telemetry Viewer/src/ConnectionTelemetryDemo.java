@@ -1,8 +1,4 @@
 import java.awt.Color;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 public class ConnectionTelemetryDemo extends ConnectionTelemetry {
 	
@@ -92,90 +88,6 @@ public class ConnectionTelemetryDemo extends ConnectionTelemetry {
 		receiverThread.setPriority(Thread.MAX_PRIORITY);
 		receiverThread.setName("Demo Waveform Simulator Thread");
 		receiverThread.start();
-		
-	}
-	
-	// same as ConnectionTelemetryUART
-	@Override public Map<String, String> getExampleCode() {
-		
-		if(protocol.is(Protocol.CSV) && getDatasetCount() == 0) {
-			
-			return Map.of("Arduino Firmware", "[ Define at least one CSV column to see example firmware. ]");
-			
-		} else if(protocol.is(Protocol.CSV) && getDatasetCount() > 0) {
-		
-			int baud                       = Integer.parseInt(baudRate.get().split(" ")[0]);
-			List<Field> datasets           = getDatasetsList();
-			List<String> names             = datasets.stream().map(dataset -> dataset.name.get().toLowerCase().replace(' ', '_')).toList(); // example: "a" "b"
-			String intVariables            = names.stream().map(name -> "\tint "   + name + " = ...; // EDIT THIS LINE\n")
-			                                               .collect(Collectors.joining());                                            // example: "int a = ..."
-			String floatVariables          = names.stream().map(name -> "\tfloat " + name + " = ...; // EDIT THIS LINE\n")
-			                                               .collect(Collectors.joining());                                            // example: "float a = ..."
-			String floatTextVariables      = names.stream().map(name -> "\tchar "    + name + "_text[30];\n")
-			                                               .collect(Collectors.joining());                                            // example: "char a_text[30]; ..."
-			String floatConvertedVariables = names.stream().map(name -> "\tdtostrf(" + name + ", 10, 10, " + name + "_text);\n")
-			                                               .collect(Collectors.joining());                                            // example: "dtostrf(a, 10, 10, a_text); ..."
-			String printfIntArgs           = names.stream().collect(Collectors.joining(", "));                                        // example: "a, b"
-			String printfFloatArgs         = names.stream().map(name -> name + "_text")
-			                                               .collect(Collectors.joining(", "));                                        // example: "a_text, b_text"
-			String printfIntFormatString   = IntStream.rangeClosed(0, datasets.getLast().location.get())
-			                                          .mapToObj(location -> getDatasetByLocation(location) == null ? "0" : "%d")
-			                                          .collect(Collectors.joining(","));                                              // example: "%d,%d" or "%d,0,%d" if sparse
-			String printfFloatFormatString = IntStream.rangeClosed(0, datasets.getLast().location.get())
-			                                          .mapToObj(location -> getDatasetByLocation(location) == null ? "0" : "%f")
-			                                          .collect(Collectors.joining(","));                                              // example: "%f,%f" or "%f,0,%f" if sparse
-			int printfIntStringLength      = IntStream.rangeClosed(0, datasets.getLast().location.get())
-			                                          .map(location -> getDatasetByLocation(location) == null ? 2 : 7)
-			                                          .sum() + 1;                                                                     // 2 bytes per unused location, 7 bytes per location, +1 for the null terminator
-			int printfFloatStringLength    = IntStream.rangeClosed(0, datasets.getLast().location.get())
-			                                          .map(location -> getDatasetByLocation(location) == null ? 2 : 31)
-			                                          .sum() + 1;                                                                     // 2 bytes per unused location, 31 bytes per location, +1 for the null terminator
-			
-			return Map.of("Arduino Firmware", """
-				void setup() {
-					Serial.begin(%d);
-				}
-				
-				// use this loop if sending integers
-				void loop() {
-				%s
-					char text[%d];
-					snprintf(text, %d, "%s", %s);
-					Serial.println(text);
-					
-					delay(...); // EDIT THIS LINE
-				}
-				
-				// or use this loop if sending floats
-				void loop() {
-				%s
-				%s
-				%s
-					char text[%d];
-					snprintf(text, %d, "%s", %s);
-					Serial.println(text);
-					
-					delay(...); // EDIT THIS LINE
-				}
-				""".formatted(baud,
-				              intVariables,
-				              printfIntStringLength,
-				              printfIntStringLength,
-				              printfIntFormatString,
-				              printfIntArgs,
-				              floatVariables,
-				              floatTextVariables,
-				              floatConvertedVariables,
-				              printfFloatStringLength,
-				              printfFloatStringLength,
-				              printfFloatFormatString,
-				              printfFloatArgs));
-		
-		} else {
-			
-			return Map.of(); // no example firmware
-			
-		}
 		
 	}
 	
