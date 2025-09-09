@@ -2132,6 +2132,7 @@ public abstract class ConnectionTelemetry extends Connection {
 		
 		Field existingSyncWord = fields.values().stream().filter(Field::isSyncWord).findFirst().orElse(null);
 		Field existingChecksum = fields.values().stream().filter(Field::isChecksum).findFirst().orElse(null);
+		int syncWordByteCount = existingSyncWord == null ? 0 : existingSyncWord.type.get().getByteCount();
 		
 		if(newType.isSyncWord() && protocol.is(Protocol.CSV))
 			return "CSV mode does not support sync words.";
@@ -2177,13 +2178,13 @@ public abstract class ConnectionTelemetry extends Connection {
 		if(newType.isChecksum() && existingChecksum != null && existingChecksum != field)
 			return "A checksum field already exists.";
 		
-		if(newType.isChecksum() && newLocation == 0)
+		if(newType.isChecksum() && newLocation == syncWordByteCount)
 			return "A checksum field can only be placed at the end of a packet.";
 		
 		if(newType.isChecksum() && getDatasetsList().stream().anyMatch(dataset -> newLocation <= dataset.location.get() + dataset.type.get().getByteCount() - 1))
 			return "A checksum field can only be placed at the end of a packet.";
 		
-		if(newType.isChecksum() && (newLocation - 1) % newType.getByteCount() != 0)
+		if(newType.isChecksum() && (newLocation - syncWordByteCount) % newType.getByteCount() != 0)
 			return "This checksum must be aligned on a " + newType.getByteCount() + " byte boundary. (The number of bytes before the checksum, not counting the sync word, must be a multiple of " + newType.getByteCount() + " bytes.)";
 		
 		// success, the location is available
