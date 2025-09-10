@@ -265,13 +265,14 @@ public class WidgetToggleButton<T> implements Widget {
 		
 	}
 	
-	public void setEnabled(boolean isEnabled) {
+	public WidgetToggleButton<T> setEnabled(boolean isEnabled) {
 		
 		if(prefixLabel != null)
 			prefixLabel.setEnabled(isEnabled);
 		buttons.forEach(button -> button.setEnabled(isEnabled));
 		if(suffixLabel != null)
 			suffixLabel.setEnabled(isEnabled);
+		return this;
 		
 	}
 	

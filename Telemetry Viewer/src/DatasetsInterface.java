@@ -945,11 +945,12 @@ public class DatasetsInterface {
 			
 		}
 		
-		public void setEnabled(boolean isEnabled) {
+		public WidgetDatasets setEnabled(boolean isEnabled) {
 			this.isEnabled = isEnabled;
 			if(triggerChannelCombobox != null)
 				triggerChannelCombobox.setEnabled(isEnabled);
 			comboboxes.forEach(combobox -> combobox.setEnabled(isEnabled));
+			return this;
 		}
 
 		private void disableWidgetsForOtherConnections() {

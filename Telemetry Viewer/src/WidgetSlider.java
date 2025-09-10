@@ -213,11 +213,12 @@ public class WidgetSlider<T> implements Widget {
 		
 	}
 
-	public void setEnabled(boolean isEnabled) {
+	public WidgetSlider<T> setEnabled(boolean isEnabled) {
 		
 		if(prefixLabel != null)
 			prefixLabel.setEnabled(isEnabled);
 		slider.setEnabled(isEnabled);
+		return this;
 		
 	}
 

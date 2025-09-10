@@ -160,9 +160,10 @@ public class WidgetTrigger implements Widget {
 		return !mode.is(Mode.DISABLED);
 	}
 	
-	@Override public void setEnabled(boolean isEnabled) {
+	@Override public WidgetTrigger setEnabled(boolean isEnabled) {
 		
 		mode.set(isEnabled ? Mode.AUTO : Mode.DISABLED);
+		return this;
 		
 	}
 	

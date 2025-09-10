@@ -108,13 +108,12 @@ public abstract class ConnectionTelemetry extends Connection {
 	protected WidgetCheckbox transmitAppendLF;
 	protected WidgetCheckbox transmitRepeatedly;
 	protected WidgetTextfield<Integer> transmitRepeatedlyMilliseconds;
-	protected JButton transmitSaveButton;
-	protected JButton transmitTransmitButton;
+	protected WidgetButton transmitSaveButton;
+	protected WidgetButton transmitTransmitButton;
 	
 	protected Queue<byte[]> transmitQueue = new ConcurrentLinkedQueue<byte[]>();
 	protected long nextRepititionTimestamp = 0;
-	public record Packet(String label, byte[] bytes, String bytesAsHexString) {}
-	protected List<Packet> transmitSavedPackets = new ArrayList<Packet>();
+	protected List<WidgetButton> transmitSavedPackets = new ArrayList<WidgetButton>();
 	
 	public static String localIp = "[Local IP Address Unknown]";
 	static {
@@ -236,27 +235,27 @@ public abstract class ConnectionTelemetry extends Connection {
 		                                                .setSuffix("ms")
 		                                                .setExportLabel("transmit repitition interval milliseconds");
 		
-		// packets can be saved to JButtons
-		transmitSaveButton = new JButton("Save");
-		transmitSaveButton.addActionListener(event -> {
+		// packets can be saved to buttons
+		transmitSaveButton = new WidgetButton("Save").onClick(event -> {
 			byte[] bytes = transmitData.getAsBytes(transmitAppendCR.get(), transmitAppendLF.get());
 			String label = transmitDatatype.get().toString() + ": " + transmitData.getAsText(transmitAppendCR.get(), transmitAppendLF.get());
-			String bytesAsHexString = transmitData.getAsHexText(transmitAppendCR.get(), transmitAppendLF.get());
-			if(transmitSavedPackets.stream().noneMatch(packet -> packet.label.equals(label))) {
-				transmitSavedPackets.add(new Packet(label, bytes, bytesAsHexString));
+			if(transmitSavedPackets.stream().noneMatch(packet -> packet.getText().equals(label))) {
+				transmitSavedPackets.add(new WidgetButton(label)
+				                             .setBytes(bytes)
+				                             .onClick(button -> transmitQueue.add(button.getBytes()))
+				                             .onRemove(button -> { transmitSavedPackets.remove(button); Settings.GUI.redraw(); }));
 				Settings.GUI.redraw(); // so this TX GUI gets redrawn
 			}
 			transmitData.set("");
 		});
 		
 		// transmit button for sending the data once
-		transmitTransmitButton = new JButton("Transmit");
-		transmitTransmitButton.addActionListener(event -> transmitQueue.add(transmitData.getAsBytes(transmitAppendCR.get(), transmitAppendLF.get())));
+		transmitTransmitButton = new WidgetButton("Transmit").onClick(event -> transmitQueue.add(transmitData.getAsBytes(transmitAppendCR.get(), transmitAppendLF.get())));
 		
 		// data provided by the user
 		transmitData = WidgetTextfield.ofText("")
 		                              .setExportLabel("transmit data")
-		                              .onEnter(event -> transmitTransmitButton.doClick())
+		                              .onEnter(event -> transmitTransmitButton.click())
 		                              .onChange((newText, oldText) -> {
 		                                   boolean haveData = transmitAppendCR.get() || transmitAppendLF.get() || !newText.isEmpty();
 		                                   transmitRepeatedly.setEnabled(haveData);
@@ -358,9 +357,9 @@ public abstract class ConnectionTelemetry extends Connection {
 		                       transmitData.set("getva");
 		                       transmitRepeatedly.set(true);
 		                       transmitRepeatedlyMilliseconds.set(200);
-		                       transmitSavedPackets.add(new Packet("Rotate Display",  "rotat".getBytes(), "72 6F 74 61 74"));
-		                       transmitSavedPackets.add(new Packet("Previous Screen", "lastp".getBytes(), "6C 61 73 74 70"));
-		                       transmitSavedPackets.add(new Packet("Next Screen",     "nextp".getBytes(), "6E 65 78 74 70"));
+		                       transmitSavedPackets.add(new WidgetButton("Rotate Display").setBytes("rotat".getBytes()).onClick(button -> transmitQueue.add(button.getBytes())));
+		                       transmitSavedPackets.add(new WidgetButton("Previous Screen").setBytes("lastp".getBytes()).onClick(button -> transmitQueue.add(button.getBytes())));
+		                       transmitSavedPackets.add(new WidgetButton("Next Screen").setBytes("nextp".getBytes()).onClick(button -> transmitQueue.add(button.getBytes())));
 		                   } else {
 		                       sampleRate.set(0).forceDisabled(false);
 		                       baudRate.forceDisabled(false);
@@ -432,8 +431,8 @@ public abstract class ConnectionTelemetry extends Connection {
 		pending.scalingFactorA.appendTo(dsPanel, "");
 		dsPanel.add(pending.equalsLabel, "");
 		pending.scalingFactorB.appendTo(dsPanel, "gapafter " + 2 * Theme.padding);
-		dsPanel.add(pending.addButton, "pushx, align right");
-		dsPanel.add(pending.doneButton, "wrap");
+		pending.addButton.appendTo(dsPanel, "pushx, align right");
+		pending.doneButton.appendTo(dsPanel, "wrap");
 		
 		dataStructureTable.revalidate();
 		dataStructureTable.repaint();
@@ -2321,19 +2320,11 @@ public abstract class ConnectionTelemetry extends Connection {
 				throw new AssertionError("Invalid saved packet count.");
 			
 			while(saveCount-- > 0) {
-				try {
-					String label = lines.remove();
-					String hexText = lines.remove().trim();
-					String[] hexBytes = hexText.split(" ");
-					byte[] bytes = new byte[hexBytes.length];
-					for(int i = 0; i < hexBytes.length; i++)
-						bytes[i] = (byte) (Integer.parseInt(hexBytes[i], 16) & 0xFF);
-					if(label.equals("") || bytes.length == 0)
-						throw new Exception();
-					transmitSavedPackets.add(new Packet(label, bytes, hexText));
-				} catch(Exception e) {
-					throw new AssertionError("Invalid saved packet.");
-				}
+				WidgetButton packet = new WidgetButton("");
+				packet.importFrom(lines);
+				packet.onClick(button -> transmitQueue.add(button.getBytes()));
+				packet.onRemove(button -> { transmitSavedPackets.remove(button); Settings.GUI.redraw(); });
+				transmitSavedPackets.add(packet);
 			}
 		}
 		
@@ -2362,10 +2353,7 @@ public abstract class ConnectionTelemetry extends Connection {
 			transmitRepeatedlyMilliseconds.exportTo(file);
 			
 			file.println("\ttransmit saved packet count = " + transmitSavedPackets.size());
-			transmitSavedPackets.forEach(packet -> {
-				file.println("\t\t" + packet.label());
-				file.println("\t\t" + packet.bytesAsHexString);
-			});
+			transmitSavedPackets.forEach(packet -> packet.exportTo(file));
 		}
 		
 		if(supportsUserDefinedDataStructure() && !protocol.is(Protocol.TC66)) {
@@ -2395,11 +2383,8 @@ public abstract class ConnectionTelemetry extends Connection {
 			
 			// for the TC66, the user can only send some pre-defined packets
 			transmitSavedPackets.forEach(packet -> {
-				JButton packetButton = new JButton(packet.label());
-				packetButton.setHorizontalAlignment(SwingConstants.LEFT);
-				packetButton.addActionListener(clicked -> transmitQueue.add(packet.bytes()));
-				packetButton.setEnabled(isConnected());
-				gui.add(packetButton);
+				packet.setEnabled(isConnected());
+				packet.appendTo(gui, "");
 			});
 			
 		} else {
@@ -2412,8 +2397,8 @@ public abstract class ConnectionTelemetry extends Connection {
 			transmitRepeatedly.appendTo(gui, "");
 			transmitRepeatedlyMilliseconds.appendTo(gui, "grow x, width 1:1:"); // min/pref width = 1px, so this doesn't widen the panel
 			
-			gui.add(transmitSaveButton, "split 2, grow x");
-			gui.add(transmitTransmitButton, "grow x");
+			transmitSaveButton.appendTo(gui, "split 2, grow x");
+			transmitTransmitButton.appendTo(gui, "grow x");
 			
 			boolean haveData = transmitAppendCR.get() || transmitAppendLF.get() || !transmitData.get().isEmpty();
 			transmitDatatype.setEnabled(isConnected());
@@ -2426,19 +2411,8 @@ public abstract class ConnectionTelemetry extends Connection {
 			transmitTransmitButton.setEnabled(isConnected() && haveData);
 			
 			transmitSavedPackets.forEach(packet -> {
-				JButton sendButton = new JButton(packet.label());
-				sendButton.setHorizontalAlignment(SwingConstants.LEFT);
-				sendButton.addActionListener(clicked -> transmitQueue.add(packet.bytes()));
-				sendButton.setEnabled(isConnected());
-				JButton removeButton = new JButton(Theme.removeSymbol);
-				removeButton.setBorder(Theme.narrowButtonBorder);
-				removeButton.addActionListener(click -> {
-					transmitSavedPackets.remove(packet);
-					Settings.GUI.redraw(); // so this TX GUI gets redrawn
-				});
-				removeButton.setEnabled(isConnected());
-				gui.add(sendButton, "split 2, grow x, width 1:1:"); // min/pref width = 1px, so this doesn't widen the panel
-				gui.add(removeButton);
+				packet.setEnabled(isConnected());
+				packet.appendTo(gui, "split 2, grow x, width 1:1:"); // min/pref width = 1px, so this doesn't widen the panel
 			});
 			
 		}

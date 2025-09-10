@@ -45,7 +45,7 @@ public interface Widget {
 	 * 
 	 * @param isEnabled    If the widget can be interacted with.
 	 */
-	public void setEnabled(boolean isEnabled);
+	public Widget setEnabled(boolean isEnabled);
 
 	/**
 	 * Updates the widget based on a settings file.

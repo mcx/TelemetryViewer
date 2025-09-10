@@ -1,7 +1,6 @@
 import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.GridLayout;
-import javax.swing.JButton;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JToggleButton;
@@ -95,10 +94,8 @@ public class Configure extends JPanel {
 		
 		chart.appendConfigurationWidgets(widgetsPanel);
 		
-		JButton doneButton = new JButton("Done");
-		doneButton.addActionListener(event -> close());
 		buttonsPanel.removeAll();
-		buttonsPanel.add(doneButton, "growx, cell 2 0");
+		new WidgetButton("Done").onClick(event -> close()).appendTo(buttonsPanel, "growx, cell 2 0");
 		
 		scrollableRegion.getVerticalScrollBar().setValue(0);
 
@@ -145,13 +142,9 @@ public class Configure extends JPanel {
 		widgetsPanel.add(chartTypePanel);
 		chart.appendConfigurationWidgets(widgetsPanel);
 		
-		JButton cancelButton = new JButton("Cancel");
-		cancelButton.addActionListener(event -> { Charts.remove(activeChart); close(); });
-		JButton doneButton = new JButton("Done");
-		doneButton.addActionListener(event -> close());
 		buttonsPanel.removeAll();
-		buttonsPanel.add(cancelButton, "growx, cell 0 0");
-		buttonsPanel.add(doneButton, "growx, cell 2 0");
+		new WidgetButton("Cancel").onClick(event -> { Charts.remove(activeChart); close(); }).appendTo(buttonsPanel, "growx, cell 0 0");
+		new WidgetButton("Done")  .onClick(event -> close())                                 .appendTo(buttonsPanel, "growx, cell 2 0");
 		
 		scrollableRegion.getVerticalScrollBar().setValue(0);
 		
@@ -171,11 +164,8 @@ public class Configure extends JPanel {
 		
 		activeChart = null;
 		
-		JButton doneButton = new JButton("Done");
-		doneButton.addActionListener(event -> close());
-		
 		buttonsPanel.removeAll();
-		buttonsPanel.add(doneButton,  "growx, cell 2 0");
+		new WidgetButton("Done").onClick(event -> close()).appendTo(buttonsPanel, "growx, cell 2 0");
 		
 		widgetsPanel.setVisible(false); // hiding during removeAll() massively speeds up removeAll()
 		widgetsPanel.removeAll();

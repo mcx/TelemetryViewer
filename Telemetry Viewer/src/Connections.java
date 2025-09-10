@@ -19,7 +19,6 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import javax.swing.BoxLayout;
-import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JDialog;
 import javax.swing.JFileChooser;
@@ -900,10 +899,10 @@ public class Connections {
 	static class ConnectionsGUI extends JPanel {
 		
 		private JToggleButton settingsButton;
-		private JButton importButton;
-		private JButton exportButton;
-		private JButton helpButton;
-		private JButton connectionButton;
+		private WidgetButton importButton;
+		private WidgetButton exportButton;
+		private WidgetButton helpButton;
+		private WidgetButton connectionButton;
 		private List<Connection> previousConnections;
 
 		/**
@@ -914,15 +913,11 @@ public class Connections {
 			super();
 			setLayout(new MigLayout("wrap 6, gap " + Theme.padding  + ", insets " + Theme.padding, "[][][][]push[]push[]"));
 			
-			// settings
 			settingsButton = new JToggleButton("Settings");
 			settingsButton.setSelected(Settings.GUI.isVisible());
 			settingsButton.addActionListener(event -> showSettings(settingsButton.isSelected()));
 			
-			// import
-			importButton = new JButton("Import");
-			importButton.addActionListener(event -> {
-				
+			importButton = new WidgetButton("Import").onClick(event -> {
 				JFileChooser inputFiles = new JFileChooser(System.getProperty("user.dir"));
 				inputFiles.setMultiSelectionEnabled(true);
 				inputFiles.setFileFilter(new FileNameExtensionFilter("Settings (*.txt) Data (*.csv) or Videos (*.mkv)", "txt", "csv", "mkv"));
@@ -931,13 +926,9 @@ public class Connections {
 					List<String> filepaths = Stream.of(inputFiles.getSelectedFiles()).map(file -> file.getAbsolutePath()).toList();
 					Connections.importFiles(filepaths);
 				}
-				
 			});
 			
-			// export
-			exportButton = new JButton("Export");
-			exportButton.setEnabled(false);
-			exportButton.addActionListener(event -> {
+			exportButton = new WidgetButton("Export").setEnabled(false).onClick(event -> {
 				
 				JDialog exportWindow = new JDialog(Main.window, "Select Files to Export");
 				exportWindow.setLayout(new MigLayout("wrap 1, insets " + Theme.padding));
@@ -951,11 +942,9 @@ public class Connections {
 				Connections.cameraConnections.stream().filter(connection -> connection.getSampleCount() > 0)
 				                                      .forEach(connection -> mkvOptions.put(new JCheckBox("MKV file for \"" + connection.getName() + "\" (the acquired images and corresponding timestamps)", true), connection));
 
-				JButton cancelButton = new JButton("Cancel");
-				cancelButton.addActionListener(event2 -> exportWindow.dispose());
+				WidgetButton cancelButton = new WidgetButton("Cancel").onClick(event2 -> exportWindow.dispose());
 				
-				JButton confirmButton = new JButton("Export");
-				confirmButton.addActionListener(event2 -> {
+				WidgetButton confirmButton = new WidgetButton("Export").onClick(event2 -> {
 					
 					// cancel if every checkbox is unchecked
 					boolean nothingSelected = !settingsFileCheckbox.isSelected() &&
@@ -985,8 +974,8 @@ public class Connections {
 				
 				JPanel buttonsPanel = new JPanel();
 				buttonsPanel.setLayout(new MigLayout("insets " + (Theme.padding * 2) + " 0 0 0", "[33%!][grow][33%!]")); // space the buttons, and 3 equal columns
-				buttonsPanel.add(cancelButton,  "growx, cell 0 0");
-				buttonsPanel.add(confirmButton, "growx, cell 2 0");
+				cancelButton.appendTo(buttonsPanel, "growx, cell 0 0");
+				confirmButton.appendTo(buttonsPanel, "growx, cell 2 0");
 				
 				exportWindow.add(settingsFileCheckbox);
 				csvOptions.keySet().forEach(checkbox -> exportWindow.add(checkbox));
@@ -1000,8 +989,7 @@ public class Connections {
 			});
 			
 			// help
-			helpButton = new JButton("Help");
-			helpButton.addActionListener(event -> {
+			helpButton = new WidgetButton("Help").onClick(event -> {
 				
 				JFrame parentWindow = (JFrame) SwingUtilities.windowForComponent(GUI);
 				String helpText = "<html><b>" + Main.versionString + " (" + Main.versionDate + ")</b><br>" +
@@ -1025,24 +1013,23 @@ public class Connections {
 				                  "Author: Farrell Farahbod<br>" +
 				                  "This software is free and open source.</html>";
 				JLabel helpLabel = new JLabel(helpText);
-				JButton websiteButton = new JButton("<html><a href=\"http://www.farrellf.com/TelemetryViewer/\">http://www.farrellf.com/TelemetryViewer/</a></html>");
-				websiteButton.addActionListener(click -> { try { Desktop.getDesktop().browse(new URI("http://www.farrellf.com/TelemetryViewer/")); } catch(Exception ex) {} });
-				JButton paypalButton = new JButton("<html><a href=\"https://paypal.me/farrellfarahbod/\">https://paypal.me/farrellfarahbod/</a></html>");
-				paypalButton.addActionListener(click -> { try { Desktop.getDesktop().browse(new URI("https://paypal.me/farrellfarahbod/")); } catch(Exception ex) {} });
+				WidgetButton websiteButton = new WidgetButton("<html><a href=\"http://www.farrellf.com/TelemetryViewer/\">http://www.farrellf.com/TelemetryViewer/</a></html>")
+				                                 .onClick(event2 -> { try { Desktop.getDesktop().browse(new URI("http://www.farrellf.com/TelemetryViewer/")); } catch(Exception ex) {} });
+				WidgetButton paypalButton = new WidgetButton("<html><a href=\"https://paypal.me/farrellfarahbod/\">https://paypal.me/farrellfarahbod/</a></html>")
+				                                .onClick(event2 -> { try { Desktop.getDesktop().browse(new URI("https://paypal.me/farrellfarahbod/")); } catch(Exception ex) {} });
 				
 				JPanel panel = new JPanel();
 				panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
 				panel.add(helpLabel);
-				panel.add(websiteButton);
+				websiteButton.appendTo(panel, "");
 				panel.add(new JLabel("<html><br>If you find this software useful and want to \"buy me a coffee\" that would be awesome!</html>"));
-				panel.add(paypalButton);
+				paypalButton.appendTo(panel, "");
 				panel.add(new JLabel(" "));
 				JOptionPane.showMessageDialog(parentWindow, panel, "Help", JOptionPane.PLAIN_MESSAGE);
 
 			});
 			
-			connectionButton = new JButton();
-			connectionButton.addActionListener(event -> {
+			connectionButton = new WidgetButton("").onClick(event -> {
 				     if(Connections.importing &&  Connections.realtimeImporting) Connections.finishImporting();
 				else if(Connections.importing && !Connections.realtimeImporting) Connections.cancelImporting();
 				else if(Connections.exporting)                                   Connections.cancelExporting();
@@ -1098,10 +1085,10 @@ public class Connections {
 					// if we always repopulate, a widget could lose focus while the user is interacting with it
 					removeAll();
 					add(settingsButton);
-					add(importButton);
-					add(exportButton);
-					add(helpButton);
-					add(connectionButton);
+					importButton.appendTo(this, "");
+					exportButton.appendTo(this, "");
+					helpButton.appendTo(this, "");
+					connectionButton.appendTo(this, "");
 					for(int i = 0; i < Connections.allConnections.size(); i++)
 						add(Connections.allConnections.get(i).getConfigGUI(), "align right, cell 5 " + i);
 					

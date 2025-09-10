@@ -102,9 +102,10 @@ public class WidgetCheckbox implements Widget {
 		
 	}
 	
-	public void setEnabled(boolean isEnabled) {
+	public WidgetCheckbox setEnabled(boolean isEnabled) {
 		
 		checkbox.setEnabled(isEnabled);
+		return this;
 		
 	}
 

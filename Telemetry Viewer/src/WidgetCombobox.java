@@ -224,10 +224,10 @@ public class WidgetCombobox<T> implements Widget {
 		
 	}
 	
-	@Override public void setEnabled(boolean isEnabled) {
+	@Override public WidgetCombobox<T> setEnabled(boolean isEnabled) {
 		
 		if(forcedDisabled)
-			return;
+			return this;
 		
 		if(isEnabled && disabledMessage != null) {
 			removeValue(disabledMessage);
@@ -241,6 +241,8 @@ public class WidgetCombobox<T> implements Widget {
 			prefixLabel.setEnabled(isEnabled);
 			combobox.setEnabled(isEnabled);
 		}
+		
+		return this;
 		
 	}
 	

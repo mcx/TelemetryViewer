@@ -128,9 +128,10 @@ public class WidgetColorPicker implements Widget {
 			handler.accept(selectedColor);
 	}
 	
-	public void setEnabled(boolean isEnabled) {
+	public WidgetColorPicker setEnabled(boolean isEnabled) {
 		
 		button.setEnabled(isEnabled);
+		return this;
 		
 	}
 

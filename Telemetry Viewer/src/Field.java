@@ -18,7 +18,6 @@ import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import javax.swing.JButton;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
@@ -56,8 +55,8 @@ public class Field implements Comparable<Field> {
 	WidgetTextfield<Float> scalingFactorA;
 	JLabel equalsLabel = new JLabel("=");
 	WidgetTextfield<Float> scalingFactorB;
-	JButton addButton = new JButton("Add");
-	JButton doneButton = new JButton("Done");
+	WidgetButton addButton = new WidgetButton("Add");
+	WidgetButton doneButton = new WidgetButton("Done");
 	Consumer<String> insertHandler;
 	
 	public Field(ConnectionTelemetry connection) {
@@ -70,7 +69,7 @@ public class Field implements Comparable<Field> {
 		                          .setPrefix(isCsvMode ? "Column" : "Byte Offset")
 		                          .setExportLabel("dataset location")
 		                          .setFixedWidth(12)
-		                          .onEnter(event -> addButton.doClick())
+		                          .onEnter(event -> addButton.click())
 		                          .onChange((newOffset, oldOffset) -> {
 		                              // disable widgets as needed
 		                              boolean full = (newOffset == -1) || (connection instanceof ConnectionTelemetryDemo);
@@ -147,7 +146,7 @@ public class Field implements Comparable<Field> {
 		                      .setPrefix("Name")
 		                      .setExportLabel("name")
 		                      .setFixedWidth(22)
-		                      .onEnter(event -> addButton.doClick())
+		                      .onEnter(event -> addButton.click())
 		                      .onChange((newText, oldText) -> {
 		                          // the field name must be unique within this ConnectionTelemetry, but that will be enforced when clicking Add (to be less annoying when defining the data structure)
 		                          if(isSyncWord()) {
@@ -175,7 +174,7 @@ public class Field implements Comparable<Field> {
 		                          return true;
 		                      })
 		                      .onIncompleteChange(text -> scalingFactorB.setSuffix(text))
-		                      .onEnter(event -> addButton.doClick());
+		                      .onEnter(event -> addButton.click());
 		
 		scalingFactorA = WidgetTextfield.ofFloat(-Float.MAX_VALUE, Float.MAX_VALUE, 1)
 		                                .setPrefix("Scaling")
@@ -188,7 +187,7 @@ public class Field implements Comparable<Field> {
 		                                        conversionFactor = scalingFactorB.get() / newNumber;
 		                                    return true;
 		                                })
-		                                .onEnter(event -> addButton.doClick());
+		                                .onEnter(event -> addButton.click());
 		
 		scalingFactorB = WidgetTextfield.ofFloat(-Float.MAX_VALUE, Float.MAX_VALUE, conversionFactor)
 		                                .setExportLabel("conversion factor b")
@@ -200,9 +199,9 @@ public class Field implements Comparable<Field> {
 		                                        conversionFactor = newNumber / scalingFactorA.get();
 		                                    return true;
 		                                })
-		                                .onEnter(event -> addButton.doClick());
+		                                .onEnter(event -> addButton.click());
 		
-		addButton.addActionListener(event -> {
+		addButton.onClick(event -> {
 			// the name of a dataset must be unique within this connection
 			List<String> usedNames = connection.getDatasetsList().stream().map(field -> field.name.get()).toList();
 			if(type.get().isDataset() && usedNames.contains(name.get())) {
@@ -243,7 +242,7 @@ public class Field implements Comparable<Field> {
 			}
 		});
 		
-		doneButton.addActionListener(event -> {
+		doneButton.onClick(event -> {
 			if(connection.getDatasetCount() == 0) {
 				JOptionPane.showMessageDialog(null, "Define at least one dataset, or disconnect.", "Error", JOptionPane.ERROR_MESSAGE);
 			} else {
@@ -909,12 +908,10 @@ public class Field implements Comparable<Field> {
 			super();
 			setLayout(new BorderLayout());
 			
-			JButton bitfieldDoneButton = new JButton("Done With Bitfield");
-			bitfieldDoneButton.addActionListener(event -> doneEventHandler.run());
 			JPanel bottom = new JPanel();
 			bottom.setLayout(new FlowLayout(FlowLayout.RIGHT, 0, 0));
 			bottom.setBorder(new EmptyBorder(Theme.padding, 0, 0, 0));
-			bottom.add(bitfieldDoneButton);
+			new WidgetButton("Done With Bitfield").onClick(event -> doneEventHandler.run()).appendTo(bottom, "");
 			
 			add(new Visualization(bitCount), BorderLayout.NORTH);
 			add(widgets, BorderLayout.CENTER);

@@ -989,16 +989,17 @@ public class WidgetTextfield<T> implements Widget {
 		
 	}
 	
-	@Override public void setEnabled(boolean enabled) {
+	@Override public WidgetTextfield<T> setEnabled(boolean enabled) {
 		
 		if(forcedDisabled)
-			return;
+			return this;
 		
 		if(enabled && disabledMessage != null) {
 			disabledMessage = null;
 			textfield.setText(prefix + userText + suffix);
 		}
 		textfield.setEnabled(enabled);
+		return this;
 		
 	}
 	

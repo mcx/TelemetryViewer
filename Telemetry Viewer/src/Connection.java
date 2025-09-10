@@ -1,10 +1,8 @@
-import java.awt.Dimension;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
-import javax.swing.JButton;
 import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
@@ -16,6 +14,16 @@ public abstract class Connection {
 	Thread receiverThread;    // listens for data from a device
 	Thread processorThread;   // optional, processes the received data
 	Thread transmitterThread; // optional, sends data to a device
+	
+	protected enum Status {
+		// current status //                                  // text to show on the Connect button //
+		DISCONNECTED      { @Override public String toString() { return "Connect";       } },
+		CONNECTING        { @Override public String toString() { return "Connecting";    } },
+		CONNECTED         { @Override public String toString() { return "Disconnect";    } },
+		DISCONNECTING     { @Override public String toString() { return "Disconnecting"; } }
+	}
+	private volatile Status status = Status.DISCONNECTED;
+	private volatile boolean reconnect = false;
 	
 	// concrete class constructors MUST call name.set() to select an appropriate option
 	final WidgetCombobox<String> name = new WidgetCombobox<String>(null, Connections.getDevicesStream(this).map(device -> device.name()).toList(), null)
@@ -43,24 +51,26 @@ public abstract class Connection {
 	                                            return true;
 	                                        });
 	
-	final List<Widget> configWidgets = new ArrayList<Widget>();
-	private final JButton connectButton;
-	private final JButton removeButton;
-	final List<Widget> transmitWidgets = new ArrayList<Widget>();
 	
-	protected enum Status {
-		// current status //                                  // text to show on the Connect button //
-		DISCONNECTED      { @Override public String toString() { return "Connect";       } },
-		CONNECTING        { @Override public String toString() { return "Connecting";    } },
-		CONNECTED         { @Override public String toString() { return "Disconnect";    } },
-		DISCONNECTING     { @Override public String toString() { return "Disconnecting"; } }
-	}
-	private volatile Status status = Status.DISCONNECTED;
-	private volatile boolean reconnect = false;
+	private final WidgetButton connectButton = new WidgetButton(status.toString())
+	                                               .setNarrowBorder()
+	                                               .setFixedWidthBasedOn("Disconnecting")
+	                                               .onClick(event -> {
+	                                                    reconnect = false; // if the user clicks the button, cancel automatic reconnecting
+	                                                    if(status == Status.DISCONNECTED)
+	                                                        connect(true);
+	                                                    else if(status == Status.CONNECTED)
+	                                                        disconnect(null, false);
+	                                               });
+	private final WidgetButton removeButton = new WidgetButton(Theme.removeSymbol)
+	                                              .setNarrowBorder()
+	                                              .onClick(event -> Connections.removeConnection(this));
+	
+	final List<Widget> configWidgets = new ArrayList<Widget>();
+	final List<Widget> transmitWidgets = new ArrayList<Widget>();
 	
 	protected static final String maxSampleCountErrorMessage = "Reached maximum sample count. Disconnected.";
 
-	@SuppressWarnings("serial")
 	public Connection() {
 		
 		// once every 2 seconds: try to reconnect if the connection failed
@@ -79,26 +89,6 @@ public abstract class Connection {
 		});
 		reconnectTimer.start();
 		
-		// create and configure the connect and remove buttons that will be shown in the configuration GUI
-		connectButton = new JButton(status.toString()) {
-			private final JButton dummyButton = new JButton("Disconnecting"); // used to give the connect button a fixed size so the Connection GUIs line up nicely
-			@Override public Dimension getPreferredSize() {
-				dummyButton.setBorder(Theme.narrowButtonBorder);
-				return dummyButton.getPreferredSize();
-			}
-		};
-		connectButton.addActionListener(event -> {
-			reconnect = false; // if the user clicks the button, cancel automatic reconnecting
-			if(status == Status.DISCONNECTED)
-				connect(true);
-			else if(status == Status.CONNECTED)
-				disconnect(null, false);
-		});
-		connectButton.setBorder(Theme.narrowButtonBorder);
-		removeButton = new JButton(Theme.removeSymbol);
-		removeButton.setBorder(Theme.narrowButtonBorder);
-		removeButton.addActionListener(event -> Connections.removeConnection(this));
-		
 	}
 	
 	/**
@@ -114,8 +104,8 @@ public abstract class Connection {
 		
 		JPanel panel = new JPanel(new MigLayout("hidemode 3, gap " + Theme.padding  + ", insets 0 " + Theme.padding + " 0 0"));
 		configWidgets.reversed().forEach(widget -> widget.appendTo(panel, ""));
-		panel.add(connectButton);
-		panel.add(removeButton);
+		connectButton.appendTo(panel, "");
+		removeButton.appendTo(panel, "");
 		return panel;
 		
 	}
