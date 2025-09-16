@@ -61,7 +61,7 @@ class StorageTimestampsTest {
 	void prepare() {
 		
 		try { Files.createDirectory(Paths.get("cache")); } catch(FileAlreadyExistsException e) {} catch(Exception e) { e.printStackTrace(); }
-		connection = new ConnectionTelemetryDemo();
+		connection = new ConnectionTelemetry("Demo Mode");
 		datasetsInterface = new DatasetsInterface(connection);
 		
 	}

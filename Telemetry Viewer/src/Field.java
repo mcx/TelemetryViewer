@@ -72,7 +72,7 @@ public class Field implements Comparable<Field> {
 		                          .onEnter(event -> addButton.click())
 		                          .onChange((newOffset, oldOffset) -> {
 		                              // disable widgets as needed
-		                              boolean full = (newOffset == -1) || (connection instanceof ConnectionTelemetryDemo);
+		                              boolean full = (newOffset == -1) || (connection.type == ConnectionTelemetry.Type.DEMO_MODE);
 		                              location.setEnabled(!full);
 		                              type.setEnabled(!full);
 		                              name.setEnabled(!full);
@@ -733,34 +733,34 @@ public class Field implements Comparable<Field> {
 	}
 	
 	enum Type {
-		UINT8_SYNC_WORD    { @Override public String toString()  { return "uint8 Sync Word"; }
-		                     @Override public int getByteCount() { return 1;                 }
+		UINT8_SYNC_WORD    { @Override public String toString()  { return "uint8 Sync Word";   }
+		                     @Override public int getByteCount() { return 1;                   }
 		                     @Override public boolean testSyncWord(byte[] buffer, int offset, byte syncWord) {
 		                         return buffer[offset] == syncWord;
 		                     }},
 
-		UINT8              { @Override public String toString()  { return "uint8";           }
-		                     @Override public int getByteCount() { return 1;                 }
+		UINT8              { @Override public String toString()  { return "uint8";             }
+		                     @Override public int getByteCount() { return 1;                   }
 		                     @Override public float parse(byte[] buffer, int offset) {
 		                         return (float) (0xFF & buffer[offset]);
 		                     }},
 
-		UINT16_LE          { @Override public String toString()  { return "uint16 LSB First"; }
-		                     @Override public int getByteCount() { return 2;                  }
+		UINT16_LE          { @Override public String toString()  { return "uint16 LSB First";  }
+		                     @Override public int getByteCount() { return 2;                   }
 		                     @Override public float parse(byte[] buffer, int offset) {
 		                         return (float) (((0xFF & buffer[0+offset]) << 0) |
 		                                         ((0xFF & buffer[1+offset]) << 8));
 		                     }},
 
-		UINT16_BE          { @Override public String toString()  { return "uint16 MSB First"; }
-		                     @Override public int getByteCount() { return 2;                  }
+		UINT16_BE          { @Override public String toString()  { return "uint16 MSB First";  }
+		                     @Override public int getByteCount() { return 2;                   }
 		                     @Override public float parse(byte[] buffer, int offset) {
 		                         return (float) (((0xFF & buffer[1+offset]) << 0) |
 		                                         ((0xFF & buffer[0+offset]) << 8));
 		                     }},
 
-		UINT32_LE          { @Override public String toString()  { return "uint32 LSB First"; }
-		                     @Override public int getByteCount() { return 4;                  }
+		UINT32_LE          { @Override public String toString()  { return "uint32 LSB First";  }
+		                     @Override public int getByteCount() { return 4;                   }
 		                     @Override public float parse(byte[] buffer, int offset) {
 		                         return (float) (((long)(0xFF & buffer[0+offset]) << 0)  |
 		                                         ((long)(0xFF & buffer[1+offset]) << 8)  |
@@ -768,89 +768,97 @@ public class Field implements Comparable<Field> {
 		                                         ((long)(0xFF & buffer[3+offset]) << 24));
 		                     }},
 		
-		UINT32_BE      { @Override public String toString()                        { return "uint32 MSB First";                 }
-		                 @Override public int getByteCount()                       { return 4;                                  }
-		                 @Override public float parse(byte[] buffer, int offset) { return (float)
-		                                                                             (((long)(0xFF & buffer[3+offset]) << 0)  |
-		                                                                              ((long)(0xFF & buffer[2+offset]) << 8)  |
-		                                                                              ((long)(0xFF & buffer[1+offset]) << 16) |
-		                                                                              ((long)(0xFF & buffer[0+offset]) << 24)); } },
+		UINT32_BE          { @Override public String toString()  { return "uint32 MSB First";  }
+		                     @Override public int getByteCount() { return 4;                   }
+		                     @Override public float parse(byte[] buffer, int offset) {
+		                         return (float) (((long)(0xFF & buffer[3+offset]) << 0)  |
+		                                         ((long)(0xFF & buffer[2+offset]) << 8)  |
+		                                         ((long)(0xFF & buffer[1+offset]) << 16) |
+		                                         ((long)(0xFF & buffer[0+offset]) << 24)); } },
 		
-		INT8           { @Override public String toString()                        { return "int8";                             }
-		                 @Override public int getByteCount()                       { return 1;                                  }
-		                 @Override public float parse(byte[] buffer, int offset) { return (float)(byte)
-		                                                                             (0xFF & buffer[offset]);                   } },
+		INT8               { @Override public String toString()  { return "int8";              }
+		                     @Override public int getByteCount() { return 1;                   }
+		                     @Override public float parse(byte[] buffer, int offset) {
+		                         return (float)(byte) (0xFF & buffer[offset]);
+		                     }},
 		
-		INT16_LE       { @Override public String toString()                        { return "int16 LSB First";                  }
-		                 @Override public int getByteCount()                       { return 2;                                  }
-		                 @Override public float parse(byte[] buffer, int offset) { return (float)(short)
-		                                                                             (((0xFF & buffer[0+offset]) << 0) |
-		                                                                              ((0xFF & buffer[1+offset]) << 8));        } },
+		INT16_LE           { @Override public String toString()  { return "int16 LSB First";   }
+		                     @Override public int getByteCount() { return 2;                   }
+		                     @Override public float parse(byte[] buffer, int offset) {
+		                         return (float)(short) (((0xFF & buffer[0+offset]) << 0) |
+		                                                ((0xFF & buffer[1+offset]) << 8));
+		                     }},
 		
-		INT16_BE       { @Override public String toString()                        { return "int16 MSB First";                  }
-		                 @Override public int getByteCount()                       { return 2;                                  }
-		                 @Override public float parse(byte[] buffer, int offset) { return (float)(short)
-		                                                                             (((0xFF & buffer[1+offset]) << 0) |
-		                                                                              ((0xFF & buffer[0+offset]) << 8));        } },
+		INT16_BE           { @Override public String toString()  { return "int16 MSB First";   }
+		                     @Override public int getByteCount() { return 2;                   }
+		                     @Override public float parse(byte[] buffer, int offset) {
+		                         return (float)(short) (((0xFF & buffer[1+offset]) << 0) |
+		                                                ((0xFF & buffer[0+offset]) << 8));
+		                     }},
 		
-		INT32_LE       { @Override public String toString()                        { return "int32 LSB First";                  } 
-		                 @Override public int getByteCount()                       { return 4;                                  }
-		                 @Override public float parse(byte[] buffer, int offset) { return (float)
-		                                                                             (((0xFF & buffer[0+offset]) << 0)  |
-		                                                                              ((0xFF & buffer[1+offset]) << 8)  |
-		                                                                              ((0xFF & buffer[2+offset]) << 16) |
-		                                                                              ((0xFF & buffer[3+offset]) << 24));       } },
+		INT32_LE           { @Override public String toString()  { return "int32 LSB First";   } 
+		                     @Override public int getByteCount() { return 4;                   }
+		                     @Override public float parse(byte[] buffer, int offset) {
+		                         return (float) (((0xFF & buffer[0+offset]) << 0)  |
+		                                         ((0xFF & buffer[1+offset]) << 8)  |
+		                                         ((0xFF & buffer[2+offset]) << 16) |
+		                                         ((0xFF & buffer[3+offset]) << 24));
+		                     }},
 		
-		INT32_BE       { @Override public String toString()                        { return "int32 MSB First";                  }
-		                 @Override public int getByteCount()                       { return 4;                                  }
-		                 @Override public float parse(byte[] buffer, int offset) { return (float)
-		                                                                             (((0xFF & buffer[3+offset]) << 0)  |
-		                                                                              ((0xFF & buffer[2+offset]) << 8)  |
-		                                                                              ((0xFF & buffer[1+offset]) << 16) |
-		                                                                              ((0xFF & buffer[0+offset]) << 24));       } },
+		INT32_BE           { @Override public String toString()  { return "int32 MSB First";   }
+		                     @Override public int getByteCount() { return 4;                   }
+		                     @Override public float parse(byte[] buffer, int offset) {
+		                         return (float) (((0xFF & buffer[3+offset]) << 0)  |
+		                                         ((0xFF & buffer[2+offset]) << 8)  |
+		                                         ((0xFF & buffer[1+offset]) << 16) |
+		                                         ((0xFF & buffer[0+offset]) << 24));
+		                     }},
 		
-		FLOAT32_LE     { @Override public String toString()                        { return "float32 LSB First";                }
-		                 @Override public int getByteCount()                       { return 4;                                  }
-		                 @Override public float parse(byte[] buffer, int offset) { return Float.intBitsToFloat(
-		                                                                             ((0xFF & buffer[0+offset]) <<  0) |
-		                                                                             ((0xFF & buffer[1+offset]) <<  8) |
-		                                                                             ((0xFF & buffer[2+offset]) << 16) |
-		                                                                             ((0xFF & buffer[3+offset]) << 24));        } },
+		FLOAT32_LE         { @Override public String toString()  { return "float32 LSB First"; }
+		                     @Override public int getByteCount() { return 4;                   }
+		                     @Override public float parse(byte[] buffer, int offset) {
+		                         return Float.intBitsToFloat(((0xFF & buffer[0+offset]) <<  0) |
+		                                                     ((0xFF & buffer[1+offset]) <<  8) |
+		                                                     ((0xFF & buffer[2+offset]) << 16) |
+		                                                     ((0xFF & buffer[3+offset]) << 24));
+		                     }},
 		
-		FLOAT32_BE     { @Override public String toString()                        { return "float32 MSB First";                }
-		                 @Override public int getByteCount()                       { return 4;                                  }
-		                 @Override public float parse(byte[] buffer, int offset) { return Float.intBitsToFloat(
-		                                                                             ((0xFF & buffer[3+offset]) <<  0) |
-		                                                                             ((0xFF & buffer[2+offset]) <<  8) |
-		                                                                             ((0xFF & buffer[1+offset]) << 16) |
-		                                                                             ((0xFF & buffer[0+offset]) << 24));        } },
+		FLOAT32_BE         { @Override public String toString()  { return "float32 MSB First"; }
+		                     @Override public int getByteCount() { return 4;                   }
+		                     @Override public float parse(byte[] buffer, int offset) {
+		                         return Float.intBitsToFloat(((0xFF & buffer[3+offset]) <<  0) |
+		                                                     ((0xFF & buffer[2+offset]) <<  8) |
+		                                                     ((0xFF & buffer[1+offset]) << 16) |
+		                                                     ((0xFF & buffer[0+offset]) << 24));
+		                     }},
 		
-		UINT8_BITFIELD { @Override public String toString()                        { return "uint8 Bitfield";                   }
-		                 @Override public int getByteCount()                       { return 1;                                  }
-		                 @Override public float parse(byte[] buffer, int offset) { return (float)
-		                                                                             (0xFF & buffer[offset]);                   } },
+		UINT8_BITFIELD     { @Override public String toString()  { return "uint8 Bitfield";    }
+		                     @Override public int getByteCount() { return 1;                   }
+		                     @Override public float parse(byte[] buffer, int offset) {
+		                         return (float) (0xFF & buffer[offset]);
+		                     }},
 		
-		UINT8_CHECKSUM { @Override public String toString()                        { return "uint8 Checksum"; }
-		                 @Override public int getByteCount()                       { return 1; }
-		                 @Override public boolean testChecksum(byte[] bytes, int offset, int packetLength, int syncWordByteCount) {
-		                     // skip past the sync word
-		                     offset += syncWordByteCount;
-		                     packetLength -= syncWordByteCount;
-		                     
-		                     // calculate the sum
-		                     byte sum = 0;
-		                     for(int i = 0; i < packetLength - 1; i++)
-		                         sum += bytes[offset + i];
-		                     
-		                     // extract the reported checksum
-		                     byte checksum = bytes[offset + packetLength - 1];
-		                     
-		                     // test
-		                     return (sum == checksum);
-		                 } },
+		UINT8_CHECKSUM     { @Override public String toString()  { return "uint8 Checksum";    }
+		                     @Override public int getByteCount() { return 1;                   }
+		                     @Override public boolean testChecksum(byte[] bytes, int offset, int packetLength, int syncWordByteCount) {
+		                         // skip past the sync word
+		                         offset += syncWordByteCount;
+		                         packetLength -= syncWordByteCount;
+		                         
+		                         // calculate the sum
+		                         byte sum = 0;
+		                         for(int i = 0; i < packetLength - 1; i++)
+		                             sum += bytes[offset + i];
+		                         
+		                         // extract the reported checksum
+		                         byte checksum = bytes[offset + packetLength - 1];
+		                         
+		                         // test
+		                         return (sum == checksum);
+		                     }},
 
-		UINT16_LE_CHECKSUM { @Override public String toString()                    { return "uint16 Checksum LSB First"; }
-		                     @Override public int getByteCount()                   { return 2; }
+		UINT16_LE_CHECKSUM { @Override public String toString()  { return "uint16 Checksum LSB First"; }
+		                     @Override public int getByteCount() { return 2;                           }
 		                     @Override public boolean testChecksum(byte[] bytes, int offset, int packetLength, int syncWordByteCount) {
 		                         // skip past the sync word
 		                         offset += syncWordByteCount;
@@ -861,7 +869,7 @@ public class Field implements Comparable<Field> {
 		                             return false;
 		                         
 		                         // calculate the sum
-		                         int wordCount = (packetLength - getByteCount()) / 2; // 16bit words
+		                         int wordCount = (packetLength - 2) / 2; // 16bit words
 		                         
 		                         int sum = 0;
 		                         int lsb = 0;
@@ -880,7 +888,7 @@ public class Field implements Comparable<Field> {
 		                         
 		                         // test
 		                         return (sum == checksum);
-		                     } };
+		                     }};
 		
 		abstract int getByteCount();
 		final boolean isSyncWord() { return toString().toLowerCase().contains("sync"); }

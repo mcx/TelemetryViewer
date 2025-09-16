@@ -142,14 +142,14 @@ public class Connections {
 		List<Device> list = new ArrayList<Device>();
 		uarts.forEach(name -> {
 			boolean isAvailable = telemetryConnections.stream().noneMatch(con -> con != parent && con.name.is(name));
-			list.add(new Device(name, isAvailable, () -> new ConnectionTelemetryUART(name)));
+			list.add(new Device(name, isAvailable, () -> new ConnectionTelemetry(name)));
 		});
 		boolean isDemoAvailable   = telemetryConnections.stream().noneMatch(con -> con != parent && con.name.is("Demo Mode"));
 		boolean isStressAvailable = telemetryConnections.stream().noneMatch(con -> con != parent && con.name.is("Stress Test Mode"));
-		list.add(new Device("TCP",              true,              () -> new ConnectionTelemetryTCP()));
-		list.add(new Device("UDP",              true,              () -> new ConnectionTelemetryUDP()));
-		list.add(new Device("Demo Mode",        isDemoAvailable,   () -> new ConnectionTelemetryDemo()));
-		list.add(new Device("Stress Test Mode", isStressAvailable, () -> new ConnectionTelemetryStressTest()));
+		list.add(new Device("TCP",              true,              () -> new ConnectionTelemetry("TCP")));
+		list.add(new Device("UDP",              true,              () -> new ConnectionTelemetry("UDP")));
+		list.add(new Device("Demo Mode",        isDemoAvailable,   () -> new ConnectionTelemetry("Demo Mode")));
+		list.add(new Device("Stress Test Mode", isStressAvailable, () -> new ConnectionTelemetry("Stress Test Mode")));
 		cameras.forEach(name -> {
 			boolean isAvailable = cameraConnections.stream().noneMatch(con -> con != parent && con.name.is(name));
 			list.add(new Device(name, isAvailable, () -> new ConnectionCamera(name)));
@@ -620,12 +620,8 @@ public class Connections {
 			
 			for(int i = 0; i < connectionsCount; i++) {
 				String type = lines.parseString("type = %s");
-				Connection newConnection = type.startsWith("Cam: ")        ? new ConnectionCamera(type) :
-				                           type.equals("TCP")              ? new ConnectionTelemetryTCP() :
-				                           type.equals("UDP")              ? new ConnectionTelemetryUDP() :
-				                           type.equals("Demo Mode")        ? new ConnectionTelemetryDemo() :
-				                           type.equals("Stress Test Mode") ? new ConnectionTelemetryStressTest() :
-				                                                             new ConnectionTelemetryUART(type);
+				Connection newConnection = type.startsWith("Cam: ") ? new ConnectionCamera(type) :
+				                                                      new ConnectionTelemetry(type);
 				addConnection(newConnection);
 				newConnection.importFrom(lines);
 				lines.parseExact("");
