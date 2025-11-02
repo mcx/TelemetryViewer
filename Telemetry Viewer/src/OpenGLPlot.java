@@ -28,7 +28,7 @@ public class OpenGLPlot {
 	boolean drawLegend;
 	DatasetsInterface datasets;
 	boolean drawFftInfo;
-	OpenGLFrequencyDomainChart.ChartStyle fftChartStyle;
+	OpenGLFrequencyDomainChart.Type fftChartType;
 	int fftWindowLength;
 	int fftWindowCount;
 	float fftMinPower;
@@ -65,9 +65,9 @@ public class OpenGLPlot {
 		return this;
 	}
 	
-	public OpenGLPlot withFftInfo(boolean drawFftInfo, OpenGLFrequencyDomainChart.ChartStyle chartStyle, int fftWindowLength, int fftWindowCount, float minPower, float maxPower) {
+	public OpenGLPlot withFftInfo(boolean drawFftInfo, OpenGLFrequencyDomainChart.Type chartType, int fftWindowLength, int fftWindowCount, float minPower, float maxPower) {
 		this.drawFftInfo = drawFftInfo;
-		this.fftChartStyle = chartStyle;
+		this.fftChartType = chartType;
 		this.fftWindowLength = fftWindowLength;
 		this.fftWindowCount = fftWindowCount;
 		this.fftMinPower = minPower;
@@ -189,7 +189,7 @@ public class OpenGLPlot {
 		// if FFT info should be drawn, draw it if there's space, and adjust yPlotBottom accordingly
 		float xFftInfoAreaLeft = xPlotRight;
 		if(drawFftInfo) {
-			if(fftChartStyle == OpenGLFrequencyDomainChart.ChartStyle.SINGLE) {
+			if(fftChartType == OpenGLFrequencyDomainChart.Type.SINGLE) {
 				String text = fftWindowLength + " sample rectangular window";
 				float yText = Theme.tilePadding;
 				float xText = chartWidth - Theme.tilePadding - OpenGL.smallTextWidth(gl, text);
@@ -199,7 +199,7 @@ public class OpenGLPlot {
 				
 				if(xFftInfoAreaLeft > xLegendBorderRight)
 					OpenGL.drawSmallText(gl, text, (int) xText, (int) yText, 0);
-			} else if(fftChartStyle == OpenGLFrequencyDomainChart.ChartStyle.HISTOGRAM) {
+			} else if(fftChartType == OpenGLFrequencyDomainChart.Type.HISTOGRAM) {
 				String text1 = fftWindowCount + " windows (total of " + (fftWindowCount * fftWindowLength) + " samples)";
 				float yText1 = Theme.tilePadding;
 				float xText1 = chartWidth - Theme.tilePadding - OpenGL.smallTextWidth(gl, text1);
@@ -215,7 +215,7 @@ public class OpenGLPlot {
 					OpenGL.drawSmallText(gl, text1, (int) xText1, (int) yText1, 0);
 					OpenGL.drawSmallText(gl, text2, (int) xText2, (int) yText2, 0);
 				}
-			} else if(fftChartStyle == OpenGLFrequencyDomainChart.ChartStyle.WATERFALL) {
+			} else if(fftChartType == OpenGLFrequencyDomainChart.Type.WATERFALL) {
 				String text1a = Theme.getLog10float(fftMinPower, "Watts");
 				String text1b = Theme.getLog10float(fftMaxPower, "Watts");
 				float yText1 = Theme.tilePadding;

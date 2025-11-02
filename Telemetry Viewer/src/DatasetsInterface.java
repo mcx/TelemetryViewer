@@ -51,6 +51,15 @@ public class DatasetsInterface {
 		
 	}
 	
+	/**
+	 * @return    Sample rate, or 10,000 if no datasets have been selected.
+	 */
+	public int getSampleRate() {
+		
+		return (connection != null) ? connection.getSampleRate() : 10000;
+		
+	}
+	
 	private void flushCaches() {
 		
 		connection = !normalDatasets.isEmpty() ? normalDatasets.getFirst().connection :
