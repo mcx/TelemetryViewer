@@ -3,7 +3,10 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.PrintWriter;
 import java.util.Hashtable;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+
+import javax.swing.JCheckBox;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
 import javax.swing.JSlider;
@@ -11,23 +14,37 @@ import javax.swing.SwingUtilities;
 
 public class WidgetSlider<T> implements Widget {
 	
+	/**
+	 * An improved slider:
+	 * 
+	 *     - The slider can represent an integer, logarithmic integer, or floating point number.
+	 *     - An optional prefix can be specified, to show a label before the slider.
+	 *     - An optional checkbox can be used to enable or disable the slider.
+	 *           This is useful for settings that can be automatic or manual, such as camera focus.
+	 *     - Event handlers are supported with onChange() and onDrag().
+	 */
+	
 	private enum Mode {INTEGER, LOG_INTEGER, FLOAT};
 	private final Mode mode;
 	
 	private String importExportLabel;
 	private JLabel prefixLabel;
+	private JCheckBox checkbox = null;
 	private JSlider slider;
+	private boolean forcedDisabled = false;
 
 	private boolean changeHandlerCalled = false;
 	private Consumer<Boolean> mousePressedHandler;
-	private Consumer<T> newValueHandler;
 	private Consumer<Boolean> mouseReleasedHandler;
+	private Consumer<T>            newValueHandler;  // if just a slider
+	private BiConsumer<Boolean, T> newValuesHandler; // if a checkbox and slider
 	
 	// these will always be linear integers
 	// conversion to floats or log integers will be done when exposing them to the outside world
 	private final int min;
 	private final int max;
 	private volatile int value;
+	private volatile boolean isSliderEnabled = true;
 	
 	public static WidgetSlider<Integer> ofInt(String label, int min, int max, int value) {
 		
@@ -53,7 +70,6 @@ public class WidgetSlider<T> implements Widget {
 		
 	}
 	
-	@SuppressWarnings("serial")
 	private WidgetSlider(Mode mode, String label, int min, int max, int selectedValue) {
 		
 		this.mode = mode;
@@ -89,10 +105,7 @@ public class WidgetSlider<T> implements Widget {
 			if(newValue == value)
 				return; // no change
 			value = newValue;
-			if(newValueHandler != null) {
-				changeHandlerCalled = true;
-				newValueHandler.accept(get());
-			}
+			callHandler();
 		});
 		
 	}
@@ -130,6 +143,50 @@ public class WidgetSlider<T> implements Widget {
 		
 	}
 	
+	public WidgetSlider<T> withEnableCheckbox(boolean useCheckbox, boolean isSelected, String tooltipText) {
+		
+		if(useCheckbox) {
+			checkbox = new JCheckBox("", isSelected);
+			checkbox.setBorder(null); // minimize padding around it
+			checkbox.setToolTipText(tooltipText);
+			checkbox.addActionListener(event -> setChecked(checkbox.isSelected()));
+			isSliderEnabled = isSelected;
+			slider.setEnabled(isSliderEnabled);
+		} else {
+			checkbox = null;
+			isSliderEnabled = true;
+			slider.setEnabled(isSliderEnabled);
+		}
+		
+		return this;
+		
+	}
+	
+	public void setChecked(boolean isChecked) {
+		
+		if(checkbox != null) {
+			checkbox.setSelected(isChecked);
+			isSliderEnabled = checkbox.isSelected();
+			slider.setEnabled(isSliderEnabled);
+			callHandler();
+		}
+		
+	}
+	
+	public WidgetSlider<T> setStepSize(int stepSize) {
+		
+		if(stepSize != 1) {
+			slider.setMinorTickSpacing(stepSize);
+			slider.setSnapToTicks(true);
+		} else {
+			slider.setMinorTickSpacing(0);
+			slider.setSnapToTicks(false);
+		}
+		
+		return this;
+		
+	}
+	
 	/**
 	 * @param valueHandler    Will be called when the slider represents a new value. Can be null.
 	 */
@@ -139,10 +196,25 @@ public class WidgetSlider<T> implements Widget {
 		
 		// call the value handler, but later, so the calling code can finish constructing things before the handler is triggered
 		SwingUtilities.invokeLater(() -> {
-			if(newValueHandler != null && !changeHandlerCalled) {
-				changeHandlerCalled = true;
-				newValueHandler.accept(get());
-			}
+			if(!changeHandlerCalled)
+				callHandler();
+		});
+		
+		return this;
+		
+	}
+	
+	/**
+	 * @param valueHandler    Will be called when the slider or checkbox represents a new value. Can be null.
+	 */
+	public WidgetSlider<T> onChange(BiConsumer<Boolean, T> valuesHandler) {
+		
+		newValuesHandler = valuesHandler;
+		
+		// call the value handler, but later, so the calling code can finish constructing things before the handler is triggered
+		SwingUtilities.invokeLater(() -> {
+			if(!changeHandlerCalled)
+				callHandler();
 		});
 		
 		return this;
@@ -161,11 +233,25 @@ public class WidgetSlider<T> implements Widget {
 		
 	}
 	
-	public void callHandler() {
+	@Override public void callHandler() {
+		
+		// if a step size has been defined, don't notify the handler about intermediate values between allowed steps
+		if(slider.getMinorTickSpacing() != 0) {
+			int stepSize = slider.getMinorTickSpacing();
+			int newValue = (int) get();
+			int distance = newValue - min;
+			if(distance % stepSize != 0)
+				return;
+		}
 		
 		if(newValueHandler != null) {
 			changeHandlerCalled = true;
 			newValueHandler.accept(get());
+		}
+		
+		if(newValuesHandler != null) {
+			changeHandlerCalled = true;
+			newValuesHandler.accept(isSliderEnabled, get());
 		}
 		
 	}
@@ -198,7 +284,10 @@ public class WidgetSlider<T> implements Widget {
 		if(prefixLabel == null) {
 			panel.add(slider, "");
 		} else {
-			panel.add(prefixLabel, "split 2");
+			String cellCount = (checkbox == null) ? "2" : "3";
+			panel.add(prefixLabel, "split " + cellCount + (constraints.isEmpty() ? "" : ", " + constraints));
+			if(checkbox != null)
+				panel.add(checkbox, "");
 			panel.add(slider, "growx");
 		}
 
@@ -208,6 +297,8 @@ public class WidgetSlider<T> implements Widget {
 		
 		if(prefixLabel != null)
 			prefixLabel.setVisible(isVisible);
+		if(checkbox != null)
+			checkbox.setVisible(isVisible);
 		slider.setVisible(isVisible);
 		return this;
 		
@@ -215,9 +306,25 @@ public class WidgetSlider<T> implements Widget {
 
 	public WidgetSlider<T> setEnabled(boolean isEnabled) {
 		
+		if(forcedDisabled)
+			return this;
+		
 		if(prefixLabel != null)
 			prefixLabel.setEnabled(isEnabled);
-		slider.setEnabled(isEnabled);
+		if(checkbox != null)
+			checkbox.setEnabled(isEnabled);
+		slider.setEnabled(isEnabled && isSliderEnabled);
+		return this;
+		
+	}
+	
+	public WidgetSlider<T> forceDisabled(boolean isDisabled) {
+		
+		if(isDisabled)
+			setEnabled(false);
+		forcedDisabled = isDisabled;
+		if(!isDisabled)
+			setEnabled(true);
 		return this;
 		
 	}
@@ -235,12 +342,20 @@ public class WidgetSlider<T> implements Widget {
 		boolean accepted = get().toString().equals(text);
 		if(!accepted)
 			throw new AssertionError("Invalid setting for " + importExportLabel + ".\n");
+		
+		if(checkbox != null) {
+			boolean isChecked = lines.parseBoolean(importExportLabel + " enabled = %b");
+			setChecked(isChecked);
+		}
 
 	}
 
 	@Override public void exportTo(PrintWriter file) {
 		
 		file.println("\t" + importExportLabel + " = " + get().toString());
+		
+		if(checkbox != null)
+			file.println("\t" + importExportLabel + " enabled = " + isSliderEnabled);
 
 	}
 

@@ -56,13 +56,20 @@ public class WidgetCheckbox implements Widget {
 		
 		// call the handler, but later, so the calling code can finish constructing things before the handler is triggered
 		SwingUtilities.invokeLater(() -> {
-			if(changeHandler != null && changeHandlerCalled == false) {
-				changeHandlerCalled = true;
-				changeHandler.accept(isChecked);
-			}
+			if(!changeHandlerCalled)
+				callHandler();
 		});
 		
 		return this;
+		
+	}
+	
+	@Override public void callHandler() {
+		
+		if(changeHandler != null) {
+			changeHandlerCalled = true;
+			changeHandler.accept(isChecked);
+		}
 		
 	}
 	
@@ -104,7 +111,23 @@ public class WidgetCheckbox implements Widget {
 	
 	public WidgetCheckbox setEnabled(boolean isEnabled) {
 		
+		if(forcedDisabled)
+			return this;
+		
 		checkbox.setEnabled(isEnabled);
+		return this;
+		
+	}
+	
+	private boolean forcedDisabled = false;
+	
+	public WidgetCheckbox forceDisabled(boolean isDisabled) {
+		
+		if(isDisabled)
+			setEnabled(false);
+		forcedDisabled = isDisabled;
+		if(!isDisabled)
+			setEnabled(true);
 		return this;
 		
 	}

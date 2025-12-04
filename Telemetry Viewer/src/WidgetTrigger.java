@@ -156,6 +156,10 @@ public class WidgetTrigger implements Widget {
 		
 	}
 	
+	@Override public void callHandler() {
+		// not necessary
+	}
+	
 	public boolean isEnabled() {
 		return !mode.is(Mode.DISABLED);
 	}

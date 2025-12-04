@@ -46,6 +46,11 @@ public interface Widget {
 	 * @param isEnabled    If the widget can be interacted with.
 	 */
 	public Widget setEnabled(boolean isEnabled);
+	
+	/**
+	 * Forces the event handler (if one exists) to be called.
+	 */
+	public void callHandler();
 
 	/**
 	 * Updates the widget based on a settings file.

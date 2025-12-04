@@ -21,7 +21,6 @@ public class WidgetButton implements Widget {
 	 * 
 	 * @param label    Text to show on the button.
 	 */
-	@SuppressWarnings("serial")
 	public WidgetButton(String label) {
 		
 		button = new JButton(label) {
@@ -29,10 +28,7 @@ public class WidgetButton implements Widget {
 				return (fixedWidthButton == null) ? super.getPreferredSize() : fixedWidthButton.getPreferredSize();
 			}
 		};
-		button.addActionListener(event -> {
-			if(clickHandler != null)
-				clickHandler.accept(this);
-		});
+		button.addActionListener(event -> callHandler());
 		
 	}
 	
@@ -43,6 +39,13 @@ public class WidgetButton implements Widget {
 		
 		clickHandler = eventHandler;
 		return this;
+		
+	}
+	
+	@Override public void callHandler() {
+		
+		if(clickHandler != null)
+			clickHandler.accept(this);
 		
 	}
 

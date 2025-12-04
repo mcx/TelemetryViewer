@@ -13,7 +13,7 @@ public class OpenGLCameraChart extends Chart {
 	WidgetCheckbox mirrorX;
 	WidgetCheckbox mirrorY;
 	WidgetCheckbox rotateClockwise;
-	WidgetCheckbox labelEnabled;
+	WidgetCheckbox showLabel;
 	
 	public ConnectionCamera connection = null;
 	
@@ -21,10 +21,9 @@ public class OpenGLCameraChart extends Chart {
 		
 		super(name, x1, y1, x2, y2);
 		
-		// important: this constructor allows *any* camera to be selected, even if not it's connected and has no images
+		// important: this constructor allows *any* camera to be selected, even if it's not connected or has no images
 		// this is required so a settings file can be imported even if it references a camera that does not exist on this computer
 		List<String> cameraNames = Connections.cameraConnections.stream().map(connection -> connection.getName()).toList();
-		
 		if(cameraNames.isEmpty())
 			cameraNames = List.of("[No cameras available]");
 		
@@ -37,13 +36,13 @@ public class OpenGLCameraChart extends Chart {
 		mirrorX = new WidgetCheckbox("Mirror X-Axis \u2194", false);
 		mirrorY = new WidgetCheckbox("Mirror Y-Axis \u2195", false);
 		rotateClockwise = new WidgetCheckbox("Rotate Clockwise \u21B7", false);
-		labelEnabled = new WidgetCheckbox("Show Label", true);
+		showLabel = new WidgetCheckbox("Show Label", true);
 		
 		widgets.add(cameraName);
 		widgets.add(mirrorX);
 		widgets.add(mirrorY);
 		widgets.add(rotateClockwise);
-		widgets.add(labelEnabled);
+		widgets.add(showLabel);
 		
 	}
 	
@@ -75,86 +74,76 @@ public class OpenGLCameraChart extends Chart {
 		             .with(mirrorX)
 		             .with(mirrorY)
 		             .with(rotateClockwise)
-		             .with(labelEnabled)
+		             .with(showLabel)
 		             .getPanel());
 		
 	}
 
 	@Override public EventHandler drawChart(GL2ES3 gl, float[] chartMatrix, int width, int height, long endTimestamp, int endSampleNumber, double zoomLevel, int mouseX, int mouseY) {
-
-		// if there's a global trigger, use the timestamp of the trigger point instead of the endTimestamp
-		if(OpenGLCharts.GUI.triggerDetails.isTriggered())
-			endTimestamp = OpenGLCharts.GUI.triggerDetails.triggeredTimestamp();
 		
 		// get the image
-		ConnectionCamera.Frame f = (connection == null) ? new ConnectionCamera.Frame(null, true, 1, 1, "[select a camera]", 0) :
+		ConnectionCamera.Frame f = (connection == null) ? new ConnectionCamera.Frame("[select a camera]") :
 		                                                  connection.getImageAtOrBeforeTimestamp(endTimestamp);
+		float aspectRatio = rotateClockwise.isTrue() ? (float) f.height / (float) f.width :
+		                                               (float) f.width  / (float) f.height;
 		
-		// calculate x and y positions of everything
-		float xDisplayLeft = Theme.tilePadding;
-		float xDisplayRight = width - Theme.tilePadding;
-		float displayWidth = xDisplayRight - xDisplayLeft;
-		float yDisplayBottom = Theme.tilePadding;
-		float yDisplayTop = height - Theme.tilePadding;
-		float displayHeight = yDisplayTop - yDisplayBottom;
-
-		float labelWidth = OpenGL.largeTextWidth(gl, f.label);
-		float yLabelBaseline = Theme.tilePadding;
-		float yLabelTop = yLabelBaseline + OpenGL.largeTextHeight;
-		float xLabelLeft = (width / 2f) - (labelWidth / 2f);
-		float xLabelRight = xLabelLeft + labelWidth;
-		if(labelEnabled.isTrue()) {
-			yDisplayBottom = yLabelTop + Theme.tickTextPadding + Theme.tilePadding;
-			displayHeight = yDisplayTop - yDisplayBottom;
+		// draw the label if enabled
+		float yPlotTop = height - Theme.tilePadding;
+		float yPlotBottom = Theme.tilePadding;
+		float plotHeight = yPlotTop - yPlotBottom;
+		if(showLabel.isTrue()) {
+			float labelWidth = OpenGL.largeTextWidth(gl, f.label);
+			float yLabelBaseline = Theme.tilePadding;
+			float yLabelTop = yLabelBaseline + OpenGL.largeTextHeight;
+			float xLabelLeft = (width / 2f) - (labelWidth / 2f);
+			float xLabelRight = xLabelLeft + labelWidth;
+			OpenGL.drawQuad2D(gl, Theme.tileShadowColor, xLabelLeft - Theme.tickTextPadding, yLabelBaseline - Theme.tickTextPadding, xLabelRight + Theme.tickTextPadding, yLabelTop + Theme.tickTextPadding);
+			OpenGL.drawLargeText(gl, f.label, (int) xLabelLeft, (int) yLabelBaseline, 0);
+			yPlotBottom = yLabelTop + Theme.tickTextPadding + Theme.tilePadding;
+			plotHeight = yPlotTop - yPlotBottom;
 		}
 		
-		// stop if there's not enough space
-		if(displayWidth < 2 || displayHeight < 2)
+		// stop if there's not enough space to draw the image
+		float xPlotLeft = Theme.tilePadding;
+		float xPlotRight = width - Theme.tilePadding;
+		float plotWidth = xPlotRight - xPlotLeft;
+		if(plotWidth < 2 || plotHeight < 2)
 			return null;
 		
-		// maintain the image aspect ratio, so it doesn't stretch
-		float desiredAspectRatio = rotateClockwise.get() ? (float) f.height / (float) f.width : (float) f.width / (float) f.height;
-		float currentAspectRatio = displayWidth / displayHeight;
-		if(currentAspectRatio != desiredAspectRatio) {
-			if(desiredAspectRatio > currentAspectRatio) {
+		// draw the image
+		float currentAspectRatio = plotWidth / plotHeight;
+		if(currentAspectRatio != aspectRatio) {
+			if(aspectRatio > currentAspectRatio) {
 				// need to make image shorter
-				float desiredHeight = displayWidth / desiredAspectRatio;
-				float delta = displayHeight - desiredHeight;
-				yDisplayTop    -= delta / 2;
-				yDisplayBottom += delta / 2;
-				displayHeight = yDisplayTop - yDisplayBottom;
+				float desiredHeight = plotWidth / aspectRatio;
+				float delta = plotHeight - desiredHeight;
+				yPlotTop    -= delta / 2;
+				yPlotBottom += delta / 2;
+				plotHeight = yPlotTop - yPlotBottom;
 			} else {
 				// need to make image narrower
-				float desiredWidth = displayHeight * desiredAspectRatio;
-				float delta = displayWidth - desiredWidth;
-				xDisplayLeft  += delta / 2;
-				xDisplayRight -= delta / 2;
-				displayWidth = xDisplayRight - xDisplayLeft;
+				float desiredWidth = plotHeight * aspectRatio;
+				float delta = plotWidth - desiredWidth;
+				xPlotLeft  += delta / 2;
+				xPlotRight -= delta / 2;
+				plotWidth = xPlotRight - xPlotLeft;
 			}
 		}
-		
-		// draw the image
 		if(texHandle == null) {
 			texHandle = new int[1];
-			OpenGL.createTexture(gl, texHandle, f.width, f.height, f.isBgr ? GL3.GL_BGR : GL3.GL_RGB, GL3.GL_UNSIGNED_BYTE, true);
-			OpenGL.writeTexture (gl, texHandle, f.width, f.height, f.isBgr ? GL3.GL_BGR : GL3.GL_RGB, GL3.GL_UNSIGNED_BYTE, f.buffer);
+			OpenGL.createTexture(gl, texHandle, f.width, f.height, f.isRGB ? GL3.GL_RGB : GL3.GL_BGR, GL3.GL_UNSIGNED_BYTE, true);
+			OpenGL.writeTexture (gl, texHandle, f.width, f.height, f.isRGB ? GL3.GL_RGB : GL3.GL_BGR, GL3.GL_UNSIGNED_BYTE, f.buffer);
 			previousFrameTimestamp = f.timestamp;
 		} else if(f.timestamp != previousFrameTimestamp) {
 			// only replace the texture if a new image is available
-			OpenGL.writeTexture(gl, texHandle, f.width, f.height, f.isBgr ? GL3.GL_BGR : GL3.GL_RGB, GL3.GL_UNSIGNED_BYTE, f.buffer);
+			OpenGL.writeTexture(gl, texHandle, f.width, f.height, f.isRGB ? GL3.GL_RGB : GL3.GL_BGR, GL3.GL_UNSIGNED_BYTE, f.buffer);
 			previousFrameTimestamp = f.timestamp;
 		}
 		
-		     if(!mirrorX.get() && !mirrorY.get()) OpenGL.drawTexturedBox(gl, texHandle, false, xDisplayLeft,  yDisplayTop,     displayWidth, -displayHeight, 0, rotateClockwise.get());
-		else if( mirrorX.get() && !mirrorY.get()) OpenGL.drawTexturedBox(gl, texHandle, false, xDisplayRight, yDisplayTop,    -displayWidth, -displayHeight, 0, rotateClockwise.get());
-		else if(!mirrorX.get() &&  mirrorY.get()) OpenGL.drawTexturedBox(gl, texHandle, false, xDisplayLeft,  yDisplayBottom,  displayWidth,  displayHeight, 0, rotateClockwise.get());
-		else if( mirrorX.get() &&  mirrorY.get()) OpenGL.drawTexturedBox(gl, texHandle, false, xDisplayRight, yDisplayBottom, -displayWidth,  displayHeight, 0, rotateClockwise.get());
-		
-		// draw the label, on top of a background quad, if there is room
-		if(labelEnabled.isTrue() && labelWidth < width - Theme.tilePadding * 2) {
-			OpenGL.drawQuad2D(gl, Theme.tileShadowColor, xLabelLeft - Theme.tickTextPadding, yLabelBaseline - Theme.tickTextPadding, xLabelRight + Theme.tickTextPadding, yLabelTop + Theme.tickTextPadding);
-			OpenGL.drawLargeText(gl, f.label, (int) xLabelLeft, (int) yLabelBaseline, 0);
-		}
+		     if(mirrorX.isFalse() && mirrorY.isFalse()) OpenGL.drawTexturedBox(gl, texHandle, false, xPlotLeft,  yPlotTop,     plotWidth, -plotHeight, 0, rotateClockwise.get());
+		else if(mirrorX.isTrue()  && mirrorY.isFalse()) OpenGL.drawTexturedBox(gl, texHandle, false, xPlotRight, yPlotTop,    -plotWidth, -plotHeight, 0, rotateClockwise.get());
+		else if(mirrorX.isFalse() && mirrorY.isTrue() ) OpenGL.drawTexturedBox(gl, texHandle, false, xPlotLeft,  yPlotBottom,  plotWidth,  plotHeight, 0, rotateClockwise.get());
+		else if(mirrorX.isTrue()  && mirrorY.isTrue() ) OpenGL.drawTexturedBox(gl, texHandle, false, xPlotRight, yPlotBottom, -plotWidth,  plotHeight, 0, rotateClockwise.get());
 		
 		return null;
 		

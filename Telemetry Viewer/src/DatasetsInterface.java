@@ -978,6 +978,12 @@ public class DatasetsInterface {
 			
 		}
 		
+		@Override public void callHandler() {
+			
+			// not necessary
+			
+		}
+		
 		@Override public void importFrom(Connections.QueueOfLines lines) throws AssertionError {
 			
 			if(triggerChannelCombobox != null) {

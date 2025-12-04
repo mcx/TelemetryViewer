@@ -44,7 +44,6 @@ public class WidgetToggleButton<T> implements Widget {
 		selectedValue = item;
 		values = List.of(item);
 		
-		@SuppressWarnings("serial")
 		var button = new JToggleButton("    ", isSelected) {
 			@Override public Dimension getPreferredSize() {
 				// this seems to fix a Swing bug when using multiple monitors with different DPI scaling factors
@@ -186,17 +185,15 @@ public class WidgetToggleButton<T> implements Widget {
 		
 		// call the handler, but later, so the calling code can finish constructing things before the handler is triggered
 		SwingUtilities.invokeLater(() -> {
-			if(changeHandler != null && changeHandlerCalled == false) {
-				changeHandlerCalled = true;
-				changeHandler.test(selectedValue, selectedValue);
-			}
+			if(!changeHandlerCalled)
+				callHandler();
 		});
 		
 		return this;
 		
 	}
 	
-	public void callHandler() {
+	@Override public void callHandler() {
 		
 		if(changeHandler != null) {
 			changeHandlerCalled = true;

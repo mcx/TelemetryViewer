@@ -31,7 +31,6 @@ import javax.swing.SwingUtilities;
 import javax.swing.filechooser.FileNameExtensionFilter;
 
 import com.fazecast.jSerialComm.SerialPort;
-import com.github.sarxos.webcam.Webcam;
 
 import net.miginfocom.swing.MigLayout;
 
@@ -50,18 +49,13 @@ public class Connections {
 	public static List<ConnectionTelemetry> telemetryConnections = new ArrayList<ConnectionTelemetry>();
 	public static List<ConnectionCamera>       cameraConnections = new ArrayList<ConnectionCamera>();
 	
-	// the webcam library crashes on the Pi 4, so don't query webcams on Linux AArch64
-	private static final boolean webcamsSupported = !(System.getProperty("os.name").toLowerCase().equals("linux") && System.getProperty("os.arch").toLowerCase().equals("aarch64"));
-	
 	public final static List<String> uarts = Stream.of(SerialPort.getCommPorts())
 	                                               .map(port -> "UART: " + port.getSystemPortName())
 	                                               .sorted()
 	                                               .collect(Collectors.toCollection(() -> Collections.synchronizedList(new ArrayList<String>())));
-	public final static List<String> cameras = webcamsSupported ? Webcam.getWebcams().stream()
-	                                                                    .map(cam -> "Cam: " + cam.getName())
-	                                                                    .sorted()
-	                                                                    .collect(Collectors.toCollection(() -> Collections.synchronizedList(new ArrayList<String>()))) :
-	                                                              List.of();
+	public final static List<String> cameras = Webcam.getCameras().stream().map(cam -> "Cam: " + cam.name())
+	                                                              .sorted()
+	                                                              .collect(Collectors.toCollection(() -> Collections.synchronizedList(new ArrayList<String>())));
 	static {
 		Thread t = new Thread(() -> {
 			while(true) {
@@ -71,10 +65,9 @@ public class Connections {
 					List<String> newUarts = Stream.of(SerialPort.getCommPorts())
 					                              .map(port -> "UART: " + port.getSystemPortName())
 					                              .sorted().toList();
-					List<String> newCameras = webcamsSupported ? Webcam.getWebcams(1000).stream()
-					                                                   .map(cam -> "Cam: " + cam.getName())
-					                                                   .sorted().toList() :
-					                                             List.of();
+					List<String> newCameras = Webcam.getCameras().stream().map(cam -> "Cam: " + cam.name())
+					                                              .sorted()
+					                                              .collect(Collectors.toCollection(() -> Collections.synchronizedList(new ArrayList<String>())));
 					
 					boolean updateComboboxes = !newUarts.equals(uarts) || !newCameras.equals(cameras);
 					
@@ -632,11 +625,6 @@ public class Connections {
 				addConnection(null);
 
 			int chartsCount = lines.parseInteger("%d Charts:");
-			if(chartsCount == 0) {
-				Notifications.showHintUntil("Add a chart by clicking on a tile, or click-and-dragging across multiple tiles.", () -> Charts.exist(), true);
-				return true;
-			}
-
 			for(int i = 0; i < chartsCount; i++)
 				Chart.importFrom(lines);
 			

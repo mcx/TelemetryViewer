@@ -17,7 +17,6 @@ import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import javax.swing.UIManager;
 
-@SuppressWarnings("serial")
 public class WidgetCombobox<T> implements Widget {
 
 	private String importExportLabel = "";
@@ -83,7 +82,7 @@ public class WidgetCombobox<T> implements Widget {
 			}
 			
 			// if switching away from a custom value, remove that custom value
-			if(value != oldValue && !this.values.contains(oldValue) && oldValue != null)
+			if(value != oldValue && oldValue != null && !this.values.contains(oldValue))
 				removeValue(oldValue);
 		});
 		
@@ -138,13 +137,20 @@ public class WidgetCombobox<T> implements Widget {
 		
 		// call the handler, but later, so the calling code can finish constructing things before the handler is triggered
 		SwingUtilities.invokeLater(() -> {
-			if(changeHandler != null && changeHandlerCalled == false) {
-				changeHandlerCalled = true;
-				changeHandler.test(value, value);
-			}
+			if(!changeHandlerCalled)
+				callHandler();
 		});
 		
 		return this;
+		
+	}
+	
+	@Override public void callHandler() {
+		
+		if(changeHandler != null) {
+			changeHandlerCalled = true;
+			changeHandler.test(value, value);
+		}
 		
 	}
 	

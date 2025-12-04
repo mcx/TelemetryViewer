@@ -1,4 +1,3 @@
-import java.awt.Dimension;
 import java.awt.Point;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
@@ -35,22 +34,20 @@ import javax.swing.JPanel;
 import javax.swing.SwingUtilities;
 import javax.swing.border.TitledBorder;
 
-import org.libjpegturbo.turbojpeg.TJ;
-import org.libjpegturbo.turbojpeg.TJCompressor;
-import org.libjpegturbo.turbojpeg.TJDecompressor;
-
-import com.github.sarxos.webcam.Webcam;
 import com.jogamp.common.nio.Buffers;
 
 import net.miginfocom.swing.MigLayout;
 
 public class ConnectionCamera extends Connection {
+	
+	private enum Type {NETWORK, LOCAL}
+	private final Type type;
 
 	// camera configuration, if local camera
+	private Webcam.Camera camera;
 	public WidgetCombobox<String> resolution;
 	
 	// camera configuration, if network camera
-	public final boolean isMjpeg;
 	public WidgetTextfield<String>     url;
 	private WidgetSlider<Integer>      qualitySlider;
 	private WidgetToggleButton<String> cameraButtons;
@@ -66,8 +63,8 @@ public class ConnectionCamera extends Connection {
 	private AtomicInteger liveJpegThreads = new AtomicInteger(0); // currently encoding or decoding JPEGs
 	
 	// images in memory
-	private volatile Frame liveImage = new Frame(null, true, 1, 1, "[not connected]", 0);
-	private volatile Frame oldImage  = new Frame(null, true, 1, 1, "[no image]", 0);
+	private volatile Frame liveImage = new Frame("[not connected]");
+	private volatile Frame oldImage  = new Frame("[no image]");
 	
 	// images archived to disk
 	private class FrameInfo {
@@ -87,19 +84,26 @@ public class ConnectionCamera extends Connection {
 		} else {
 			// default to the first available camera
 			List<String> usedNames = Connections.cameraConnections.stream().map(connection -> connection.name.get()).toList();
-			String firstAvailableName = Connections.cameras.stream().filter(camName -> !usedNames.contains(camName)).findFirst().orElse(mjpegOverHttp);
+			String firstAvailableName = Connections.cameras.stream().filter(name -> !usedNames.contains(name)).findFirst().orElse(mjpegOverHttp);
 			name.set(firstAvailableName);
 		}
 		
-		isMjpeg = name.is(mjpegOverHttp);
+		type = name.is(mjpegOverHttp) ? Type.NETWORK : Type.LOCAL;
 		
-		if(!isMjpeg) {
+		if(type == Type.LOCAL) {
 			
-			resolution = new WidgetCombobox<String>(null, List.of("640 x 480", "1280 x 720", "1920 x 1080", "3840 x 2160"), "640 x 480")
-			                 .setExportLabel("requested resolution");
+			camera = Webcam.list.stream().filter(cam -> cam.name().equals(getName())).findFirst().orElse(null);
+			
+			List<String> resolutions = (camera != null) ? camera.resolutions()  : List.of();
+			String       selectedRes = (camera != null) ? resolutions.getLast() : null;
+			resolution = new WidgetCombobox<String>(null, resolutions, selectedRes)
+			                 .setExportLabel("resolution");
 			
 			configWidgets.add(name);
 			configWidgets.add(resolution);
+			
+			if(camera != null)
+				transmitWidgets.addAll(camera.createSettingsWidgets());
 			
 		} else {
 			
@@ -172,6 +176,7 @@ public class ConnectionCamera extends Connection {
 			                        default       -> "";
 			                    }, false);
 			                    focusDistance.setEnabled(newValue.equals("Manual"));
+			                    focusDistance.forceDisabled(!newValue.equals("Manual"));
 			                    return true;
 			                });
 			
@@ -196,13 +201,13 @@ public class ConnectionCamera extends Connection {
 			                                  StandardOpenOption.READ,
 			                                  StandardOpenOption.WRITE);
 		} catch(Exception e) {
-			Notifications.showCriticalFault("Unable the create the cache file for " + getName() + "\n" + e.getMessage());
+			Notifications.showCriticalFault("Unable to create the cache file for " + getName() + "\n" + e.getMessage());
 			e.printStackTrace();
 		}
 		
 	}
 	
-	@Override public String getName() { return isMjpeg ? url.get() : name.get().substring(5); } // trim leading "Cam: "
+	@Override public String getName() { return type == Type.NETWORK ? url.get() : name.get().substring(5); } // trim leading "Cam: "
 	
 	/**
 	 * Sends a setting to a network camera.
@@ -212,7 +217,7 @@ public class ConnectionCamera extends Connection {
 	 */
 	private void httpPost(String relativeUrl, boolean blocking) {
 		
-		if(!isMjpeg || !isConnected() || Connections.importing)
+		if(type == Type.LOCAL || !isConnected() || Connections.importing)
 			return;
 		
 		try {
@@ -234,7 +239,7 @@ public class ConnectionCamera extends Connection {
 	
 	@Override protected void connectToDevice(boolean interactive) {
 	
-		if(isMjpeg) {
+		if(type == Type.NETWORK) {
 			
 			receiverThread = new Thread(() -> {
 				
@@ -248,20 +253,20 @@ public class ConnectionCamera extends Connection {
 					stream.setReadTimeout(5000);
 					stream.connect();
 					is = stream.getInputStream();
-					SwingUtilities.invokeLater(() -> {
-						// connecting will reset everything, so reconfigure the camera
-						qualitySlider.callHandler();
-						cameraButtons.callHandler();
-					});
 				} catch(Exception e) {
 					disconnect("Unable to connect to " + getName() + ".", false);
 					return;
 				}
+				setStatus(Status.CONNECTED, false);
+				
+				// configure the camera based on the settings widgets
+				SwingUtilities.invokeLater(() -> {
+					qualitySlider.callHandler();
+					cameraButtons.callHandler();
+				});
 			
-				// connected, enter an infinite loop that gets the frames
+				// enter an infinite loop that gets the frames
 				try {
-					
-					setStatus(Status.CONNECTED, false);
 					final StringBuilder buffer = new StringBuilder(5000);
 					
 					while(true) {
@@ -313,9 +318,10 @@ public class ConnectionCamera extends Connection {
 					
 				} catch (Exception e) {
 					
-					while(liveJpegThreads.get() > 0); // wait
 					try { is.close(); } catch(Exception e2) {}
-					liveImage = new Frame(null, true, 1, 1, "[not connected]", 0);
+					while(liveJpegThreads.get() > 0)
+						try { Thread.sleep(1); } catch(Exception e2) {}
+					liveImage = new Frame("[not connected]");
 					if(isConnected())
 						disconnect("Error while reading from " + getName() + ".", false);
 					
@@ -325,57 +331,46 @@ public class ConnectionCamera extends Connection {
 			receiverThread.setName("Camera Thread for " + getName());
 			receiverThread.start();
 			
-		} else {
+		} else if(type == Type.LOCAL) {
 
 			receiverThread = new Thread(() -> {
 				
 				// check if the camera exists
-				setStatus(Status.CONNECTING, false);
-				Webcam camera = Webcam.getWebcamByName(getName());
 				if(camera == null) {
+					disconnect(getName() + " is not available on this device.", false);
+					return;
+				}
+				
+				// connect
+				setStatus(Status.CONNECTING, false);
+				int width  = resolution.is(Webcam.UNKNOWN_RESOLUTION) ? 0 : Integer.parseInt(resolution.get().split(" x ")[0]);
+				int height = resolution.is(Webcam.UNKNOWN_RESOLUTION) ? 0 : Integer.parseInt(resolution.get().split(" x ")[1]);
+				AtomicInteger frameCount = new AtomicInteger(framesIndex.size());
+				int oldFrameCount = frameCount.get();
+				
+				boolean success = Webcam.connect(camera, width, height, newFrame -> {
+					// save and show the image
+					long timestamp = System.currentTimeMillis();
+					saveImage(frameCount.get(), newFrame.buffer(), newFrame.width(), newFrame.height(), false, timestamp);
+					showImage(newFrame.buffer(), newFrame.width(), newFrame.height(), false, timestamp);
+					frameCount.incrementAndGet();
+					if(frameCount.get() == oldFrameCount + 1 && resolution.get().equals(Webcam.UNKNOWN_RESOLUTION))
+						resolution.disableWithMessage(newFrame.width() + " x " + newFrame.height());
+				});
+				
+				if(success) {
+					setStatus(Status.CONNECTED, false);
+				} else {
 					disconnect("Unable to connect to " + getName() + ".", false);
 					return;
 				}
 				
-				// check if the camera is already being used
-				if(camera.isOpen()) {
-					disconnect(getName() + " already in use.", false);
-					return;
-				}
+				// configure the camera based on the settings widgets
+				transmitWidgets.forEach(widget -> widget.callHandler());
 				
-				// the webcam library requires the requested resolution to be one of the predefined "custom view sizes"
-				// so we must predefine all of the options shown by WidgetCamera
-				Dimension[] sizes = new Dimension[] {
-					new Dimension(640, 480),
-					new Dimension(1280, 720),
-					new Dimension(1920, 1080),
-					new Dimension(3840, 2160)
-				};
-				camera.setCustomViewSizes(sizes);
-				
-				// request a resolution, open the camera, then get the actual resolution
-				Dimension requestedResolution = switch(resolution.get()) { case "640 x 480"   -> sizes[0];
-				                                                           case "1280 x 720"  -> sizes[1];
-				                                                           case "1920 x 1080" -> sizes[2];
-				                                                           case "3840 x 2160" -> sizes[3];
-				                                                           default            -> sizes[3];};
-				camera.setViewSize(requestedResolution);
-				
-				Dimension actualResolution;
-				try {
-					camera.open();
-					actualResolution = camera.getViewSize();
-				} catch(Exception e) {
-					camera.close();
-					disconnect("Unable to connect to " + getName() + ".", false);
-					return;
-				}
-				
-				// connected, enter an infinite loop that gets the frames
+				// enter an infinite loop that checks for events and stays alive until we need to disconnect
 				try {
 					
-					setStatus(Status.CONNECTED, false);
-					int frameCount = framesIndex.size();
 					while(true) {
 						
 						// stop if requested
@@ -383,26 +378,24 @@ public class ConnectionCamera extends Connection {
 							throw new Exception();
 						
 						// stop if the connection failed
-						if(!camera.isOpen())
+						int eventCode = Webcam.checkForEvent(camera);
+						if(eventCode != 0 && eventCode != 14 && eventCode != 13) {
+							Notifications.printInfo("Camera event code: " + eventCode);
 							throw new Exception();
+						}
 						
-						// acquire a new image
-						ByteBuffer buffer = Buffers.newDirectByteBuffer(actualResolution.width * actualResolution.height * 3);
-						camera.getImageBytes(buffer);
-						
-						// save and show the image
-						long timestamp = System.currentTimeMillis();
-						saveImage(frameCount, buffer, actualResolution, timestamp);
-						showImage(buffer, actualResolution, timestamp);
-						frameCount++;
+						// wait a little if everything is good
+						if(eventCode == 0)
+							Thread.sleep(500);
 						
 					}
 					
 				} catch(Exception e) {
 					
-					while(liveJpegThreads.get() > 0); // wait
-					camera.close();
-					liveImage = new Frame(null, true, 1, 1, "[not connected]", 0);
+					Webcam.disconnect(camera);
+					while(liveJpegThreads.get() > 0)
+						try { Thread.sleep(1); } catch(Exception e2) {}
+					liveImage = new Frame("[not connected]");
 					if(isConnected())
 						disconnect("Error while reading from " + getName() + ".", false);
 					
@@ -418,28 +411,18 @@ public class ConnectionCamera extends Connection {
 	
 	@Override public JPanel getUpdatedTransmitGUI() {
 		
-		if(Connections.importing || !isMjpeg)
+		if(Connections.importing || transmitWidgets.isEmpty())
 			return null;
 		
 		JPanel gui = new JPanel(new MigLayout("hidemode 3, fillx, wrap 1, insets " + Theme.padding + ", gap " + Theme.padding, "[fill,grow]"));
-		String title = url.get() + (isConnected() ? "" : " (disconnected)");
+		String title = getName() + (isConnected() ? "" : " (disconnected)");
 		gui.setBorder(new TitledBorder(title));
 		
-		qualitySlider.appendTo(gui, "");
-		cameraButtons.appendTo(gui, "");
-		resolutionButtons.appendTo(gui, "");
-		lightButtons.appendTo(gui, "");
-		zoomSlider.appendTo(gui, "");
-		focusMode.appendTo(gui, "");
-		focusDistance.appendTo(gui, "");
-		
-		qualitySlider.setEnabled(isConnected());
-		zoomSlider.setEnabled(isConnected());
-		lightButtons.setEnabled(isConnected());
-		cameraButtons.setEnabled(isConnected());
-		resolutionButtons.setEnabled(isConnected());
-		focusMode.setEnabled(isConnected());
-		focusDistance.setEnabled(isConnected() && focusMode.is("Manual"));
+		transmitWidgets.forEach(widget -> {
+			String constraints = ((widget instanceof WidgetSlider) && type == Type.LOCAL) ? "sizegroup" : ""; // make all slider labels the same size if it's a local camera
+			widget.appendTo(gui, constraints);
+			widget.setEnabled(isConnected());
+		});
 			
 		return gui;
 		
@@ -541,7 +524,7 @@ public class ConnectionCamera extends Connection {
 		
 		// give up if there's no images
 		if(framesIndex.isEmpty())
-			return new Frame(null, true, 1, 1, isConnected() ? "[no image]" : "[not connected]", 0);
+			return new Frame(isConnected() ? "[no image]" : "[not connected]");
 		
 		// determine the frame index
 		int frameIndex = framesIndex.size() - 1;
@@ -558,10 +541,10 @@ public class ConnectionCamera extends Connection {
 		
 		// give up if there's no frame before the specified timestamp
 		if(frameTimestamp > timestamp)
-			return new Frame(null, true, 1, 1, "[no image]", 0);
+			return new Frame("[no image]");
 		
 		// return the live image if appropriate
-		// when importing we always want the label to show that frame's timestamp, so the liveImage is never updated or used while importing
+		// when importing we always want the label to show the frame's timestamp, so the liveImage is never updated or used while importing
 		if(!Connections.importing && (frameTimestamp == liveImage.timestamp || frameIndex == framesIndex.size() - 1))
 			return liveImage;
 		
@@ -581,42 +564,50 @@ public class ConnectionCamera extends Connection {
 			file.read(ByteBuffer.wrap(jpegBytes), info.offset);
 		} catch(Exception e) {
 			e.printStackTrace();
-			return new Frame(null, true, 1, 1, "[error reading image from disk]", 0);
+			return new Frame("[error reading image from disk]");
 		}
 		
-		int width = 0;
-		int height = 0;
-		byte[] bgrBytes = null;
 		String label = String.format("%s (%s)", getName(), Settings.formatCameraTimestamp(info.timestamp));
 		
 		try {
-			// try to use the libjpeg-turbo library
-			TJDecompressor tjd = new TJDecompressor(jpegBytes);
-			width = tjd.getWidth();
-			height = tjd.getHeight();
-			bgrBytes = new byte[width * height * 3];
-			tjd.decompress(bgrBytes, 0, 0, width, 0, height, TJ.PF_BGR, 0);
-			tjd.close();
-			oldImage = new Frame(bgrBytes, true, width, height, label, info.timestamp);
+			TurboJpeg.Image image = TurboJpeg.decompress(jpegBytes);
+			if(!image.valid())
+				throw new Exception();
+			oldImage = new Frame(image.bytes(), image.width(), image.height(), false, label, info.timestamp);
 			return oldImage;
 		} catch(Error | Exception e) {
 			// fallback to the JRE library
 			try {
 				BufferedImage bi = ImageIO.read(new ByteArrayInputStream(jpegBytes));
-				width = bi.getWidth();
-				height = bi.getHeight();
-				bgrBytes = ((DataBufferByte)bi.getRaster().getDataBuffer()).getData();
-				oldImage = new Frame(bgrBytes, true, width, height, label, info.timestamp);
+				int width = bi.getWidth();
+				int height = bi.getHeight();
+				byte[] bgrBytes = ((DataBufferByte)bi.getRaster().getDataBuffer()).getData();
+				oldImage = new Frame(bgrBytes, width, height, false, label, info.timestamp);
 				return oldImage;
 			} catch(Exception e2) {
-				e.printStackTrace();
-				return new Frame(null, true, 1, 1, "[error decoding image]", 0);
+				e2.printStackTrace();
+				return new Frame("[error decoding image]");
 			}
 		}
 		
 	}
 
 	@Override public void importFrom(Connections.QueueOfLines lines) throws AssertionError {
+		
+		// if importing a camera that doesn't exist on this device, don't fail importing
+		if(type == Type.LOCAL && camera == null) {
+			
+			// use whatever resolution is claimed
+			String res = lines.parseString("resolution = %s");
+			resolution.resetValues(List.of(res), res);
+			
+			// ignore any remaining settings widgets
+			while(!lines.peek().isBlank())
+				lines.remove();
+		
+			Connections.GUI.redraw();
+			return;
+		}
 		
 		configWidgets.stream().skip(1).forEach(widget -> widget.importFrom(lines));
 		transmitWidgets.forEach(widget -> widget.importFrom(lines));
@@ -791,13 +782,12 @@ public class ConnectionCamera extends Connection {
 				byte[] bgrBytes = null;
 				
 				try {
-					// try to use the libjpeg-turbo library
-					TJDecompressor tjd = new TJDecompressor(jpegBytes);
-					width = tjd.getWidth();
-					height = tjd.getHeight();
-					bgrBytes = new byte[width * height * 3];
-					tjd.decompress(bgrBytes, 0, 0, width, 0, height, TJ.PF_BGR, 0);
-					tjd.close();
+					TurboJpeg.Image raw = TurboJpeg.decompress(jpegBytes);
+					if(!raw.valid())
+						throw new Exception();
+					bgrBytes = raw.bytes();
+					width = raw.width();
+					height = raw.height();
 				} catch(Error | Exception e) {
 					// fallback to the JRE library
 					BufferedImage bi = ImageIO.read(new ByteArrayInputStream(jpegBytes));
@@ -812,7 +802,7 @@ public class ConnectionCamera extends Connection {
 				if(frameCount > 30)
 					fps = 30000.0 / (double) (framesIndex.get(frameCount - 1).timestamp - framesIndex.get(frameCount - 30).timestamp);
 				String label = String.format("%s (%d x %d, %01.1f FPS)", getName(), width, height, fps);
-				liveImage = new Frame(bgrBytes, true, width, height, label, timestamp);
+				liveImage = new Frame(bgrBytes, width, height, false, label, timestamp);
 				
 				liveJpegThreads.decrementAndGet();
 				
@@ -832,10 +822,12 @@ public class ConnectionCamera extends Connection {
 	 * 
 	 * @param frameNumber    The frame number.
 	 * @param image          The image.
-	 * @param resolution     Size of the image, in pixels.
+	 * @param width          Width of the image, in pixels.
+	 * @param height         Height of the image, in pixels.
+	 * @param isRGB          True if RGB24, false if BGR24.
 	 * @param timestamp      When the image was captured (milliseconds since 1970-01-01.)
 	 */
-	private void saveImage(int frameNumber, ByteBuffer image, Dimension resolution, long timestamp) {
+	private void saveImage(int frameNumber, ByteBuffer image, int width, int height, boolean isRGB, long timestamp) {
 		
 		byte[] bytes = new byte[image.capacity()];
 		image.get(bytes);
@@ -847,24 +839,24 @@ public class ConnectionCamera extends Connection {
 			int jpegBytesLength = 0;
 			
 			try {
-				// try to use the libjpeg-turbo library
-				TJCompressor tjc = new TJCompressor(bytes, 0, 0, resolution.width, 0, resolution.height, TJ.PF_RGB);
-				tjc.setJPEGQuality(80);
-				tjc.setSubsamp(TJ.SAMP_422);
-				jpegBytes = tjc.compress(0);
-				jpegBytesLength = tjc.getCompressedSize();
-				tjc.close();
+				TurboJpeg.Image jpeg = TurboJpeg.compress(bytes, width, height, isRGB);
+				if(!jpeg.valid())
+					throw new Exception();
+				jpegBytes = jpeg.bytes();
+				jpegBytesLength = jpeg.byteCount();
 			} catch(Error | Exception e) {
 				// fallback to the JRE library
 				try {
-					// convert rgb to bgr
-					for(int i = 0; i < bytes.length; i +=3) {
-						byte red  = bytes[i];
-						byte blue = bytes[i+2];
-						bytes[i]   = blue;
-						bytes[i+2] = red;
+					if(isRGB) {
+						// convert RGB to BGR
+						for(int i = 0; i < bytes.length; i +=3) {
+							byte red  = bytes[i];
+							byte blue = bytes[i+2];
+							bytes[i]   = blue;
+							bytes[i+2] = red;
+						}
 					}
-					BufferedImage bi = new BufferedImage(resolution.width, resolution.height, BufferedImage.TYPE_3BYTE_BGR);
+					BufferedImage bi = new BufferedImage(width, height, BufferedImage.TYPE_3BYTE_BGR);
 					bi.setData(Raster.createRaster(bi.getSampleModel(), new DataBufferByte(bytes, bytes.length), new Point()));
 					ByteArrayOutputStream baos = new ByteArrayOutputStream();
 					ImageIO.write(bi, "jpg", baos);
@@ -872,15 +864,16 @@ public class ConnectionCamera extends Connection {
 					jpegBytesLength = jpegBytes.length;
 					baos.close();
 				} catch(Exception e2) {
-					Notifications.showFailureForMilliseconds("Unable to encode one of the frames from " + getName() + "\n" + e.getMessage(), 5000, true);
-					e.printStackTrace();
+					Notifications.showFailureForMilliseconds("Unable to encode one of the frames from " + getName() + "\n" + e2.getMessage(), 5000, true);
+					e2.printStackTrace();
 					liveJpegThreads.decrementAndGet();
 					return;
 				}
 			}
 			
 			// wait for previous encoding threads to finish before inserting this frame
-			while(framesIndex.size() < frameNumber);
+			while(framesIndex.size() < frameNumber)
+				try { Thread.sleep(1); } catch(Exception e) {}
 			
 			// save to disk
 			try {
@@ -890,7 +883,7 @@ public class ConnectionCamera extends Connection {
 				file.write(ByteBuffer.wrap(jpegBytes, 0, jpegBytesLength));
 				file.force(true);
 				framesIndex.add(new FrameInfo(timestamp, offset, jpegBytesLength));
-			} catch (Exception e) {
+			} catch(Exception e) {
 				Notifications.showCriticalFault("Unable to save one of the frames from " + getName() + "\n" + e.getMessage());
 				e.printStackTrace();
 				liveJpegThreads.decrementAndGet();
@@ -906,20 +899,22 @@ public class ConnectionCamera extends Connection {
 	/**
 	 * Updates the liveImage object with a new image.
 	 * 
-	 * @param image         The image.
-	 * @param resolution    Size of the image, in pixels.
-	 * @param timestamp     When the image was captured (milliseconds since 1970-01-01.)
+	 * @param image        The image.
+	 * @param width        Width of the image, in pixels.
+	 * @param height       Height of the image, in pixels.
+	 * @param isRGB        True if RGB24, false if BGR24.
+	 * @param timestamp    When the image was captured (milliseconds since 1970-01-01.)
 	 */
-	private void showImage(ByteBuffer image, Dimension resolution, long timestamp) {
+	private void showImage(ByteBuffer image, int width, int height, boolean isRGB, long timestamp) {
 		
 		int frameCount = framesIndex.size();
 		double fps = 0;
 		if(frameCount > 30)
 			fps = 30000.0 / (double) (framesIndex.get(frameCount - 1).timestamp - framesIndex.get(frameCount - 30).timestamp);
-		String label = String.format("%s (%d x %d, %01.1f FPS)", getName(), resolution.width, resolution.height, fps);
+		String label = String.format("%s (%d x %d, %01.1f FPS)", getName(), width, height, fps);
 		
 		image.rewind();
-		liveImage = new Frame(image, resolution.width, resolution.height, label, timestamp);
+		liveImage = new Frame(image, width, height, isRGB, label, timestamp);
 		
 	}
 	
@@ -928,15 +923,24 @@ public class ConnectionCamera extends Connection {
 	 */
 	public static class Frame {
 		ByteBuffer buffer;
-		boolean isBgr; // if buffer uses the BGR or RGB pixel format
+		boolean isRGB; // false = BGR
 		int width;
 		int height;
 		String label;
 		long timestamp;
 		
-		public Frame(byte[] bytes, boolean isBgr, int width, int height, String label, long timestamp) {
+		public Frame(String label) {
+			this.buffer = Buffers.newDirectByteBuffer(1 * 1 * 3);
+			this.isRGB = true;
+			this.width = 1;
+			this.height = 1;
+			this.label = label;
+			this.timestamp = 0;
+		}
+		
+		public Frame(byte[] bytes, int width, int height, boolean isRGB, String label, long timestamp) {
 			this.buffer = Buffers.newDirectByteBuffer(width * height * 3);
-			this.isBgr = isBgr;
+			this.isRGB = isRGB;
 			this.width = width;
 			this.height = height;
 			this.label = label;
@@ -944,17 +948,12 @@ public class ConnectionCamera extends Connection {
 			if(bytes != null) {
 				buffer.put(bytes);
 				buffer.rewind();
-			} else {
-				byte black = 0;
-				for(int i = 0; i < width*height*3; i++)
-					buffer.put(black);
-				buffer.rewind();
 			}
 		}
 		
-		public Frame(ByteBuffer bytes, int width, int height, String label, long timestamp) {
+		public Frame(ByteBuffer bytes, int width, int height, boolean isRGB, String label, long timestamp) {
 			this.buffer = bytes;
-			this.isBgr = false;
+			this.isRGB = isRGB;
 			this.width = width;
 			this.height = height;
 			this.label = label;

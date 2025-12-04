@@ -44,7 +44,6 @@ public class WidgetColorPicker implements Widget {
 	 * @param titlebarText    Title to use for the color picker window.
 	 * @param color           Default color.
 	 */
-	@SuppressWarnings("serial")
 	public WidgetColorPicker(String titlebarText, Color color) {
 		
 		importExportLabel = titlebarText.toLowerCase() + " color";
@@ -94,11 +93,17 @@ public class WidgetColorPicker implements Widget {
 		
 		// call the handler, but later, so the calling code can finish constructing things before the handler is triggered
 		SwingUtilities.invokeLater(() -> {
-			if(handler != null)
-				handler.accept(selectedColor);
+			callHandler();
 		});
 		
 		return this;
+		
+	}
+	
+	@Override public void callHandler() {
+		
+		if(handler != null)
+			handler.accept(selectedColor);
 		
 	}
 	

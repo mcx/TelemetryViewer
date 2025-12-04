@@ -46,7 +46,6 @@ import javax.swing.text.Position;
  *           onChange() will be invokeLater()'d after it is defined to ensure user code is kept in sync with the data in the textfield.
  *           Calling set() will immediately trigger the onChange handler. This will cancel the invokeLater()'d call to onChange() to ensure the handler only receives the correct value.
  */
-@SuppressWarnings("serial")
 public class WidgetTextfield<T> implements Widget {
 	
 	public enum Mode {
@@ -738,7 +737,6 @@ public class WidgetTextfield<T> implements Widget {
 	 *                   If get() is called by code inside the handler, it will return newValue.
 	 *                   If set() is called by code inside the handler, it will win *if* the handler returns true. If the handler returns false, the oldValue will go into effect.
 	 */
-	@SuppressWarnings("unchecked")
 	public WidgetTextfield<T> onChange(BiPredicate<T,T> handler) {
 		
 		changeHandler = handler;
@@ -746,18 +744,26 @@ public class WidgetTextfield<T> implements Widget {
 		
 		// call the handler, but later, so the calling code can finish constructing things before the handler is triggered
 		SwingUtilities.invokeLater(() -> {
-			if(changeHandler != null && changeHandlerCalled == false) {
-				changeHandlerCalled = true;
-				T newValue = switch(mode) {
-					case TEXT, HEX, BINARY -> (T) userText;
-					case INTEGER           -> (T) (Integer) Integer.parseInt(userText);
-					case FLOAT             -> (T) (Float) Float.parseFloat(userText);
-				};
-				changeHandler.test(newValue, newValue);
-			}
+			if(!changeHandlerCalled)
+				callHandler();
 		});
 		
 		return this;
+		
+	}
+	
+	@SuppressWarnings("unchecked")
+	@Override public void callHandler() {
+		
+		if(changeHandler != null) {
+			changeHandlerCalled = true;
+			T newValue = switch(mode) {
+				case TEXT, HEX, BINARY -> (T) userText;
+				case INTEGER           -> (T) (Integer) Integer.parseInt(userText);
+				case FLOAT             -> (T) (Float) Float.parseFloat(userText);
+			};
+			changeHandler.test(newValue, newValue);
+		}
 		
 	}
 	
