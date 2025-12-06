@@ -237,14 +237,14 @@ public class DatasetsInterface {
 	}
 	
 	/**
-	 * Gets a sequence of samples as a float[].
+	 * Gets a sequence of samples as a double[].
 	 * 
 	 * @param dataset            Dataset.
 	 * @param minSampleNumber    First sample number, inclusive.
 	 * @param maxSampleNumber    Last sample number, inclusive.
-	 * @return                   A float[] of the samples.
+	 * @return                   A double[] of the samples.
 	 */
-	public float[] getSamplesArray(Field dataset, int minSampleNumber, int maxSampleNumber) {
+	public double[] getSamplesArray(Field dataset, int minSampleNumber, int maxSampleNumber) {
 		
 		return dataset.getSamplesArray(minSampleNumber, maxSampleNumber, cacheFor(dataset));
 		
@@ -451,7 +451,7 @@ public class DatasetsInterface {
 		}
 		
 		// draw all tooltips
-		List<Chart.Tooltip.Drawable> bakedTooltips = tooltips.stream().map(tooltip -> tooltip.bake(gl, plotWidth, plotHeight, -1, -1, xToPixelX.apply(sampleCountMode ? tooltip.sampleNumber : tooltip.timestamp))).toList();
+		List<Chart.Tooltip.Drawable> bakedTooltips = tooltips.stream().map(tooltip -> tooltip.bake(gl, plotWidth, plotHeight, -1, -1, xToPixelX.apply(sampleCountMode ? tooltip.sampleNumber : tooltip.timestamp), false)).toList();
 		for(int i = 0; i < bakedTooltips.size(); i++) {
 			Chart.Tooltip.Drawable next = (i == bakedTooltips.size() - 1) ? null : bakedTooltips.get(i + 1);
 			if(!bakedTooltips.get(i).draw(gl, closestTooltip != null, next))
@@ -461,7 +461,7 @@ public class DatasetsInterface {
 		// draw the tooltip closest to the mouse on top
 		// if clickable, and if the mouse is over that tooltip, it will be drawn with a black border
 		if(closestTooltip != null) {
-			Chart.Tooltip.Drawable baked = closestTooltip.bake(gl, plotWidth, plotHeight, clickable ? mouseX : -1, clickable ? mouseY : -1, xToPixelX.apply(sampleCountMode ? closestTooltip.sampleNumber : closestTooltip.timestamp));
+			Chart.Tooltip.Drawable baked = closestTooltip.bake(gl, plotWidth, plotHeight, clickable ? mouseX : -1, clickable ? mouseY : -1, xToPixelX.apply(sampleCountMode ? closestTooltip.sampleNumber : closestTooltip.timestamp), false);
 			if(!baked.draw(gl, false, null))
 				insufficientSpace.set(true);
 			

@@ -25,7 +25,6 @@ public class Main {
 	static final String versionString = "Telemetry Viewer v0.8";
 	static final String versionDate   = "2021-07-24";
 	
-	@SuppressWarnings("serial")
 	static JFrame window = new JFrame(versionString) {
 		
 		int dataStructureViewWidth = -1;
@@ -56,7 +55,6 @@ public class Main {
 	 * 
 	 * @param args    Command line arguments (not currently used.)
 	 */
-	@SuppressWarnings("serial")
 	public static void main(String[] args) {
 		
 		// use the native OS theme when drawing Swing widgets

@@ -11,7 +11,7 @@ public class OpenGLHistogramChart extends Chart {
 	
 	private DatasetsInterface.WidgetDatasets datasetsWidget;
 	private WidgetTextfield<Integer> durationWidget;
-	private WidgetCheckbox legendVisibility;
+	private WidgetToggleButton<OpenGLPlot.LegendStyle> legendStyle;
 	private enum XAxisScale {
 		MIN_MAX     { @Override public String toString() { return "Minimum/Maximum"; } },
 		CENTER_SPAN { @Override public String toString() { return "Center/Span";     } };
@@ -57,7 +57,8 @@ public class OpenGLHistogramChart extends Chart {
 		                                    return true;
 		                                });
 		
-		legendVisibility = new WidgetCheckbox("Show Legend", true);
+		legendStyle = new WidgetToggleButton<OpenGLPlot.LegendStyle>("Legend", OpenGLPlot.LegendStyle.values(), OpenGLPlot.LegendStyle.OUTER)
+		                  .setExportLabel("legend style");
 		
 		xAxisMinimum = WidgetTextfield.ofFloat(-Float.MAX_VALUE, Float.MAX_VALUE, -1)
 		                              .setPrefix("Minimum")
@@ -238,7 +239,7 @@ public class OpenGLHistogramChart extends Chart {
 		
 		widgets.add(datasetsWidget);
 		widgets.add(durationWidget);
-		widgets.add(legendVisibility);
+		widgets.add(legendStyle);
 		widgets.add(xAxisStyle);
 		widgets.add(xAxisScale);
 		widgets.add(xAxisMinimum);
@@ -264,8 +265,8 @@ public class OpenGLHistogramChart extends Chart {
 		
 		gui.add(Theme.newWidgetsPanel("Data")
 		             .with(datasetsWidget)
-		             .with(durationWidget,   "split 2, sizegroup 0")
-		             .with(legendVisibility, "sizegroup 0")
+		             .with(durationWidget)
+		             .with(legendStyle)
 		             .getPanel());
 		
 		gui.add(Theme.newWidgetsPanel("X-Axis")
@@ -362,7 +363,7 @@ public class OpenGLHistogramChart extends Chart {
 		
 		// draw the plot
 		return new OpenGLPlot(chartMatrix, width, height, mouseX, mouseY)
-		           .withLegend(legendVisibility.get(), datasets)
+		           .withLegend(legendStyle.get(), datasets)
 		           .withXaxis(xAxisStyle.get(), OpenGLPlot.AxisScale.LINEAR, xAxisMin, xAxisMax, xAxisTitle)
 		           .withYaxis(yAxisStyle.get(), OpenGLPlot.AxisScale.LINEAR, yAxisMin, yAxisMax, yAxisTitle)
 		           .withYaxisConvertedToPercentage(yAxisScale.is(YAxisScale.BOTH), sampleCount)
@@ -415,7 +416,7 @@ public class OpenGLHistogramChart extends Chart {
 		                                       bins[datasetN][binN] + " samples (" + Theme.getFloatOrInteger((float) bins[datasetN][binN] / (float) sampleCount * 100f, "%)", true),
 		                                       Math.clamp(pixelY, 0, plot.height()));
 		                    }
-		                    tooltip.draw(gl, plot.mouseX(), plot.mouseY(), plot.width(), plot.height());
+		                    tooltip.draw(gl, plot.mouseX(), plot.mouseY(), plot.width(), plot.height(), false);
 		                }
 		                return null;
 		           })

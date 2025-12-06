@@ -17,6 +17,11 @@ public class OpenGLPlot {
 		OUTER  { @Override public String toString() { return "Outer";  } },
 		TITLED { @Override public String toString() { return "Titled"; } }
 	}
+	enum LegendStyle {
+		HIDDEN { @Override public String toString() { return "Hidden"; } },
+		INNER  { @Override public String toString() { return "Inner";  } },
+		OUTER  { @Override public String toString() { return "Outer";  } }
+	}
 	enum AxisScale {LINEAR, LOG}
 	record PlotDetails(int mouseX, int mouseY, int width, int height, int xLeft, int yBottom, float[] matrix, EventHandler existingHandler) {}
 	
@@ -25,7 +30,7 @@ public class OpenGLPlot {
 	final int chartHeight;
 	int mouseX;
 	int mouseY;
-	boolean drawLegend;
+	LegendStyle legendStyle;
 	DatasetsInterface datasets;
 	boolean drawFftInfo;
 	OpenGLFrequencyDomainChart.Type fftChartType;
@@ -59,8 +64,8 @@ public class OpenGLPlot {
 		this.mouseY = mouseY;
 	}
 	
-	public OpenGLPlot withLegend(boolean drawLegend, DatasetsInterface datasets) {
-		this.drawLegend = drawLegend;
+	public OpenGLPlot withLegend(LegendStyle mode, DatasetsInterface datasets) {
+		this.legendStyle = mode;
 		this.datasets = datasets;
 		return this;
 	}
@@ -131,59 +136,38 @@ public class OpenGLPlot {
 		float yPlotTop = (yAxisType == null) ? chartHeight : chartHeight - Theme.tilePadding;
 		float yPlotBottom = (yAxisType == null && xAxisStyle == AxisStyle.HIDDEN) ? 0 : Theme.tilePadding;
 		
-		// if the legend should be drawn, draw it if there's space, and adjust yPlotBottom accordingly
-		float xLegendBorderRight = xPlotLeft;
-		if(drawLegend && datasets.hasAnyType()) {
-			List<Field> allDatasets = Stream.of(datasets.normalDatasets.stream(),
-			                                    datasets.edgeStates.stream().map(state -> state.dataset),
-			                                    datasets.levelStates.stream().map(state -> state.dataset))
-			                                .flatMap(stream -> stream)
-			                                .distinct()
-			                                .toList();
-			int datasetsCount = allDatasets.size();
-			
-			float xLegendBorderLeft = Theme.tilePadding;
-			float yLegendBorderBottom = Theme.tilePadding;
-			float yLegendTextBaseline = yLegendBorderBottom + Theme.legendTextPadding;
-			float yLegendTextTop = yLegendTextBaseline + OpenGL.mediumTextHeight;
-			float yLegendBorderTop = yLegendTextTop + Theme.legendTextPadding;
-			float[][] legendMouseoverCoordinates = new float[datasetsCount][4];
-			float[][] legendBoxCoordinates = new float[datasetsCount][4];
-			float[] xLegendNameLeft = new float[datasetsCount];
-			
-			float xOffset = xLegendBorderLeft + (Theme.lineWidth / 2) + Theme.legendTextPadding;
-			for(int i = 0; i < datasetsCount; i++) {
-				legendMouseoverCoordinates[i][0] = xOffset - Theme.legendTextPadding;
-				legendMouseoverCoordinates[i][1] = yLegendBorderBottom;
-				
-				legendBoxCoordinates[i][0] = xOffset;
-				legendBoxCoordinates[i][1] = yLegendTextBaseline;
-				legendBoxCoordinates[i][2] = xOffset + OpenGL.mediumTextHeight;
-				legendBoxCoordinates[i][3] = yLegendTextTop;
-				
-				xOffset += OpenGL.mediumTextHeight + Theme.legendTextPadding;
-				xLegendNameLeft[i] = xOffset;
-				xOffset += OpenGL.mediumTextWidth(gl, allDatasets.get(i).name.get()) + Theme.legendNamesPadding;
-				
-				legendMouseoverCoordinates[i][2] = xOffset - Theme.legendNamesPadding + Theme.legendTextPadding;
-				legendMouseoverCoordinates[i][3] = yLegendBorderTop;
+		// if the legend should be drawn, reserve space for it, and adjust yPlotBottom accordingly
+		float xLeftReserved = xPlotLeft;
+		List<Field> allDatasets = (datasets == null) ? List.of() :
+		                                               Stream.of(datasets.normalDatasets.stream(),
+			                                                     datasets.edgeStates.stream().map(state -> state.dataset),
+			                                                     datasets.levelStates.stream().map(state -> state.dataset))
+			                                                 .flatMap(stream -> stream)
+			                                                 .distinct()
+			                                                 .toList();
+		int datasetsCount = allDatasets.size();
+		float xLegendBorderLeft = Theme.tilePadding;
+		float xLegendBorderRight = xLegendBorderLeft;
+		float yLegendBorderBottom = Theme.tilePadding;
+		float yLegendTextBaseline = yLegendBorderBottom + Theme.legendTextPadding;
+		float yLegendTextTop = yLegendTextBaseline + OpenGL.mediumTextHeight;
+		float yLegendBorderTop = yLegendTextTop + Theme.legendTextPadding;
+		boolean mouseOverLegend = false;
+		
+		if(legendStyle != LegendStyle.HIDDEN && datasetsCount > 0) {
+			float legendWidth = Theme.legendTextPadding * 2 + (float) allDatasets.stream().mapToDouble(dataset -> OpenGL.mediumTextHeight + Theme.legendTextPadding + OpenGL.mediumTextWidth(gl, dataset.name.get()) + Theme.legendNamesPadding).sum() - Theme.legendNamesPadding;
+			if(legendStyle == LegendStyle.INNER) {
+				xLegendBorderLeft = xPlotRight - Theme.tilePadding - legendWidth;
+				yLegendBorderBottom = yPlotTop - Theme.tilePadding - Theme.legendTextPadding - OpenGL.mediumTextHeight - Theme.legendTextPadding;
+				yLegendTextBaseline = yLegendBorderBottom + Theme.legendTextPadding;
+				yLegendTextTop = yLegendTextBaseline + OpenGL.mediumTextHeight;
+				yLegendBorderTop = yLegendTextTop + Theme.legendTextPadding;
+			} else if(legendStyle == LegendStyle.OUTER) {
+				xLeftReserved += legendWidth + Theme.tilePadding;
+				yPlotBottom   += Theme.legendTextPadding + OpenGL.mediumTextHeight + Theme.legendTextPadding + Theme.legendTextPadding;
 			}
-			xLegendBorderRight = xOffset - Theme.legendNamesPadding + Theme.legendTextPadding + (Theme.lineWidth / 2);
-			yPlotBottom = Float.max(yPlotBottom, yLegendBorderTop + Theme.legendTextPadding);
-			
-			if(xLegendBorderRight < chartWidth - Theme.tilePadding) {
-				OpenGL.drawQuad2D(gl, Theme.legendBackgroundColor, xLegendBorderLeft, yLegendBorderBottom, xLegendBorderRight, yLegendBorderTop);
-				
-				for(int i = 0; i < datasetsCount; i++) {
-					Field d = allDatasets.get(i);
-					if(mouseX >= legendMouseoverCoordinates[i][0] && mouseX <= legendMouseoverCoordinates[i][2] && mouseY >= legendMouseoverCoordinates[i][1] && mouseY <= legendMouseoverCoordinates[i][3]) {
-						OpenGL.drawQuadOutline2D(gl, Theme.tickLinesColor, legendMouseoverCoordinates[i][0], legendMouseoverCoordinates[i][1], legendMouseoverCoordinates[i][2], legendMouseoverCoordinates[i][3]);
-						handler = EventHandler.onPress(event -> Configure.GUI.forDataset(d));
-					}
-					OpenGL.drawQuad2D(gl, d.color.getGl(), legendBoxCoordinates[i][0], legendBoxCoordinates[i][1], legendBoxCoordinates[i][2], legendBoxCoordinates[i][3]);
-					OpenGL.drawMediumText(gl, d.name.get(), (int) xLegendNameLeft[i], (int) yLegendTextBaseline, 0);
-				}
-			}
+			xLegendBorderRight = xLegendBorderLeft + legendWidth;
+			mouseOverLegend = mouseX >= xLegendBorderLeft && mouseX <= xLegendBorderRight && mouseY >= yLegendBorderBottom && mouseY <= yLegendBorderTop;
 		}
 		
 		// if FFT info should be drawn, draw it if there's space, and adjust yPlotBottom accordingly
@@ -197,7 +181,7 @@ public class OpenGLPlot {
 				xFftInfoAreaLeft = xText - Theme.tilePadding;
 				yPlotBottom = Float.max(yPlotBottom, yText + OpenGL.smallTextHeight + Theme.tickTextPadding);
 				
-				if(xFftInfoAreaLeft > xLegendBorderRight)
+				if(xFftInfoAreaLeft > xLeftReserved)
 					OpenGL.drawSmallText(gl, text, (int) xText, (int) yText, 0);
 			} else if(fftChartType == OpenGLFrequencyDomainChart.Type.HISTOGRAM) {
 				String text1 = fftWindowCount + " windows (total of " + (fftWindowCount * fftWindowLength) + " samples)";
@@ -211,7 +195,7 @@ public class OpenGLPlot {
 				xFftInfoAreaLeft = Float.min(xText1 - Theme.padding, xText2 - Theme.padding);
 				yPlotBottom = Float.max(yPlotBottom, yText2 + OpenGL.smallTextHeight + Theme.tickTextPadding);
 				
-				if(xFftInfoAreaLeft > xLegendBorderRight) {
+				if(xFftInfoAreaLeft > xLeftReserved) {
 					OpenGL.drawSmallText(gl, text1, (int) xText1, (int) yText1, 0);
 					OpenGL.drawSmallText(gl, text2, (int) xText2, (int) yText2, 0);
 				}
@@ -242,11 +226,11 @@ public class OpenGLPlot {
 				OpenGL.drawSmallText(gl, text2,  (int) xText2,  (int) yText2, 0);
 				OpenGL.drawSmallText(gl, text3,  (int) xText3,  (int) yText3, 0);
 				OpenGL.drawQuad2D(gl, Theme.plotBackgroundColor, xPowerScaleLeft, yText1, xPowerScaleRight, yText1Top);
-				int datasetsCount = datasets.normalsCount();
-				for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
+				int normalsCount = datasets.normalsCount();
+				for(int datasetN = 0; datasetN < normalsCount; datasetN++) {
 					Field dataset = datasets.getNormal(datasetN);
-					float top = yText1Top - (yText1Top - yText1) * datasetN / datasetsCount;
-					float bottom = top - (yText1Top - yText1) / datasetsCount;
+					float top = yText1Top - (yText1Top - yText1) * datasetN / normalsCount;
+					float bottom = top - (yText1Top - yText1) / normalsCount;
 					float r = dataset.color.getGl()[0];
 					float g = dataset.color.getGl()[1];
 					float b = dataset.color.getGl()[2];
@@ -265,11 +249,11 @@ public class OpenGLPlot {
 		// if the x-axis title should be drawn, draw it if there's space, and adjust yPlotBottom accordingly
 		if(xAxisStyle == AxisStyle.TITLED && xAxisTitle != null && !xAxisTitle.isEmpty()) {
 			float yText = Math.max(yPlotBottom - Theme.padding - OpenGL.largeTextHeight, Theme.padding); // legend or fft info may have raised the plot
-			float xText = xLegendBorderRight + ((xFftInfoAreaLeft - xLegendBorderRight) / 2) - (OpenGL.largeTextWidth(gl, xAxisTitle) / 2);
+			float xText = xLeftReserved + ((xFftInfoAreaLeft - xLeftReserved) / 2) - (OpenGL.largeTextWidth(gl, xAxisTitle) / 2);
 			
 			yPlotBottom = Float.max(yPlotBottom, yText + OpenGL.largeTextHeight + Theme.padding);
 			
-			if(xFftInfoAreaLeft - xLegendBorderRight >= OpenGL.largeTextWidth(gl, xAxisTitle))
+			if(xFftInfoAreaLeft - xLeftReserved >= OpenGL.largeTextWidth(gl, xAxisTitle))
 				OpenGL.drawLargeText(gl, xAxisTitle, (int) xText, (int) yText, 0);
 		}
 		
@@ -369,10 +353,11 @@ public class OpenGLPlot {
 		// clip to the plot region
 		int[] chartScissorArgs = new int[4];
 		gl.glGetIntegerv(GL3.GL_SCISSOR_BOX, chartScissorArgs, 0);
+		int[] plotScissorArgs = new int[] { chartScissorArgs[0] + (int) xPlotLeft, chartScissorArgs[1] + (int) yPlotBottom, (int) plotWidth, (int) plotHeight };
 		if(yAxisType == null)
-			gl.glScissor(chartScissorArgs[0] +               0, chartScissorArgs[1] + (int) yPlotBottom,      chartWidth, (int) plotHeight);
+			gl.glScissor(chartScissorArgs[0], chartScissorArgs[1] + (int) yPlotBottom, chartWidth, (int) plotHeight);
 		else
-			gl.glScissor(chartScissorArgs[0] + (int) xPlotLeft, chartScissorArgs[1] + (int) yPlotBottom, (int) plotWidth, (int) plotHeight);
+			gl.glScissor(plotScissorArgs[0], plotScissorArgs[1], plotScissorArgs[2], plotScissorArgs[3]);
 		
 		// update the matrix and mouse so the plot region starts at (0,0)
 		// x = x + xPlotLeft;
@@ -413,7 +398,7 @@ public class OpenGLPlot {
 			OpenGL.drawLinesXyrgba(gl, GL3.GL_LINES, OpenGL.buffer.rewind(), yDivisions.size() * 2);
 			
 			if(yAxisStyle == AxisStyle.INNER)
-				gl.glScissor(chartScissorArgs[0] + (int) xPlotLeft, chartScissorArgs[1] + (int) yPlotBottom, (int) plotWidth, (int) plotHeight);
+				gl.glScissor(plotScissorArgs[0], plotScissorArgs[1], plotScissorArgs[2], plotScissorArgs[3]);
 			
 			for(Map.Entry<Float,String> entry : yDivisions.entrySet()) {
 				float yValue = entry.getKey();
@@ -456,7 +441,7 @@ public class OpenGLPlot {
 			OpenGL.drawLinesXyrgba(gl, GL3.GL_LINES, OpenGL.buffer.rewind(), vertexCount);
 			
 			if(xAxisStyle == AxisStyle.INNER)
-				gl.glScissor(chartScissorArgs[0] + (int) xPlotLeft, chartScissorArgs[1] + (int) yPlotBottom, (int) plotWidth, (int) plotHeight);
+				gl.glScissor(plotScissorArgs[0], plotScissorArgs[1], plotScissorArgs[2], plotScissorArgs[3]);
 			
 			for(Map.Entry<Float,String> entry : xDivisions.entrySet()) {
 				float xValue = entry.getKey();
@@ -484,8 +469,11 @@ public class OpenGLPlot {
 		
 		// let the calling code draw the tooltip
 		details = new PlotDetails(mouseX, mouseY, (int) plotWidth, (int) plotHeight, (int) xPlotLeft, (int) yPlotBottom, plotMatrix, handler);
-		if(yAxisType == null && mouseX >= 0 && mouseX <= plotWidth && mouseY >= -yPlotBottom && mouseY <= plotHeight) {
-			// timeline chart, so don't clip to the plot region, and allow the mouse to be below the plot region
+		boolean timelineChartAndUserIsDraggingIt = OpenGLCharts.GUI.eventHandler != null &&
+		                                           OpenGLCharts.GUI.eventHandler.chart instanceof OpenGLTimelineChart &&
+		                                           yAxisType == null;
+		if(timelineChartAndUserIsDraggingIt) {
+			// timeline chart, so don't clip to the plot region
 			OpenGL.useMatrix(gl, plotMatrix);
 			if(tooltipDrawer != null) {
 				EventHandler h = tooltipDrawer.apply(details);
@@ -493,9 +481,9 @@ public class OpenGLPlot {
 					handler = h;
 			}
 			OpenGL.useMatrix(gl, chartMatrix);
-		} else if(Settings.GUI.tooltipsEnabled.isTrue() && mouseX >= 0 && mouseX <= plotWidth && mouseY >= 0 && mouseY <= plotHeight) {
+		} else if(Settings.GUI.tooltipsEnabled.isTrue() && mouseX >= 0 && mouseX <= plotWidth && mouseY >= 0 && mouseY <= plotHeight && !mouseOverLegend) {
 			// regular chart
-			gl.glScissor(chartScissorArgs[0] + (int) xPlotLeft, chartScissorArgs[1] + (int) yPlotBottom, (int) plotWidth, (int) plotHeight);
+			gl.glScissor(plotScissorArgs[0], plotScissorArgs[1], plotScissorArgs[2], plotScissorArgs[3]);
 			OpenGL.useMatrix(gl, plotMatrix);
 			if(tooltipDrawer != null) {
 				EventHandler h = tooltipDrawer.apply(details);
@@ -504,6 +492,44 @@ public class OpenGLPlot {
 			}
 			OpenGL.useMatrix(gl, chartMatrix);
 			gl.glScissor(chartScissorArgs[0], chartScissorArgs[1], chartScissorArgs[2], chartScissorArgs[3]);
+		}
+		
+		// draw the legend if enabled
+		if(legendStyle != LegendStyle.HIDDEN) {
+			if(legendStyle == LegendStyle.INNER)
+				gl.glScissor(plotScissorArgs[0], plotScissorArgs[1], plotScissorArgs[2], plotScissorArgs[3]);
+			mouseX += xPlotLeft;
+			mouseY += yPlotBottom;
+			OpenGL.drawQuad2D(gl, Theme.legendBackgroundColor, xLegendBorderLeft, yLegendBorderBottom, xLegendBorderRight, yLegendBorderTop);
+			float xOffset = xLegendBorderLeft + Theme.legendTextPadding;
+			for(int i = 0; i < datasetsCount; i++) {
+				float xButtonMin = xOffset - Theme.legendTextPadding;
+				float yButtonMin = yLegendBorderBottom;
+				
+				float xColorBoxMin = xOffset;
+				float yColorBoxMin = yLegendTextBaseline;
+				float xColorBoxMax = xOffset + OpenGL.mediumTextHeight;
+				float yColorBoxMax = yLegendTextTop;
+				
+				xOffset += OpenGL.mediumTextHeight + Theme.legendTextPadding;
+				float xLegendNameLeft = xOffset;
+				xOffset += OpenGL.mediumTextWidth(gl, allDatasets.get(i).name.get()) + Theme.legendNamesPadding;
+				
+				float xButtonMax = xOffset - Theme.legendNamesPadding + Theme.legendTextPadding;
+				float yButtonMax = yLegendBorderTop;
+				
+				Field d = allDatasets.get(i);
+				boolean mouseOverButton = mouseX >= xButtonMin && mouseX <= xButtonMax && mouseY >= yButtonMin && mouseY <= yButtonMax;
+				boolean mouseNotOverClippedRegion = mouseX <= chartWidth && ((legendStyle == LegendStyle.INNER) ? mouseX > xPlotLeft : true);
+				if(mouseOverButton && mouseNotOverClippedRegion) {
+					OpenGL.drawQuadOutline2D(gl, Theme.tickLinesColor, xButtonMin, yButtonMin, xButtonMax, yButtonMax);
+					handler = EventHandler.onPress(event -> Configure.GUI.forDataset(d));
+				}
+				OpenGL.drawQuad2D(gl, d.color.getGl(), xColorBoxMin, yColorBoxMin, xColorBoxMax, yColorBoxMax);
+				OpenGL.drawMediumText(gl, d.name.get(), (int) xLegendNameLeft, (int) yLegendTextBaseline, 0);
+			}
+			if(legendStyle == LegendStyle.INNER)
+				gl.glScissor(chartScissorArgs[0], chartScissorArgs[1], chartScissorArgs[2], chartScissorArgs[3]);
 		}
 		
 		// draw the plot border
@@ -644,11 +670,11 @@ public class OpenGLPlot {
 	 */
 	private Map<Integer, String> getIntegerXdivisions125(GL2ES3 gl, float plotWidth, int minX, int maxX) {
 		
-		Map<Integer, String> xValues = new HashMap<Integer, String>();
+		Map<Integer, String> divisions = new HashMap<Integer, String>();
 		
 		// sanity check
 		if(plotWidth < 1 || minX >= maxX)
-			return xValues;
+			return divisions;
 		
 		// calculate the best horizontal division size
 		int textWidth = (int) Float.max(OpenGL.smallTextWidth(gl, Integer.toString(maxX)), OpenGL.smallTextWidth(gl, Integer.toString(minX)));
@@ -670,22 +696,22 @@ public class OpenGLPlot {
 			divisionSize= closestDivSize5;
 		
 		// calculate the values for each horizontal division
-		int firstDivision = maxX - (maxX % divisionSize);
-		int lastDivision  = minX - (minX % divisionSize);
-		if(firstDivision > maxX)
-			firstDivision -= divisionSize;
-		if(lastDivision < minX)
-			lastDivision += divisionSize;
-		int divisionCount = ((firstDivision - lastDivision) / divisionSize + 1);
+		int lastDivision = maxX - (maxX % divisionSize);
+		int firstDivision  = minX - (minX % divisionSize);
+		if(lastDivision > maxX)
+			lastDivision -= divisionSize;
+		if(firstDivision < minX)
+			firstDivision += divisionSize;
+		int divisionCount = ((lastDivision - firstDivision) / divisionSize + 1);
 		
-		int start = (xAxisStyle == AxisStyle.INNER) ? -1 : 0;
+		int start = (xAxisStyle == AxisStyle.INNER) ? -1 : 0; // so the label for the "almost" first division will be drawn as it slides in or out of view
 		for(int i = start; i < divisionCount; i++) {
-			int number = lastDivision + (i * divisionSize);
+			int number = firstDivision + (i * divisionSize);
 			String text = Integer.toString(number);
-			xValues.put(number, text);
+			divisions.put(number, text);
 		}
 		
-		return xValues;
+		return divisions;
 		
 	}
 	
@@ -701,11 +727,11 @@ public class OpenGLPlot {
 	 */
 	private Map<Float, String> getFloatXdivisions125(GL2ES3 gl, float plotWidth, float minX, float maxX, String axisTitle) {
 		
-		Map<Float, String> xValues = new HashMap<Float, String>();
+		Map<Float, String> divisions = new HashMap<Float, String>();
 		
 		// sanity check
 		if(plotWidth < 1 || minX >= maxX)
-			return xValues;
+			return divisions;
 		
 		for(int maxDivisionsCount = 1; maxDivisionsCount < 100; maxDivisionsCount++) {
 			
@@ -724,46 +750,46 @@ public class OpenGLPlot {
 				divisionSize= closestDivSize5;
 			
 			// calculate the number of divisions
-			float firstDivision = maxX - (maxX % divisionSize);
-			float lastDivision  = minX - (minX % divisionSize);
-			firstDivision += divisionSize; // compensating for floating point error that may skip the end points
-			lastDivision -= divisionSize;
-			while(firstDivision > maxX)
-				firstDivision -= divisionSize;
-			while(lastDivision < minX)
-				lastDivision += divisionSize;
-			int divisionCount = (int) Math.round((firstDivision - lastDivision) / divisionSize) + 1;
+			float lastDivision = maxX - (maxX % divisionSize);
+			float firstDivision  = minX - (minX % divisionSize);
+			lastDivision += divisionSize; // compensating for floating point error that may skip the end points
+			firstDivision -= divisionSize;
+			while(lastDivision > maxX)
+				lastDivision -= divisionSize;
+			while(firstDivision < minX)
+				firstDivision += divisionSize;
+			int divisionCount = (int) Math.round((lastDivision - firstDivision) / divisionSize) + 1;
 			
 			// calculate each division, as both a number and a String
-			Map<Float, String> proposedXvalues = new HashMap<Float, String>();
-			int end = (xAxisStyle == AxisStyle.INNER) ? divisionCount+1 : divisionCount;
+			Map<Float, String> proposedDivisions = new HashMap<Float, String>();
+			int start = (xAxisStyle == AxisStyle.INNER) ? -1 : 0; // so the label for the "almost" first division will be drawn as it slides in or out of view
 			if(divisionSize >= 0.99) {
-				for(int i = 0; i < end; i++) {
-					float number = firstDivision - (i * divisionSize);
-					proposedXvalues.put(number, Theme.getInteger((int) number, axisTitle));
+				for(int i = start; i < divisionCount; i++) {
+					float number = firstDivision + (i * divisionSize);
+					proposedDivisions.put(number, Theme.getInteger((int) number, axisTitle));
 				}
 			} else {
 				int decimalPlaces = (int) Math.ceil(Math.log10(1.0 / divisionSize));
-				for(int i = 0; i < end; i++) {
-					float number = firstDivision - (i * divisionSize);
-					proposedXvalues.put(number, Theme.getFloat(number, decimalPlaces, axisTitle));
+				for(int i = start; i < divisionCount; i++) {
+					float number = firstDivision + (i * divisionSize);
+					proposedDivisions.put(number, Theme.getFloat(number, decimalPlaces, axisTitle));
 				}
 			}
 			
 			// calculate how much width is taken up by the text
-			float width = 0;
-			for(String s : proposedXvalues.values())
-				width += OpenGL.smallTextWidth(gl, s);
+			double width = proposedDivisions.entrySet().stream().filter(entry -> entry.getKey() >= minX)
+			                                                    .mapToDouble(entry -> OpenGL.smallTextWidth(gl, entry.getValue()))
+			                                                    .sum();
 			
 			// stop and don't use this iteration if we're using more than half of the width
 			if(width > plotWidth / 2.0f)
 				break;
 			
-			xValues = proposedXvalues;
+			divisions = proposedDivisions;
 			
 		}
 		
-		return xValues;
+		return divisions;
 		
 	}
 	
@@ -907,7 +933,7 @@ public class OpenGLPlot {
 			firstDivisionTimestamp += millisecondsPerDivision;
 		
 		// populate the Map
-		int start = (xAxisStyle == AxisStyle.INNER) ? -1 : 0;
+		int start = (xAxisStyle == AxisStyle.INNER) ? -1 : 0; // so the label for the "almost" first division will be drawn as it slides in or out of view
 		for(int divisionN = start; divisionN < divisionCount; divisionN++) {
 			long timestampN = firstDivisionTimestamp + (divisionN * millisecondsPerDivision);
 			float pixelX = (float) (timestampN - minTimestamp) / (float) millisecondsOnScreen * width;

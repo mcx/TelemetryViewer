@@ -255,6 +255,18 @@ public class Field implements Comparable<Field> {
 		
 	}
 	
+	public static String insert(ConnectionTelemetry connection, int location, Type type, String name, Color color, String unit, float scalingFactorA, float scalingFactorB) {
+		Field f = new Field(connection);
+		f.location.set(location);
+		f.type.set(type == null ? Type.UINT8 : type);
+		f.name.set(name == null ? "" : name);
+		f.color.set(color == null ? Theme.defaultDatasetColor : color);
+		f.unit.set(unit == null ? "" : unit);
+		f.scalingFactorA.set(scalingFactorA);
+		f.scalingFactorB.set(scalingFactorB);
+		return f.insert();
+	}
+	
 	@Override public int compareTo(Field other) {
 		// hopefully no connection has a packet size >10,000 bytes (>80,000 bits)
 		int thisBitOffset  = (Connections.telemetryConnections.indexOf(this.connection)  * 80000) + ( this.location.get() * 8);
@@ -284,37 +296,6 @@ public class Field implements Comparable<Field> {
 			return null;
 		}
 		
-	}
-	
-	public Field setLocation(int newLocation) {
-		location.set(newLocation);
-		return this;
-	}
-	
-	public Field setType(Type newType) {
-		type.set(newType);
-		return this;
-	}
-	
-	public Field setName(String newName) {
-		name.set(newName);
-		return this;
-	}
-	
-	public Field setColor(Color newColor) {
-		color.set(newColor);
-		return this;
-	}
-	
-	public Field setUnit(String newUnit) {
-		unit.set(newUnit);
-		return this;
-	}
-	
-	public Field setScalingFactors(float newA, float newB) {
-		scalingFactorA.set(newA);
-		scalingFactorB.set(newB);
-		return this;
 	}
 	
 	public boolean isSyncWord() { return type.get().isSyncWord(); }
@@ -466,17 +447,19 @@ public class Field implements Comparable<Field> {
 	}
 	
 	/**
-	 * Gets a sequence of samples, as a float[].
+	 * Gets a sequence of samples, as a double[].
 	 * 
 	 * @param firstSampleNumber    First sample number to obtain, inclusive.
 	 * @param lastSampleNumber     Last sample number to obtain, inclusive.
 	 * @param cache                Place to cache samples.
-	 * @return                     The samples, as a float[].
+	 * @return                     The samples, as a double[].
 	 */
-	public float[] getSamplesArray(int firstSampleNumber, int lastSampleNumber, StorageFloats.Cache cache) {
+	public double[] getSamplesArray(int firstSampleNumber, int lastSampleNumber, StorageFloats.Cache cache) {
 		
-		float[] array = new float[lastSampleNumber - firstSampleNumber + 1];
-		floats.getSamplesBuffer(firstSampleNumber, lastSampleNumber, cache).get(array);
+		double[] array = new double[lastSampleNumber - firstSampleNumber + 1];
+		FloatBuffer buffer = floats.getSamplesBuffer(firstSampleNumber, lastSampleNumber, cache);
+		for(int i = 0; i < array.length; i++)
+			array[i] = (double) buffer.get();
 		return array;
 		
 	}

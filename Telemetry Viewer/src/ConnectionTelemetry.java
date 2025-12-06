@@ -362,17 +362,17 @@ public final class ConnectionTelemetry extends Connection {
 		                   txAppendLF.set(false);
 		                   
 		                   if(newProtocol == Protocol.TC66) {
-		                       new Field(this).setLocation(0 ).setName("Voltage"         ).setColor(new Color(0x00FF00)).setUnit("V"      ).insert();
-		                       new Field(this).setLocation(1 ).setName("Current"         ).setColor(new Color(0x00FFFF)).setUnit("A"      ).insert();
-		                       new Field(this).setLocation(2 ).setName("Power"           ).setColor(new Color(0xFF00FF)).setUnit("W"      ).insert();
-		                       new Field(this).setLocation(3 ).setName("Resistance"      ).setColor(new Color(0x00FFFF)).setUnit("\u2126" ).insert();
-		                       new Field(this).setLocation(4 ).setName("Group 0 Capacity").setColor(new Color(0xFF0000)).setUnit("mAh"    ).insert();
-		                       new Field(this).setLocation(5 ).setName("Group 0 Energy"  ).setColor(new Color(0xFFFF00)).setUnit("mWh"    ).insert();
-		                       new Field(this).setLocation(6 ).setName("Group 1 Capacity").setColor(new Color(0xFF0000)).setUnit("mAh"    ).insert();
-		                       new Field(this).setLocation(7 ).setName("Group 1 Energy"  ).setColor(new Color(0xFFFF00)).setUnit("mWh"    ).insert();
-		                       new Field(this).setLocation(8 ).setName("PCB Temperature" ).setColor(new Color(0xFFFF00)).setUnit("Degrees").insert();
-		                       new Field(this).setLocation(9 ).setName("D+ Voltage"      ).setColor(new Color(0x8000FF)).setUnit("V"      ).insert();
-		                       new Field(this).setLocation(10).setName("D- Voltage"      ).setColor(new Color(0x0000FF)).setUnit("V"      ).insert();
+		                	   Field.insert(this,  0, null, "Voltage",          new Color(0x00FF00), "V",       1, 1);
+		                	   Field.insert(this,  1, null, "Current",          new Color(0x00FFFF), "A",       1, 1);
+		                       Field.insert(this,  2, null, "Power",            new Color(0xFF00FF), "W",       1, 1);
+		                       Field.insert(this,  3, null, "Resistance",       new Color(0x00FFFF), "\u2126",  1, 1);
+		                       Field.insert(this,  4, null, "Group 0 Capacity", new Color(0xFF0000), "mAh",     1, 1);
+		                       Field.insert(this,  5, null, "Group 0 Energy",   new Color(0xFFFF00), "mWh",     1, 1);
+		                       Field.insert(this,  6, null, "Group 1 Capacity", new Color(0xFF0000), "mAh",     1, 1);
+		                       Field.insert(this,  7, null, "Group 1 Energy",   new Color(0xFFFF00), "mWh",     1, 1);
+		                       Field.insert(this,  8, null, "PCB Temperature",  new Color(0xFFFF00), "Degrees", 1, 1);
+		                       Field.insert(this,  9, null, "D+ Voltage",       new Color(0x8000FF), "V",       1, 1);
+		                       Field.insert(this, 10, null, "D- Voltage",       new Color(0x0000FF), "V",       1, 1);
 		                       setFieldsDefined(true);
 		                       sampleRate.set(2).forceDisabled(true);
 		                       baudRate.set("9600 Baud").forceDisabled(true);
@@ -401,10 +401,10 @@ public final class ConnectionTelemetry extends Connection {
 				configWidgets.add(protocol.set(Protocol.CSV).forceDisabled(true));
 				configWidgets.add(sampleRate.set(10000).forceDisabled(true));
 				
-				new Field(this).setLocation(0).setName("Low Quality Noise"               ).setColor(Color.RED  ).setUnit("Volts").insert();
-				new Field(this).setLocation(1).setName("Noisey Sine Wave 100-500Hz"      ).setColor(Color.GREEN).setUnit("Volts").insert();
-				new Field(this).setLocation(2).setName("Intermittent Sawtooth Wave 100Hz").setColor(Color.BLUE ).setUnit("Volts").insert();
-				new Field(this).setLocation(3).setName("Clean Sine Wave 1kHz"            ).setColor(Color.CYAN ).setUnit("Volts").insert();
+				Field.insert(this, 0, null, "Low Quality Noise",                Color.RED,   "Volts", 1, 1);
+				Field.insert(this, 1, null, "Noisey Sine Wave 100-500Hz",       Color.GREEN, "Volts", 1, 1);
+				Field.insert(this, 2, null, "Intermittent Sawtooth Wave 100Hz", Color.BLUE,  "Volts", 1, 1);
+				Field.insert(this, 3, null, "Clean Sine Wave 1kHz",             Color.CYAN,  "Volts", 1, 1);
 				setFieldsDefined(true);
 			}
 			case STRESS_TEST -> {
@@ -412,12 +412,12 @@ public final class ConnectionTelemetry extends Connection {
 				configWidgets.add(protocol.set(Protocol.BINARY).forceDisabled(true));
 				configWidgets.add(sampleRate.disableWithMessage("Maximum").forceDisabled(true));
 				
-				new Field(this).setLocation(0).setType(Field.Type.UINT8_SYNC_WORD   ).setName("0xAA").insert();
-				new Field(this).setLocation(1).setType(Field.Type.INT16_LE          ).setName("a"   ).setColor(Color.RED  ).insert();
-				new Field(this).setLocation(3).setType(Field.Type.INT16_LE          ).setName("b"   ).setColor(Color.GREEN).insert();
-				new Field(this).setLocation(5).setType(Field.Type.INT16_LE          ).setName("c"   ).setColor(Color.BLUE ).insert();
-				new Field(this).setLocation(7).setType(Field.Type.INT16_LE          ).setName("d"   ).setColor(Color.CYAN ).insert();
-				new Field(this).setLocation(9).setType(Field.Type.UINT16_LE_CHECKSUM).insert();
+				Field.insert(this, 0, Field.Type.UINT8_SYNC_WORD,    "0xAA", null,        null, 1, 1);
+				Field.insert(this, 1, Field.Type.INT16_LE,           "a",    Color.RED,   null, 1, 1);
+				Field.insert(this, 3, Field.Type.INT16_LE,           "b",    Color.GREEN, null, 1, 1);
+				Field.insert(this, 5, Field.Type.INT16_LE,           "c",    Color.BLUE,  null, 1, 1);
+				Field.insert(this, 7, Field.Type.INT16_LE,           "d",    Color.CYAN,  null, 1, 1);
+				Field.insert(this, 9, Field.Type.UINT16_LE_CHECKSUM, null,   null,        null, 1, 1);
 				setFieldsDefined(true);
 			}
 			case UART -> {
@@ -482,12 +482,13 @@ public final class ConnectionTelemetry extends Connection {
 		if(deriveFrom != null) {
 			int location = (isFieldAllowed(pending, deriveFrom.location.get(), Field.Type.UINT8) == null) ? deriveFrom.location.get() :
 			                                                                                                getFirstAvailableLocation();
-			pending.setLocation(location)
-			       .setType(deriveFrom.type.get())
-			       .setName(deriveFrom.type.get().isSyncWord() && !pending.type.get().isSyncWord() ? "" : deriveFrom.name.get())
-			       .setColor(deriveFrom.color.get())
-			       .setUnit(deriveFrom.unit.get())
-			       .setScalingFactors(deriveFrom.scalingFactorA.get(), deriveFrom.scalingFactorB.get());
+			pending.location.set(location);
+			pending.type.set(deriveFrom.type.get());
+			pending.name.set(deriveFrom.type.get().isSyncWord() && !pending.type.get().isSyncWord() ? "" : deriveFrom.name.get());
+			pending.color.set(deriveFrom.color.get());
+			pending.unit.set(deriveFrom.unit.get());
+			pending.scalingFactorA.set(deriveFrom.scalingFactorA.get());
+			pending.scalingFactorB.set(deriveFrom.scalingFactorB.get());
 		}
 		
 		if(protocol.is(Protocol.CSV))

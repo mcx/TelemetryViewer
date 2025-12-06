@@ -445,10 +445,7 @@ public class OpenGLCharts extends JPanel {
 					// determine the timestamp and sample numbers corresponding to the right-edge of a time domain plot
 					long now = System.currentTimeMillis();
 					long endTimestamp = switch(state) {
-					case PLAYING_LIVE       ->   Connections.allConnections.stream()
-					                                        .filter(connection -> connection.getSampleCount() > 0)
-					                                        .mapToLong(connection -> connection.getLastTimestamp())
-					                                        .max().orElse(Long.MIN_VALUE);
+					case PLAYING_LIVE       ->   Connections.getLastTimestamp();
 					case PAUSED             ->   nonLiveTimestamp;
 					case REWINDING, PLAYING -> { long delta = (now - previousFrameTimestamp) * playSpeed;
 					                             long newTimestamp = nonLiveTimestamp + delta;
@@ -492,13 +489,11 @@ public class OpenGLCharts extends JPanel {
 					
 					// process the global trigger if enabled
 					if(globalTrigger == null || globalTrigger.mode.is(WidgetTrigger.Mode.DISABLED)) {
-						triggerDetails = new WidgetTrigger.Result(false, null, -1, -1, -1, -1, 0, endTimestamp);
+						triggerDetails = new WidgetTrigger.Result(false, null, -1, endTimestamp, -1, endTimestamp, 0, endTimestamp);
 					} else {
-						int endSampleNumber = -1;
-						if(globalTrigger.normalDataset != null && endSampleNumbers.containsKey(globalTrigger.normalDataset.connection))
-							endSampleNumber = endSampleNumbers.get(globalTrigger.normalDataset.connection);
-						else if(globalTrigger.bitfieldState != null && endSampleNumbers.containsKey(globalTrigger.bitfieldState.connection))
-							endSampleNumber = endSampleNumbers.get(globalTrigger.bitfieldState.connection);
+						int endSampleNumber = (globalTrigger.normalDataset != null) ? endSampleNumbers.get(globalTrigger.normalDataset.connection) :
+						                      (globalTrigger.bitfieldState != null) ? endSampleNumbers.get(globalTrigger.bitfieldState.connection) :
+						                                                              -1;
 						
 						triggerDetails = globalTrigger.checkForTrigger(endSampleNumber, endTimestamp, zoomLevel);
 						
@@ -532,9 +527,7 @@ public class OpenGLCharts extends JPanel {
 					var endTime    = endTimestamp;
 					Charts.forEach(chart -> {
 						
-						int lastSampleNumber = -1;
-						if(chart.datasets.connection != null && endSamples.containsKey(chart.datasets.connection))
-							lastSampleNumber = endSamples.get(chart.datasets.connection);
+						int lastSampleNumber = (chart.datasets.connection == null) ? -1 : endSamples.get(chart.datasets.connection);
 						
 						// if there is a maximized chart, only draw that chart
 						if(maximizedChart != null && maximizedChart != removingChart && chart != maximizedChart && !maximizing && !demaximizing)
@@ -589,8 +582,11 @@ public class OpenGLCharts extends JPanel {
 						if(width < 1 || height < 1)
 							return;
 						
-						int chartMouseX = (eventHandler != null) ? -1 : mouseX - xOffset;
-						int chartMouseY = (eventHandler != null) ? -1 : mouseY - yOffset;
+						// only give this chart the mouse location if an event doesn't already exist, or if the existing event belongs to this chart
+						// this ensures a chart doesn't draw a tooltip if another chart's drag event is in progress
+						boolean provideMouse = (eventHandler == null) || (eventHandler != null && eventHandler.chart == chart);
+						int chartMouseX = provideMouse ? mouseX - xOffset : -1;
+						int chartMouseY = provideMouse ? mouseY - yOffset : -1;
 						boolean mouseOverButtons = chartMouseX >= width + Theme.tileShadowOffset - 46.5f * Theme.lineWidth && chartMouseY >= height - 15.5f * Theme.lineWidth;
 						
 						float[] chartMatrix = Arrays.copyOf(screenMatrix, 16);
@@ -622,6 +618,14 @@ public class OpenGLCharts extends JPanel {
 						
 					});
 					
+					if(maximizedChart != null) {
+						// ensure a maximizing chart is drawn on top of all other charts
+						Charts.drawChartLast(maximizedChart);
+					} else if(chartUnderMouse != null && chartUnderMouse instanceof OpenGLTimelineChart) {
+						// if the mouse is over a timeline chart, draw it last so timeline tooltips can overlap other charts
+						Charts.drawChartLast(chartUnderMouse);
+					}
+					
 					// remove a chart if necessary
 					if(removing && animationEndTimestamp <= System.currentTimeMillis()) {
 						Charts.remove(removingChart);
@@ -634,7 +638,7 @@ public class OpenGLCharts extends JPanel {
 				}
 				
 				// update the mouse cursor
-				setCursor(eventHandler == null ? Theme.defaultCursor : eventHandler.cursor);
+				setCursor(eventHandler == null || eventHandler.dragInProgress ? Theme.defaultCursor : eventHandler.cursor);
 				
 				// if benchmarking, draw the CPU/GPU benchmarks
 				// GPU benchmarking is not possible with OpenGL ES
@@ -1298,7 +1302,6 @@ public class OpenGLCharts extends JPanel {
 					maximizing = true;
 					maximizedChart = chartUnderMouse;
 					animationEndTimestamp = System.currentTimeMillis() + Theme.animationMilliseconds;
-					Charts.drawChartLast(maximizedChart); // ensure the chart is drawn on top of the others during the maximize animation
 				} else {
 					demaximizing = true;
 					animationEndTimestamp = System.currentTimeMillis() + Theme.animationMilliseconds;

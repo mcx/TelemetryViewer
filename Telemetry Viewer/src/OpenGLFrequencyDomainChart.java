@@ -49,7 +49,7 @@ public class OpenGLFrequencyDomainChart extends Chart {
 	// user settings
 	private DatasetsInterface.WidgetDatasets datasetsWidget;
 	private WidgetTextfield<Integer> sampleCountTextfield;
-	private WidgetCheckbox legendVisibility;
+	private WidgetToggleButton<OpenGLPlot.LegendStyle> legendStyle;
 	private WidgetToggleButton<Type> chartType;
 	private WidgetTextfield<Integer> fftCount;
 	private WidgetTextfield<Integer> xAxisBinCount;
@@ -82,7 +82,8 @@ public class OpenGLFrequencyDomainChart extends Chart {
 		                                          return true;
 		                                      });
 		
-		legendVisibility = new WidgetCheckbox("Show Legend", true);
+		legendStyle = new WidgetToggleButton<OpenGLPlot.LegendStyle>("Legend", OpenGLPlot.LegendStyle.values(), OpenGLPlot.LegendStyle.OUTER)
+		                  .setExportLabel("legend style");
 		
 		fftCount = WidgetTextfield.ofInt(2, 100, 20)
 		                          .setSuffix("FFTs")
@@ -203,7 +204,7 @@ public class OpenGLFrequencyDomainChart extends Chart {
 		
 		widgets.add(datasetsWidget);
 		widgets.add(sampleCountTextfield);
-		widgets.add(legendVisibility);
+		widgets.add(legendStyle);
 		widgets.add(chartType);
 		widgets.add(fftCount);
 		widgets.add(minPower);
@@ -226,8 +227,8 @@ public class OpenGLFrequencyDomainChart extends Chart {
 		
 		gui.add(Theme.newWidgetsPanel("Data")
 		             .with(datasetsWidget)
-		             .with(sampleCountTextfield, "split 2, grow x, grow y, sizegroup 0")
-		             .with(legendVisibility,     "grow x, grow y, sizegroup 0")
+		             .with(sampleCountTextfield)
+		             .with(legendStyle)
 		             .getPanel());
 		
 		gui.add(Theme.newWidgetsPanel("FFTs")
@@ -294,7 +295,7 @@ public class OpenGLFrequencyDomainChart extends Chart {
 		
 		// draw the plot
 		return new OpenGLPlot(chartMatrix, width, height, mouseX, mouseY)
-		           .withLegend(legendVisibility.get(), datasets)
+		           .withLegend(legendStyle.get(), datasets)
 		           .withXaxis(xAxisStyle.get(), OpenGLPlot.AxisScale.LINEAR, plotMinX, plotMaxX, xAxisTitle)
 		           .withYaxis(yAxisStyle.get(), chartType.is(Type.WATERFALL) ? OpenGLPlot.AxisScale.LINEAR : OpenGLPlot.AxisScale.LOG, plotMinY, plotMaxY, yAxisTitle)
 		           .withFftInfo(fftInfoVisibility.get(), chartType.get(), ffts.windowLength == 0 ? duration : ffts.windowLength, ffts.windows.size(), plotMinPower, plotMaxPower)
@@ -437,7 +438,7 @@ public class OpenGLFrequencyDomainChart extends Chart {
 		                       tooltip.addRow(datasets.getNormal(datasetN).color.getGl(),
 		                                      Theme.getLog10float(fftOfDataset.get(datasetN)[binN], "Watts"),
 		                                      (float) Math.max((int) ((fftOfDataset.get(datasetN)[binN] - plotMinY) / plotRange * plot.height()), 0));
-		                   tooltip.draw(gl, plot.mouseX(), plot.mouseY(), plot.width(), plot.height());
+		                   tooltip.draw(gl, plot.mouseX(), plot.mouseY(), plot.width(), plot.height(), false);
 		                   
 		               } else if(chartType.is(Type.HISTOGRAM)) {
 		                   
@@ -471,7 +472,7 @@ public class OpenGLFrequencyDomainChart extends Chart {
 		                       tooltip.addRow(datasets.getNormal(datasetN).color.getGl(),
 		                                      Theme.getFloat((float) histogram[datasetN][yBin][xBin] / (float) (ffts.windows.size() * fftBinsPerPlotBin) * 100f, "%", true));
 		                   
-		                   tooltip.draw(gl, plot.mouseX(), plot.mouseY(), plot.width(), plot.height());
+		                   tooltip.draw(gl, plot.mouseX(), plot.mouseY(), plot.width(), plot.height(), false);
 		                   
 		               } else if(chartType.is(Type.WATERFALL)) {
 		                   
@@ -507,7 +508,7 @@ public class OpenGLFrequencyDomainChart extends Chart {
 		                           tooltip.addRow(datasets.getNormal(datasetN).color.getGl(),
 		                                          Theme.getLog10float(power, "Watts"));
 		                       }
-		                       tooltip.draw(gl, plot.mouseX(), plot.mouseY(), plot.width(), plot.height());
+		                       tooltip.draw(gl, plot.mouseX(), plot.mouseY(), plot.width(), plot.height(), false);
 		                   }
 		               }
 		               return null;
@@ -707,18 +708,14 @@ public class OpenGLFrequencyDomainChart extends Chart {
 				this.firstSampleNumber = firstSampleNumber;
 				datasets.forEachNormal((dataset, cache) -> {
 					
-					float[] samples = dataset.getSamplesArray(firstSampleNumber, lastSampleNumber, cache);
+					double[] samples = dataset.getSamplesArray(firstSampleNumber, lastSampleNumber, cache);
 					
+					// important: use float64, not float32, for better FFT resolution
 					if(fft == null || fftSampleCount != samples.length) {
 						fft = new DoubleFFT_1D(samples.length);
 						fftSampleCount = samples.length;
 					}
-					
-					// converting to float64's for better FFT resolution
-					double[] samplesD = new double[samples.length];
-					for(int i = 0; i < samples.length; i++)
-						samplesD[i] = samples[i];
-					fft.realForward(samplesD);
+					fft.realForward(samples);
 					int binCount = samples.length / 2 + 1;
 					
 					// if we should ignore outliers when autoscaling, we will need to calculate percentiles
@@ -735,14 +732,14 @@ public class OpenGLFrequencyDomainChart extends Chart {
 						double realV;
 						double imaginaryV;
 						if(binN == 0) {
-							realV = samplesD[2*binN + 0];
+							realV = samples[2*binN + 0];
 							imaginaryV = 0;
 						} else if(binN == binCount - 1) {
-							realV = samplesD[1];
+							realV = samples[1];
 							imaginaryV = 0;
 						} else {
-							realV      = samplesD[2*binN + 0];
-							imaginaryV = samplesD[2*binN + 1];
+							realV      = samples[2*binN + 0];
+							imaginaryV = samples[2*binN + 1];
 						}
 						realV      /= sampleCount;
 						imaginaryV /= sampleCount;

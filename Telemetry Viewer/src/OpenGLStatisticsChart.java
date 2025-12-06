@@ -144,18 +144,14 @@ public class OpenGLStatisticsChart extends Chart {
 		if(sampleCount > 0)
 			for(int datasetN = 0; datasetN < datasetsCount; datasetN++) {
 				Field dataset = datasets.getNormal(datasetN);
-				float[] samples = datasets.getSamplesArray(dataset, firstSampleNumber, lastSampleNumber);
-				double[] doubles = new double[samples.length];
-				for(int i = 0; i < samples.length; i++)
-					doubles[i] = (double) samples[i];
-				
-				DescriptiveStatistics stats = new DescriptiveStatistics(doubles);
+				double[] samples = datasets.getSamplesArray(dataset, firstSampleNumber, lastSampleNumber);
+				DescriptiveStatistics stats = new DescriptiveStatistics(samples);
 				
 				int column = datasetN + 1;
 				line = 0;
 				text[column][line++] = dataset.name.get();
 				String unit = dataset.unit.get();
-				if(currentValuesVisibility.get())     text[column][line++] = Theme.getFloat(samples[samples.length - 1],          unit, false);
+				if(currentValuesVisibility.get())     text[column][line++] = Theme.getFloat((float) samples[samples.length - 1],  unit, false);
 				if(minimumsVisibility.get())          text[column][line++] = Theme.getFloat((float) stats.getMin(),               unit, false);
 				if(maximumsVisibility.get())          text[column][line++] = Theme.getFloat((float) stats.getMax(),               unit, false);
 				if(meansVisibility.get())             text[column][line++] = Theme.getFloat((float) stats.getMean(),              unit, false);

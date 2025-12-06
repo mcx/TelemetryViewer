@@ -277,7 +277,34 @@ public abstract class Chart {
 	}
 	
 	public static final class Tooltip {
-		private record Row(float[] glColor, String text) {}
+		private record Row(float[] glColor, String text, ConnectionCamera.Frame image, int[] texHandle) {
+			/**
+			 * @return    Width needed for this row, without padding, in pixels.
+			 */
+			public float getWidth(GL2ES3 gl) {
+				float width = 0;
+				if(glColor != null)
+					width += OpenGL.smallTextHeight + Theme.tooltipTextPadding;
+				if(text != null)
+					width += OpenGL.smallTextWidth(gl, text);
+				if(image != null) {
+					width = (image.height < image.width ? 100 : 100 * ((float) image.width / (float) image.height)) * Theme.lineWidth;
+				}
+				return width;
+			}
+			
+			/**
+			 * @return    Height needed for this row, without padding, in pixels.
+			 */
+			public float getHeight() {
+				float height = 0;
+				if(glColor != null || text != null)
+					height = OpenGL.smallTextHeight;
+				if(image != null)
+					height = (image.height >= image.width ? 100 : 100 / ((float) image.width / (float) image.height)) * Theme.lineWidth;
+				return height;
+			}
+		}
 		private List<Row> rows = new ArrayList<Row>();
 		public final int sampleNumber;
 		public final long timestamp;
@@ -298,7 +325,7 @@ public abstract class Chart {
 			this.xAnchor = xAnchor;
 			if(yAnchor >= 0)
 				this.yAnchors.add(yAnchor);
-			List.of(title.split("\n")).forEach(line -> rows.add(new Row(null, line)));
+			List.of(title.split("\n")).forEach(line -> rows.add(new Row(null, line, null, null)));
 		}
 		
 		/**
@@ -319,17 +346,22 @@ public abstract class Chart {
 				this.yAnchors.add(yAnchor);
 			String title = (sampleNumber >= 0) ? "Sample " + sampleNumber + "\n" + Settings.formatTimestampToMilliseconds(timestamp) :
 			                                     Settings.formatTimestampToMilliseconds(timestamp);
-			List.of(title.split("\n")).forEach(line -> rows.add(new Row(null, line)));
+			List.of(title.split("\n")).forEach(line -> rows.add(new Row(null, line, null, null)));
 		}
 		
 		public Tooltip addRow(float[] glColor, String text, float yAnchor) {
-			rows.add(new Row(glColor, text));
+			rows.add(new Row(glColor, text, null, null));
 			yAnchors.add(yAnchor);
 			return this;
 		}
 		
 		public Tooltip addRow(float[] glColor, String text) {
-			rows.add(new Row(glColor, text));
+			rows.add(new Row(glColor, text, null, null));
+			return this;
+		}
+		
+		public Tooltip addImage(ConnectionCamera.Frame image, int[] texHandle) {
+			rows.add(new Row(null, null, image, texHandle));
 			return this;
 		}
 		
@@ -378,6 +410,8 @@ public abstract class Chart {
 				if(!isDrawable)
 					return false;
 				
+				gl.glDisable(GL3.GL_SCISSOR_TEST);
+				
 				if(anchorLineDots != null)
 					OpenGL.drawPointsXy(gl, Theme.tooltipVerticalBarColor, OpenGL.buffer.rewind().put(anchorLineDots).rewind(), anchorLineDots.length / 2);
 				
@@ -399,29 +433,43 @@ public abstract class Chart {
 				// draw the outline
 				OpenGL.drawLinesXyrgba(gl, GL3.GL_LINES, outline.rewind(), outline.capacity() / 6);
 				
-				// draw the text and color boxes if they would be visible
+				// draw the rows if they would be visible
 				if(!partlyObscuredBy(nextTooltip)) {
-					for(int i = 0; i < rows.size(); i++) {
-						Row row = rows.get(i);
-						float[] color = row.glColor;
-						if(faded && color != null)
-							color = new float[] {color[0], color[1], color[2], 0.3f};
-						float textX = (row.glColor == null) ? xBoxLeft + (xBoxRight - xBoxLeft - OpenGL.smallTextWidth(gl, row.text)) / 2 :
-						                                      xBoxLeft + padding + OpenGL.smallTextHeight + Theme.tooltipTextPadding;
-						float textY = yBoxTop - ((i + 1) * (padding + OpenGL.smallTextHeight));
-						OpenGL.drawSmallTextTransparent(gl, row.text, (int) textX, (int) textY, 0, faded ? 0.3f : 1f);
-						if(row.glColor != null)
-							OpenGL.drawQuad2D(gl, color, textX - Theme.tooltipTextPadding - OpenGL.smallTextHeight, textY,
-							                             textX - Theme.tooltipTextPadding,                          textY + OpenGL.smallTextHeight);
+					float y = yBoxTop;
+					for(Row row : rows) {
+						y -= padding;
+						if(row.glColor != null && row.text != null) {
+							// row has a color and a line of text, draw it left aligned
+							float[] color = !faded ? row.glColor : new float[] {row.glColor[0], row.glColor[1], row.glColor[2], 0.3f};
+							y -= OpenGL.smallTextHeight;
+							OpenGL.drawQuad2D(gl, color, xBoxLeft + padding,                          y,
+							                             xBoxLeft + padding + OpenGL.smallTextHeight, y + OpenGL.smallTextHeight);
+							OpenGL.drawSmallTextTransparent(gl, row.text, (int) (xBoxLeft + padding + OpenGL.smallTextHeight + Theme.tooltipTextPadding), (int) y, 0, faded ? 0.3f : 1f);
+						} else if(row.text != null) {
+							// row only has a line of text, draw it center aligned
+							y -= OpenGL.smallTextHeight;
+							OpenGL.drawSmallTextTransparent(gl, row.text, (int) (xBoxLeft + (xBoxRight - xBoxLeft - OpenGL.smallTextWidth(gl, row.text)) / 2), (int) y, 0, faded ? 0.3f : 1f);
+						} else if(row.image != null) {
+							// row only has an image, draw it center aligned
+							float imageHeight = row.getHeight();
+							float imageWidth  = row.getWidth(gl);
+							y -= imageHeight;
+							float xLeft = xBoxLeft + ((xBoxRight - xBoxLeft) / 2) - (imageWidth / 2);
+							float yTop = y + imageHeight;
+							OpenGL.writeTexture(gl, row.texHandle, row.image.width, row.image.height, row.image.isRGB ? GL3.GL_RGB : GL3.GL_BGR, GL3.GL_UNSIGNED_BYTE, row.image.buffer);
+							OpenGL.drawTexturedBox(gl, row.texHandle, false, xLeft, yTop, imageWidth, -imageHeight, 0, false);
+						}
 					}
 				}
+				
+				gl.glEnable(GL3.GL_SCISSOR_TEST);
 				
 				return true;
 			}
 			
 		}
 		
-		public Drawable bake(GL2ES3 gl, float plotWidth, float plotHeight, int mouseX, int mouseY, float xAnchor) {
+		public Drawable bake(GL2ES3 gl, float plotWidth, float plotHeight, int mouseX, int mouseY, float xAnchor, boolean forceDraw) {
 			
 			// sanity checks
 			if(rows.isEmpty())
@@ -430,12 +478,10 @@ public abstract class Chart {
 				return new Drawable(false);
 			
 			// calculate the bounding box
-			float maxWidth = (float) rows.stream().mapToDouble(row -> (row.glColor == null) ?
-			                                                          OpenGL.smallTextWidth(gl, row.text) : 
-			                                                          OpenGL.smallTextWidth(gl, row.text) + OpenGL.smallTextHeight + Theme.tooltipTextPadding).max().orElse(0);
-			float padding = 6f * Settings.GUI.getChartScalingFactor();
+			float padding = Theme.tilePadding;
+			float maxWidth = (float) rows.stream().mapToDouble(row -> row.getWidth(gl)).max().orElse(0);
 			float boxWidth = maxWidth + (2 * padding);
-			float boxHeight = rows.size() * (OpenGL.smallTextHeight + padding) + padding;
+			float boxHeight = (float) rows.stream().mapToDouble(row -> row.getHeight()).sum() + ((rows.size() + 1) * padding);
 			
 			// determine the outline color and where/how to anchor
 			boolean edgeMarker = yAnchors.isEmpty();
@@ -453,7 +499,7 @@ public abstract class Chart {
 			
 			// determine which orientation to use
 			// vertex order was arbitrarily chosen to start at the top-left corner, then go clockwise, then do the anchor line if applicable
-			if(yAnchor + padding + boxHeight <= plotHeight) {
+			if(yAnchor + padding + boxHeight <= plotHeight || forceDraw) {
 				if(xAnchor - (boxWidth / 2f) >= 0 && xAnchor + (boxWidth / 2f) <= plotWidth) {
 					// space above and beside the anchor, so point south
 					float xBoxLeft   = xAnchor - (boxWidth / 2f);
@@ -765,18 +811,19 @@ public abstract class Chart {
 		}
 		
 		/**
-		 * Draws this tooltip on screen. An anchor point specifies where the tooltip should point to.
+		 * Draws this tooltip on screen.
 		 * 
 		 * @param gl            The OpenGL context.
 		 * @param mouseX        X location of the mouse, in pixels, relative to the plot region.
 		 * @param mouseY        Y location of the mouse, in pixels, relative to the plot region.
 		 * @param plotWidth     Width of the plot region, in pixels.
 		 * @param plotHeight    Height of the plot region, in pixels.
+		 * @param forceDraw     If true, draw this tooltip even if it does not fit inside the plot region.
 		 * @returns             True if the tooltip was drawn, or false there wasn't enough space to draw it.
 		 */
-		public boolean draw(GL2ES3 gl, int mouseX, int mouseY, float plotWidth, float plotHeight) {
+		public boolean draw(GL2ES3 gl, int mouseX, int mouseY, float plotWidth, float plotHeight, boolean forceDraw) {
 			
-			return bake(gl, plotWidth, plotHeight, mouseX, mouseY, xAnchor).draw(gl, false, null);
+			return bake(gl, plotWidth, plotHeight, mouseX, mouseY, xAnchor, forceDraw).draw(gl, false, null);
 			
 		}
 	}

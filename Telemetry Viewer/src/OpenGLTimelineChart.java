@@ -2,13 +2,17 @@ import javax.swing.JPanel;
 
 import com.jogamp.opengl.GL;
 import com.jogamp.opengl.GL2ES3;
+import com.jogamp.opengl.GL3;
 
 public class OpenGLTimelineChart extends Chart {
 	
 	private WidgetCheckbox showControls;
 	private WidgetCheckbox showTime;
 	private WidgetCheckbox showTimeline;
+	private WidgetCheckbox showCameraPreviews;
 	private DatasetsInterface.WidgetDatasets datasetsWidget;
+	
+	private int[] texHandle;
 	
 	// these need to be fields so the mouse event handler can see the *current* values
 	// otherwise the handler will only see the values from when the handler was defined, and click-and-dragging will not work as expected!
@@ -28,7 +32,12 @@ public class OpenGLTimelineChart extends Chart {
 		showTime = new WidgetCheckbox("Show Time", true);
 		
 		showTimeline = new WidgetCheckbox("Show Timeline", true)
-		                   .onChange(isSelected -> datasetsWidget.setVisible(isSelected));
+		                   .onChange(isSelected -> {
+		                        datasetsWidget.setVisible(isSelected);
+		                        showCameraPreviews.setEnabled(isSelected);
+		                    });
+		
+		showCameraPreviews = new WidgetCheckbox("Show Camera Previews", true);
 		
 		widgets.add(showControls);
 		widgets.add(showTime);
@@ -43,6 +52,7 @@ public class OpenGLTimelineChart extends Chart {
 		             .with(showControls)
 		             .with(showTime)
 		             .with(showTimeline)
+		             .with(showCameraPreviews)
 		             .with(datasetsWidget)
 		             .getPanel());
 		
@@ -138,23 +148,24 @@ public class OpenGLTimelineChart extends Chart {
 		                                   OpenGL.drawSmallText(gl, s, (int) (xRewindButtonLeft + Theme.lineWidth), (int) (yButtonsBottom + 2*Theme.lineWidth), 0);
 		                               }
 		                               
-		                               // outline a button if the mouse is over it
-		                               if(plot.mouseX() >= xBeginButtonLeft && plot.mouseX() <= xBeginButtonRight && plot.mouseY() >= yButtonsBottom && plot.mouseY() <= yButtonsTop) {
-		                                   OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xBeginButtonLeft, yButtonsBottom, buttonSize, buttonSize);
-		                                   handler = EventHandler.onPress(event -> OpenGLCharts.GUI.setPaused(Connections.getFirstTimestamp(), null, 0));
-		                               } else if(plot.mouseX() >= xRewindButtonLeft && plot.mouseX() <= xRewindButtonRight && plot.mouseY() >= yButtonsBottom && plot.mouseY() <= yButtonsTop) {
-		                                   OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xRewindButtonLeft, yButtonsBottom, buttonSize, buttonSize);
-		                                   handler = EventHandler.onPress(event -> OpenGLCharts.GUI.setPlayBackwards());
-		                               } else if(plot.mouseX() >= xPauseButtonLeft && plot.mouseX() <= xPauseButtonRight && plot.mouseY() >= yButtonsBottom && plot.mouseY() <= yButtonsTop) {
-		                                   OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xPauseButtonLeft, yButtonsBottom, buttonSize, buttonSize);
-		                                   handler = EventHandler.onPress(event -> OpenGLCharts.GUI.setPaused(triggerDetails.nonTriggeredEndTimestamp(), null, 0));
-		                               } else if(plot.mouseX() >= xPlayButtonLeft && plot.mouseX() <= xPlayButtonRight && plot.mouseY() >= yButtonsBottom && plot.mouseY() <= yButtonsTop) {
-		                                   OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xPlayButtonLeft, yButtonsBottom, buttonSize, buttonSize);
-		                                   handler = EventHandler.onPress(event -> OpenGLCharts.GUI.setPlayForwards());
-		                               } else if(plot.mouseX() >= xEndButtonLeft && plot.mouseX() <= xEndButtonRight && plot.mouseY() >= yButtonsBottom && plot.mouseY() <= yButtonsTop) {
-		                                   OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xEndButtonLeft, yButtonsBottom, buttonSize, buttonSize);
-		                                   handler = EventHandler.onPress(event -> OpenGLCharts.GUI.setPlayLive());
-		                               }
+		                               // outline a button if the mouse is over it and a drag is not in progress
+		                               if(OpenGLCharts.GUI.eventHandler == null)
+			                               if(plot.mouseX() >= xBeginButtonLeft && plot.mouseX() <= xBeginButtonRight && plot.mouseY() >= yButtonsBottom && plot.mouseY() <= yButtonsTop) {
+			                                   OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xBeginButtonLeft, yButtonsBottom, buttonSize, buttonSize);
+			                                   handler = EventHandler.onPress(event -> OpenGLCharts.GUI.setPaused(Connections.getFirstTimestamp(), null, 0));
+			                               } else if(plot.mouseX() >= xRewindButtonLeft && plot.mouseX() <= xRewindButtonRight && plot.mouseY() >= yButtonsBottom && plot.mouseY() <= yButtonsTop) {
+			                                   OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xRewindButtonLeft, yButtonsBottom, buttonSize, buttonSize);
+			                                   handler = EventHandler.onPress(event -> OpenGLCharts.GUI.setPlayBackwards());
+			                               } else if(plot.mouseX() >= xPauseButtonLeft && plot.mouseX() <= xPauseButtonRight && plot.mouseY() >= yButtonsBottom && plot.mouseY() <= yButtonsTop) {
+			                                   OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xPauseButtonLeft, yButtonsBottom, buttonSize, buttonSize);
+			                                   handler = EventHandler.onPress(event -> OpenGLCharts.GUI.setPaused(triggerDetails.nonTriggeredEndTimestamp(), null, 0));
+			                               } else if(plot.mouseX() >= xPlayButtonLeft && plot.mouseX() <= xPlayButtonRight && plot.mouseY() >= yButtonsBottom && plot.mouseY() <= yButtonsTop) {
+			                                   OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xPlayButtonLeft, yButtonsBottom, buttonSize, buttonSize);
+			                                   handler = EventHandler.onPress(event -> OpenGLCharts.GUI.setPlayForwards());
+			                               } else if(plot.mouseX() >= xEndButtonLeft && plot.mouseX() <= xEndButtonRight && plot.mouseY() >= yButtonsBottom && plot.mouseY() <= yButtonsTop) {
+			                                   OpenGL.drawBoxOutline(gl, Theme.tickLinesColor, xEndButtonLeft, yButtonsBottom, buttonSize, buttonSize);
+			                                   handler = EventHandler.onPress(event -> OpenGLCharts.GUI.setPlayLive());
+			                               }
 		                               
 		                               // highlight the currently active button if the mouse is not already over a button
 		                               if(handler == null)
@@ -199,16 +210,19 @@ public class OpenGLTimelineChart extends Chart {
 		                               // draw the timeline
 		                               OpenGL.drawBox(gl, Theme.tickLinesColor, 0, 0, plot.width(), timelineThickness);
 		                               
-		                               // draw a marker at the current (non-triggered) timestamp
+		                               long markerTimestamp = triggerDetails.isTriggered() ? triggerDetails.triggeredTimestamp() :
+		                                                                                     triggerDetails.nonTriggeredEndTimestamp();
+		                               
+		                               // draw a marker at the current timestamp
 		                               float markerWidth = 6 * Settings.GUI.getChartScalingFactor();
-		                               float x = (float) (triggerDetails.nonTriggeredEndTimestamp() - minTimestamp) / (float) plotDomain * plot.width();
+		                               float x = (float) (markerTimestamp - minTimestamp) / (float) plotDomain * plot.width();
 		                               float y = timelineThickness;
 		                               OpenGL.drawTriangle2D(gl, Theme.tickLinesColor, x, y, x + markerWidth/2, y+markerWidth, x - markerWidth/2, y+markerWidth);
 		                               OpenGL.drawBox(gl, Theme.tickLinesColor, x - markerWidth/2, y+markerWidth, markerWidth, markerWidth);
 		                               
-		                               // if triggered, draw a "T" at the triggered timestamp
+		                               // if triggered, draw a "T" at the timestamp that would have been used if *not* triggered
 		                               if(triggerDetails.isTriggered()) {
-		                                   float xTrig = (float) (triggerDetails.triggeredTimestamp() - minTimestamp) / (float) plotDomain * plot.width();
+		                                   float xTrig = (float) (triggerDetails.nonTriggeredEndTimestamp() - minTimestamp) / (float) plotDomain * plot.width();
 		                                   float yTrigTop = y + markerWidth*2 + Theme.lineWidth*2;
 		                                   OpenGL.buffer.rewind();
 		                                   OpenGL.buffer.put(xTrig);                 OpenGL.buffer.put(y);
@@ -228,21 +242,39 @@ public class OpenGLTimelineChart extends Chart {
 		                           if(showTimeline.isFalse() || !haveTelemetry)
 		                               return null;
 		                           
+		                           float yAnchor = timelineThickness / 2;
 		                           double mousePercentage = (double) plot.mouseX() / plot.width();
 		                           long mouseTimestamp = minTimestamp + (long) (mousePercentage * (double) plotDomain);
-		                           float yAnchor = timelineThickness / 2;
+		                           
+		                           // draw the tooltip at the mouse location if the user isn't dragging
+		                           // draw the tooltip at the current timestamp if the user is dragging
+		                           long timestamp = (OpenGLCharts.GUI.eventHandler == null) ? mouseTimestamp : triggerDetails.chartEndTimestamp();
 		                           
 		                           if(!Connections.telemetryConnections.isEmpty() && Connections.cameraConnections.isEmpty()) {
 		                               // only telemetry connections exist, so find the closest sample number
-		                               var details = Connections.getClosestSampleDetailsFor(mouseTimestamp);
+		                               var details = Connections.getClosestSampleDetailsFor(timestamp);
 		                               float xAnchor = (float) (details.timestamp() - minTimestamp) / (float) plotDomain * plot.width();
 		                               Tooltip tooltip = new Tooltip(details.sampleNumber(), details.timestamp(), xAnchor, yAnchor);
-		                               tooltip.draw(gl, plot.mouseX(), plot.mouseY(), plot.width(), plot.height());
+		                               tooltip.draw(gl, plot.mouseX(), plot.mouseY(), plot.width(), plot.height(), true);
 		                           } else {
 		                               // cameras exist, so find the closest timestamp
-		                               float xAnchor = (float) (mouseTimestamp - minTimestamp) / (float) plotDomain * plot.width();
-		                               Tooltip tooltip = new Tooltip(-1, mouseTimestamp, xAnchor, yAnchor);
-		                               tooltip.draw(gl, plot.mouseX(), plot.mouseY(), plot.width(), plot.height());
+		                               float xAnchor = (float) (timestamp - minTimestamp) / (float) plotDomain * plot.width();
+		                               Tooltip tooltip = new Tooltip(-1, timestamp, xAnchor, yAnchor);
+		                               
+		                               // also show camera previews if images exist
+		                               if(showCameraPreviews.isTrue()) {
+		                                   if(texHandle == null) {
+		                                       texHandle = new int[1];
+		                                       OpenGL.createTexture(gl, texHandle, 1, 1, GL3.GL_BGR, GL3.GL_UNSIGNED_BYTE, true);
+		                                   }
+		                                   Connections.cameraConnections
+		                                              .stream()
+		                                              .map(connection -> connection.getImageAtOrBeforeTimestamp(timestamp))
+		                                              .filter(image -> image.width > 1 && image.height > 1) // errors and placeholders are 1x1 px
+		                                              .forEach(image -> tooltip.addImage(image, texHandle));
+		                               }
+		                               
+		                               tooltip.draw(gl, plot.mouseX(), plot.mouseY(), plot.width(), plot.height(), true);
 		                           }
 		                           
 		                           return EventHandler.onPressOrDrag(null, newMouseLocation -> {
@@ -264,6 +296,15 @@ public class OpenGLTimelineChart extends Chart {
 		                           Theme.clickableCursor);
 		                      })
 		                      .draw(gl);
+		
+	}
+	
+	@Override public void disposeGpu(GL2ES3 gl) {
+		
+		super.disposeGpu(gl);
+		if(texHandle != null)
+			gl.glDeleteTextures(1, texHandle, 0);
+		texHandle = null;
 		
 	}
 

@@ -31,8 +31,8 @@ public class OpenGLTimeDomainChart extends Chart {
 	long  cachedMaxX;
 	
 	public DatasetsInterface.WidgetDatasets datasetsAndDurationWidget;
-	private WidgetCheckbox legendVisibility;
 	public WidgetCheckbox cacheEnabled;
+	private WidgetToggleButton<OpenGLPlot.LegendStyle> legendStyle;
 	private WidgetToggleButton<OpenGLPlot.AxisStyle> xAxisStyle;
 	private WidgetToggleButton<OpenGLPlot.AxisStyle> yAxisStyle;
 	private WidgetTextfield<Float> yAxisMinimum;
@@ -46,10 +46,11 @@ public class OpenGLTimeDomainChart extends Chart {
 		
 		autoscale = new AutoScale(AutoScale.Mode.SMOOTH, 0.10f);
 		
-		legendVisibility = new WidgetCheckbox("Show Legend", true);
-		
 		cacheEnabled = new WidgetCheckbox("Cached Mode", false)
 		                   .onChange(isCached -> autoscale.setMode(isCached ? AutoScale.Mode.JUMPY : AutoScale.Mode.SMOOTH));
+		
+		legendStyle = new WidgetToggleButton<OpenGLPlot.LegendStyle>("Legend", OpenGLPlot.LegendStyle.values(), OpenGLPlot.LegendStyle.OUTER)
+		                  .setExportLabel("legend style");
 		
 		xAxisStyle = new WidgetToggleButton<OpenGLPlot.AxisStyle>("", OpenGLPlot.AxisStyle.values(), OpenGLPlot.AxisStyle.OUTER)
 		                 .setExportLabel("x-axis style");
@@ -116,8 +117,8 @@ public class OpenGLTimeDomainChart extends Chart {
 		trigger = new WidgetTrigger(this, null);
 		
 		widgets.add(datasetsAndDurationWidget);
-		widgets.add(legendVisibility);
 		widgets.add(cacheEnabled);
+		widgets.add(legendStyle);
 		widgets.add(xAxisStyle);
 		widgets.add(yAxisStyle);
 		widgets.add(yAxisMinimum);
@@ -132,8 +133,8 @@ public class OpenGLTimeDomainChart extends Chart {
 		
 		gui.add(Theme.newWidgetsPanel("Data")
 		             .with(datasetsAndDurationWidget)
-		             .with(legendVisibility, "split 2")
 		             .with(cacheEnabled)
+		             .with(legendStyle)
 		             .getPanel());
 		
 		gui.add(Theme.newWidgetsPanel("X-Axis")
@@ -199,7 +200,7 @@ public class OpenGLTimeDomainChart extends Chart {
 		
 		// draw the plot
 		return new OpenGLPlot(chartMatrix, width, height, mouseX, mouseY)
-		           .withLegend(legendVisibility.get(), datasets)
+		           .withLegend(legendStyle.get(), datasets)
 		           .withXaxis(xAxisStyle.get(), OpenGLPlot.AxisScale.LINEAR, plotMinX, plotMaxX, xAxisTitle)
 		           .withYaxis(yAxisStyle.get(), OpenGLPlot.AxisScale.LINEAR, plotMinY, plotMaxY, yAxisTitle)
 		           .withPlotDrawer(plot -> {
@@ -588,7 +589,7 @@ public class OpenGLTimeDomainChart extends Chart {
 		                    return null;
 		                if(mousePlotX < (sampleCountMode ? 0 : datasets.connection.getFirstTimestamp()))
 		                    return null;
-		                if(mouseOverTriggerMarkers)
+		                if(mouseOverTriggerMarkers || trigger.isPaused())
 		                    return null;
 		                
 		                // determine the sample number closest to the mouse
@@ -627,7 +628,7 @@ public class OpenGLTimeDomainChart extends Chart {
 		                }
 		                
 		                // draw the tooltip
-		                tooltip.draw(gl, mouseX, mouseY, plot.width(), plot.height());
+		                tooltip.draw(gl, mouseX, mouseY, plot.width(), plot.height(), false);
 		                return null;
 		           })
 		           .draw(gl);
