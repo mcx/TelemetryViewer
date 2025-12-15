@@ -270,7 +270,8 @@ public class OpenGLTimelineChart extends Chart {
 		                                   Connections.cameraConnections
 		                                              .stream()
 		                                              .map(connection -> connection.getImageAtOrBeforeTimestamp(timestamp))
-		                                              .filter(image -> image.width > 1 && image.height > 1) // errors and placeholders are 1x1 px
+		                                              .filter(image -> image.width > 1 && image.height > 1) // don't show errors and placeholders
+		                                              .filter(image -> timestamp - image.timestamp < 1000)  // don't show if closest image is more than 1 second old
 		                                              .forEach(image -> tooltip.addImage(image, texHandle));
 		                               }
 		                               

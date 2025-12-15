@@ -12,7 +12,7 @@ import static java.lang.foreign.MemoryLayout.PathElement.*;
 
 /**
  * {@snippet lang=c :
- * void (*handler)(uint8_t *, int32_t, int32_t, int32_t)
+ * void (*handler)(uint8_t *, int32_t, int32_t, int32_t, _Bool)
  * }
  */
 public final class connectCamera$handler {
@@ -25,14 +25,15 @@ public final class connectCamera$handler {
      * The function pointer signature, expressed as a functional interface
      */
     public interface Function {
-        void apply(MemorySegment _x0, int _x1, int _x2, int _x3);
+        void apply(MemorySegment _x0, int _x1, int _x2, int _x3, boolean _x4);
     }
 
     private static final FunctionDescriptor $DESC = FunctionDescriptor.ofVoid(
         WebcamDLL.C_POINTER,
         WebcamDLL.C_INT,
         WebcamDLL.C_INT,
-        WebcamDLL.C_INT
+        WebcamDLL.C_INT,
+        WebcamDLL.C_BOOL
     );
 
     /**
@@ -57,9 +58,9 @@ public final class connectCamera$handler {
     /**
      * Invoke the upcall stub {@code funcPtr}, with given parameters
      */
-    public static void invoke(MemorySegment funcPtr, MemorySegment _x0, int _x1, int _x2, int _x3) {
+    public static void invoke(MemorySegment funcPtr, MemorySegment _x0, int _x1, int _x2, int _x3, boolean _x4) {
         try {
-             DOWN$MH.invokeExact(funcPtr, _x0, _x1, _x2, _x3);
+             DOWN$MH.invokeExact(funcPtr, _x0, _x1, _x2, _x3, _x4);
         } catch (Error | RuntimeException ex) {
             throw ex;
         } catch (Throwable ex$) {

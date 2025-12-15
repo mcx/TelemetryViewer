@@ -1,5 +1,5 @@
 /**
- * A wrapper for accessing video input devices (webcams) on Windows using the DirectShow API.
+ * A wrapper for accessing video input devices (cameras) on Windows using the DirectShow API.
  * This software is free and open source.
  * Written by Farrell Farahbod.
  * 
@@ -35,13 +35,13 @@
  *         Compile the Java project into a jar file.
  *     In Visual Studio:
  *         Choose the "Debug" (not "Release") solution configuration.
- *         Right-click the project > Properties > Debugging > Command = "C:\Program Files\Java\jdk-25\bin\java.exe" (or wherever your java.exe is)
- *                                                            Command Arguments = "--enable-native-access=ALL-UNNAMED -jar TelemetryViewer.jar" (or whatever the jar file is called, and any args it needs)
- *                                                            Working Directory = "..\..\" (or wherever the jar is)
- *         Right-click the project > Set as Startup Project
+ *         Project > WebcamDLL Properties > Debugging > Command = "C:\Program Files\Java\jdk-25\bin\java.exe" (or wherever your java.exe is)
+ *                                                      Command Arguments = "--enable-native-access=ALL-UNNAMED -jar TelemetryViewer.jar" (or whatever the jar file is called, and any args it needs)
+ *                                                      Working Directory = "..\..\" (or wherever the jar is)
+ *         Project > Set as Startup Project
  *         Place your breakpoints.
  *         Debug by clicking the "Local Windows Debugger" button.
- *         You'll get some exceptions, just check the "ignore these" checkbox.
+ *         You'll get some exceptions. Uncheck "Break when this exception type is thrown" then click the play button.
  *         After a few seconds it should hit your breakpoint, assuming the Java code has called that function.
  */
 
@@ -56,12 +56,11 @@
 static void DeleteMediaType(AM_MEDIA_TYPE** mt) {
     if(*mt) {
         if((**mt).cbFormat != 0) {
-            CoTaskMemFree((PVOID)(**mt).pbFormat);
+            CoTaskMemFree((PVOID) (**mt).pbFormat);
             (**mt).cbFormat = 0;
             (**mt).pbFormat = NULL;
         }
         if((**mt).pUnk != NULL) {
-            // pUnk should not be used.
             (**mt).pUnk->Release();
             (**mt).pUnk = NULL;
         }
@@ -103,26 +102,28 @@ interface ISampleGrabber : public IUnknown {
 };
 
 /*
- * When connecting to a camera, an object of this class will be given to DirectShow as the callback for recieving frames.
+ * When connecting to a camera, an object of this class will be given to DirectShow as the callback for recieving images.
  */
 class CSampleGrabberCB : public ISampleGrabberCB {
 
 private:
 
-    void (*handler)(uint8_t* buffer, int32_t bufferByteCount, int32_t width, int32_t heigth);
+    void (*handler)(uint8_t* buffer, int32_t bufferByteCount, int32_t width, int32_t heigth, bool isJpeg);
     int32_t width;
     int32_t height;
+    bool    isJpeg;
 
 public:
 
-    CSampleGrabberCB(void (*handler)(uint8_t* buffer, int32_t bufferByteCount, int32_t width, int32_t heigth), int32_t actualWidth, int32_t actualHeight) {
+    CSampleGrabberCB(void (*handler)(uint8_t* buffer, int32_t bufferByteCount, int32_t width, int32_t heigth, bool isJpeg), int32_t width, int32_t height, bool isJpeg) {
         this->handler = handler;
-        this->width = actualWidth;
-        this->height = actualHeight;
+        this->width   = width;
+        this->height  = height;
+        this->isJpeg  = isJpeg;
     }
     
     STDMETHODIMP BufferCB(double sampleTime, BYTE* buffer, long bufferByteCount) {
-        handler(buffer, bufferByteCount, width, height);
+        handler(buffer, bufferByteCount, width, height, isJpeg);
         return 0;
     }
 
@@ -203,7 +204,7 @@ static void audit(wchar_t** logPtr, wchar_t* logEnd, const wchar_t* message, HRE
 }
 
 /*
- * Gets information on all of the cameras present on this device.
+ * Gets information about all of the cameras present on this device.
  * 
  * @param   cameras           An array of Camera structs, that you initialized to all zeros, which will be populated with details.
  * @param   maxCameraCount    Number of elements in the array.
@@ -213,13 +214,13 @@ static void audit(wchar_t** logPtr, wchar_t* logEnd, const wchar_t* message, HRE
  *                            Note that cameras may be marked as invalid (cameras[n].valid == false) so the number of *usable* cameras may be less than this return value.
  *                            For example: if OBS is installed, there will be an "OBS Virtual Camera" but it is invalid and attempting to connect to it will fail.
  */
-extern "C" __declspec(dllexport) int32_t getCameras(Camera cameras[], uint32_t maxCameraCount, wchar_t* log, int64_t logByteCount) {
+extern "C" __declspec(dllexport) int32_t getCameras(Camera cameras[], int32_t maxCameraCount, wchar_t* log, int64_t logByteCount) {
 
     wchar_t* logEnd = log + (logByteCount / sizeof(wchar_t));
-    int32_t cameraCount = 0;
+    int32_t cameraN = 0;
 
-    ICaptureGraphBuilder2* builder = NULL;
     IGraphBuilder* graph = NULL;
+    ICaptureGraphBuilder2* builder = NULL;
     ICreateDevEnum* deviceEnumerator = NULL;
     IEnumMoniker* videoInputsEnumerator = NULL;
     IMoniker* deviceMoniker = NULL;
@@ -250,7 +251,7 @@ extern "C" __declspec(dllexport) int32_t getCameras(Camera cameras[], uint32_t m
 
             try {
 
-                if(cameraCount == maxCameraCount)
+                if(cameraN == maxCameraCount)
                     break;
 
                 audit(&log, logEnd, L"Enumerating a Device...");
@@ -258,12 +259,12 @@ extern "C" __declspec(dllexport) int32_t getCameras(Camera cameras[], uint32_t m
 
                 VariantInit(&variant);
                 audit(&log, logEnd, L"Reading the Friendly Name", properties->Read(L"FriendlyName", &variant, 0));
-                wcscpy_s(cameras[cameraCount].friendlyName, MAX_STRING_LENGTH, variant.bstrVal);
+                wcscpy_s(cameras[cameraN].friendlyName, MAX_STRING_LENGTH, variant.bstrVal);
                 VariantClear(&variant);
 
                 VariantInit(&variant);
                 audit(&log, logEnd, L"Reading the Device Path", properties->Read(L"DevicePath", &variant, 0));
-                wcscpy_s(cameras[cameraCount].devicePath, MAX_STRING_LENGTH, variant.bstrVal);
+                wcscpy_s(cameras[cameraN].devicePath, MAX_STRING_LENGTH, variant.bstrVal);
                 VariantClear(&variant);
 
                 audit(&log, logEnd, L"Getting the Base Filter",              deviceMoniker->BindToObject(0, 0, IID_IBaseFilter, (void**) &videoFilter));
@@ -276,216 +277,276 @@ extern "C" __declspec(dllexport) int32_t getCameras(Camera cameras[], uint32_t m
                 long flags = 0;
 
                 if(cameraControl->GetRange(CameraControlProperty::CameraControl_Pan, &minimumValue, &maximumValue, &stepSize, &defaultValue, &flags) == S_OK) {
-                    cameras[cameraCount].panSupported        = true;
-                    cameras[cameraCount].panMinimum          = minimumValue;
-                    cameras[cameraCount].panMaximum          = maximumValue;
-                    cameras[cameraCount].panDefault          = defaultValue;
-                    cameras[cameraCount].panStepSize         = stepSize;
-                    cameras[cameraCount].panAutomaticAllowed = flags & CameraControlFlags::CameraControl_Flags_Auto;
-                    cameras[cameraCount].panManualAllowed    = flags & CameraControlFlags::CameraControl_Flags_Manual;
+                    cameras[cameraN].panSupported        = true;
+                    cameras[cameraN].panMinimum          = minimumValue;
+                    cameras[cameraN].panMaximum          = maximumValue;
+                    cameras[cameraN].panDefault          = defaultValue;
+                    cameras[cameraN].panStepSize         = stepSize;
+                    cameras[cameraN].panAutomaticAllowed = flags & CameraControlFlags::CameraControl_Flags_Auto;
+                    cameras[cameraN].panManualAllowed    = flags & CameraControlFlags::CameraControl_Flags_Manual;
                 }
 
                 if(cameraControl->GetRange(CameraControlProperty::CameraControl_Tilt, &minimumValue, &maximumValue, &stepSize, &defaultValue, &flags) == S_OK) {
-                    cameras[cameraCount].tiltSupported        = true;
-                    cameras[cameraCount].tiltMinimum          = minimumValue;
-                    cameras[cameraCount].tiltMaximum          = maximumValue;
-                    cameras[cameraCount].tiltDefault          = defaultValue;
-                    cameras[cameraCount].tiltStepSize         = stepSize;
-                    cameras[cameraCount].tiltAutomaticAllowed = flags & CameraControlFlags::CameraControl_Flags_Auto;
-                    cameras[cameraCount].tiltManualAllowed    = flags & CameraControlFlags::CameraControl_Flags_Manual;
+                    cameras[cameraN].tiltSupported        = true;
+                    cameras[cameraN].tiltMinimum          = minimumValue;
+                    cameras[cameraN].tiltMaximum          = maximumValue;
+                    cameras[cameraN].tiltDefault          = defaultValue;
+                    cameras[cameraN].tiltStepSize         = stepSize;
+                    cameras[cameraN].tiltAutomaticAllowed = flags & CameraControlFlags::CameraControl_Flags_Auto;
+                    cameras[cameraN].tiltManualAllowed    = flags & CameraControlFlags::CameraControl_Flags_Manual;
                 }
 
                 if(cameraControl->GetRange(CameraControlProperty::CameraControl_Roll, &minimumValue, &maximumValue, &stepSize, &defaultValue, &flags) == S_OK) {
-                    cameras[cameraCount].rollSupported        = true;
-                    cameras[cameraCount].rollMinimum          = minimumValue;
-                    cameras[cameraCount].rollMaximum          = maximumValue;
-                    cameras[cameraCount].rollDefault          = defaultValue;
-                    cameras[cameraCount].rollStepSize         = stepSize;
-                    cameras[cameraCount].rollAutomaticAllowed = flags & CameraControlFlags::CameraControl_Flags_Auto;
-                    cameras[cameraCount].rollManualAllowed    = flags & CameraControlFlags::CameraControl_Flags_Manual;
+                    cameras[cameraN].rollSupported        = true;
+                    cameras[cameraN].rollMinimum          = minimumValue;
+                    cameras[cameraN].rollMaximum          = maximumValue;
+                    cameras[cameraN].rollDefault          = defaultValue;
+                    cameras[cameraN].rollStepSize         = stepSize;
+                    cameras[cameraN].rollAutomaticAllowed = flags & CameraControlFlags::CameraControl_Flags_Auto;
+                    cameras[cameraN].rollManualAllowed    = flags & CameraControlFlags::CameraControl_Flags_Manual;
                 }
 
                 if(cameraControl->GetRange(CameraControlProperty::CameraControl_Zoom, &minimumValue, &maximumValue, &stepSize, &defaultValue, &flags) == S_OK) {
-                    cameras[cameraCount].zoomSupported        = true;
-                    cameras[cameraCount].zoomMinimum          = minimumValue;
-                    cameras[cameraCount].zoomMaximum          = maximumValue;
-                    cameras[cameraCount].zoomDefault          = defaultValue;
-                    cameras[cameraCount].zoomStepSize         = stepSize;
-                    cameras[cameraCount].zoomAutomaticAllowed = flags & CameraControlFlags::CameraControl_Flags_Auto;
-                    cameras[cameraCount].zoomManualAllowed    = flags & CameraControlFlags::CameraControl_Flags_Manual;
+                    cameras[cameraN].zoomSupported        = true;
+                    cameras[cameraN].zoomMinimum          = minimumValue;
+                    cameras[cameraN].zoomMaximum          = maximumValue;
+                    cameras[cameraN].zoomDefault          = defaultValue;
+                    cameras[cameraN].zoomStepSize         = stepSize;
+                    cameras[cameraN].zoomAutomaticAllowed = flags & CameraControlFlags::CameraControl_Flags_Auto;
+                    cameras[cameraN].zoomManualAllowed    = flags & CameraControlFlags::CameraControl_Flags_Manual;
                 }
 
                 if(cameraControl->GetRange(CameraControlProperty::CameraControl_Exposure, &minimumValue, &maximumValue, &stepSize, &defaultValue, &flags) == S_OK) {
-                    cameras[cameraCount].exposureSupported        = true;
-                    cameras[cameraCount].exposureMinimum          = minimumValue;
-                    cameras[cameraCount].exposureMaximum          = maximumValue;
-                    cameras[cameraCount].exposureDefault          = defaultValue;
-                    cameras[cameraCount].exposureStepSize         = stepSize;
-                    cameras[cameraCount].exposureAutomaticAllowed = flags & CameraControlFlags::CameraControl_Flags_Auto;
-                    cameras[cameraCount].exposureManualAllowed    = flags & CameraControlFlags::CameraControl_Flags_Manual;
+                    cameras[cameraN].exposureSupported        = true;
+                    cameras[cameraN].exposureMinimum          = minimumValue;
+                    cameras[cameraN].exposureMaximum          = maximumValue;
+                    cameras[cameraN].exposureDefault          = defaultValue;
+                    cameras[cameraN].exposureStepSize         = stepSize;
+                    cameras[cameraN].exposureAutomaticAllowed = flags & CameraControlFlags::CameraControl_Flags_Auto;
+                    cameras[cameraN].exposureManualAllowed    = flags & CameraControlFlags::CameraControl_Flags_Manual;
                 }
 
                 if(cameraControl->GetRange(CameraControlProperty::CameraControl_Iris, &minimumValue, &maximumValue, &stepSize, &defaultValue, &flags) == S_OK) {
-                    cameras[cameraCount].irisSupported        = true;
-                    cameras[cameraCount].irisMinimum          = minimumValue;
-                    cameras[cameraCount].irisMaximum          = maximumValue;
-                    cameras[cameraCount].irisDefault          = defaultValue;
-                    cameras[cameraCount].irisStepSize         = stepSize;
-                    cameras[cameraCount].irisAutomaticAllowed = flags & CameraControlFlags::CameraControl_Flags_Auto;
-                    cameras[cameraCount].irisManualAllowed    = flags & CameraControlFlags::CameraControl_Flags_Manual;
+                    cameras[cameraN].irisSupported        = true;
+                    cameras[cameraN].irisMinimum          = minimumValue;
+                    cameras[cameraN].irisMaximum          = maximumValue;
+                    cameras[cameraN].irisDefault          = defaultValue;
+                    cameras[cameraN].irisStepSize         = stepSize;
+                    cameras[cameraN].irisAutomaticAllowed = flags & CameraControlFlags::CameraControl_Flags_Auto;
+                    cameras[cameraN].irisManualAllowed    = flags & CameraControlFlags::CameraControl_Flags_Manual;
                 }
 
                 if(cameraControl->GetRange(CameraControlProperty::CameraControl_Focus, &minimumValue, &maximumValue, &stepSize, &defaultValue, &flags) == S_OK) {
-                    cameras[cameraCount].focusSupported        = true;
-                    cameras[cameraCount].focusMinimum          = minimumValue;
-                    cameras[cameraCount].focusMaximum          = maximumValue;
-                    cameras[cameraCount].focusDefault          = defaultValue;
-                    cameras[cameraCount].focusStepSize         = stepSize;
-                    cameras[cameraCount].focusAutomaticAllowed = flags & CameraControlFlags::CameraControl_Flags_Auto;
-                    cameras[cameraCount].focusManualAllowed    = flags & CameraControlFlags::CameraControl_Flags_Manual;
+                    cameras[cameraN].focusSupported        = true;
+                    cameras[cameraN].focusMinimum          = minimumValue;
+                    cameras[cameraN].focusMaximum          = maximumValue;
+                    cameras[cameraN].focusDefault          = defaultValue;
+                    cameras[cameraN].focusStepSize         = stepSize;
+                    cameras[cameraN].focusAutomaticAllowed = flags & CameraControlFlags::CameraControl_Flags_Auto;
+                    cameras[cameraN].focusManualAllowed    = flags & CameraControlFlags::CameraControl_Flags_Manual;
                 }
-
-                SafeRelease(&cameraControl);
 
                 audit(&log, logEnd, L"Getting the Video Processor interface", videoFilter->QueryInterface(IID_IAMVideoProcAmp, (void**) &videoProcessor));
 
                 if(videoProcessor->GetRange(VideoProcAmpProperty::VideoProcAmp_Brightness, &minimumValue, &maximumValue, &stepSize, &defaultValue, &flags) == S_OK) {
-                    cameras[cameraCount].brightnessSupported        = true;
-                    cameras[cameraCount].brightnessMinimum          = minimumValue;
-                    cameras[cameraCount].brightnessMaximum          = maximumValue;
-                    cameras[cameraCount].brightnessDefault          = defaultValue;
-                    cameras[cameraCount].brightnessStepSize         = stepSize;
-                    cameras[cameraCount].brightnessAutomaticAllowed = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Auto;
-                    cameras[cameraCount].brightnessManualAllowed    = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Manual;
+                    cameras[cameraN].brightnessSupported        = true;
+                    cameras[cameraN].brightnessMinimum          = minimumValue;
+                    cameras[cameraN].brightnessMaximum          = maximumValue;
+                    cameras[cameraN].brightnessDefault          = defaultValue;
+                    cameras[cameraN].brightnessStepSize         = stepSize;
+                    cameras[cameraN].brightnessAutomaticAllowed = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Auto;
+                    cameras[cameraN].brightnessManualAllowed    = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Manual;
                 }
 
                 if(videoProcessor->GetRange(VideoProcAmpProperty::VideoProcAmp_Contrast, &minimumValue, &maximumValue, &stepSize, &defaultValue, &flags) == S_OK) {
-                    cameras[cameraCount].contrastSupported        = true;
-                    cameras[cameraCount].contrastMinimum          = minimumValue;
-                    cameras[cameraCount].contrastMaximum          = maximumValue;
-                    cameras[cameraCount].contrastDefault          = defaultValue;
-                    cameras[cameraCount].contrastStepSize         = stepSize;
-                    cameras[cameraCount].contrastAutomaticAllowed = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Auto;
-                    cameras[cameraCount].contrastManualAllowed    = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Manual;
+                    cameras[cameraN].contrastSupported        = true;
+                    cameras[cameraN].contrastMinimum          = minimumValue;
+                    cameras[cameraN].contrastMaximum          = maximumValue;
+                    cameras[cameraN].contrastDefault          = defaultValue;
+                    cameras[cameraN].contrastStepSize         = stepSize;
+                    cameras[cameraN].contrastAutomaticAllowed = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Auto;
+                    cameras[cameraN].contrastManualAllowed    = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Manual;
                 }
 
                 if(videoProcessor->GetRange(VideoProcAmpProperty::VideoProcAmp_Hue, &minimumValue, &maximumValue, &stepSize, &defaultValue, &flags) == S_OK) {
-                    cameras[cameraCount].hueSupported        = true;
-                    cameras[cameraCount].hueMinimum          = minimumValue;
-                    cameras[cameraCount].hueMaximum          = maximumValue;
-                    cameras[cameraCount].hueDefault          = defaultValue;
-                    cameras[cameraCount].hueStepSize         = stepSize;
-                    cameras[cameraCount].hueAutomaticAllowed = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Auto;
-                    cameras[cameraCount].hueManualAllowed    = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Manual;
+                    cameras[cameraN].hueSupported        = true;
+                    cameras[cameraN].hueMinimum          = minimumValue;
+                    cameras[cameraN].hueMaximum          = maximumValue;
+                    cameras[cameraN].hueDefault          = defaultValue;
+                    cameras[cameraN].hueStepSize         = stepSize;
+                    cameras[cameraN].hueAutomaticAllowed = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Auto;
+                    cameras[cameraN].hueManualAllowed    = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Manual;
                 }
 
                 if(videoProcessor->GetRange(VideoProcAmpProperty::VideoProcAmp_Saturation, &minimumValue, &maximumValue, &stepSize, &defaultValue, &flags) == S_OK) {
-                    cameras[cameraCount].saturationSupported        = true;
-                    cameras[cameraCount].saturationMinimum          = minimumValue;
-                    cameras[cameraCount].saturationMaximum          = maximumValue;
-                    cameras[cameraCount].saturationDefault          = defaultValue;
-                    cameras[cameraCount].saturationStepSize         = stepSize;
-                    cameras[cameraCount].saturationAutomaticAllowed = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Auto;
-                    cameras[cameraCount].saturationManualAllowed    = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Manual;
+                    cameras[cameraN].saturationSupported        = true;
+                    cameras[cameraN].saturationMinimum          = minimumValue;
+                    cameras[cameraN].saturationMaximum          = maximumValue;
+                    cameras[cameraN].saturationDefault          = defaultValue;
+                    cameras[cameraN].saturationStepSize         = stepSize;
+                    cameras[cameraN].saturationAutomaticAllowed = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Auto;
+                    cameras[cameraN].saturationManualAllowed    = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Manual;
                 }
 
                 if(videoProcessor->GetRange(VideoProcAmpProperty::VideoProcAmp_Sharpness, &minimumValue, &maximumValue, &stepSize, &defaultValue, &flags) == S_OK) {
-                    cameras[cameraCount].sharpnessSupported        = true;
-                    cameras[cameraCount].sharpnessMinimum          = minimumValue;
-                    cameras[cameraCount].sharpnessMaximum          = maximumValue;
-                    cameras[cameraCount].sharpnessDefault          = defaultValue;
-                    cameras[cameraCount].sharpnessStepSize         = stepSize;
-                    cameras[cameraCount].sharpnessAutomaticAllowed = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Auto;
-                    cameras[cameraCount].sharpnessManualAllowed    = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Manual;
+                    cameras[cameraN].sharpnessSupported        = true;
+                    cameras[cameraN].sharpnessMinimum          = minimumValue;
+                    cameras[cameraN].sharpnessMaximum          = maximumValue;
+                    cameras[cameraN].sharpnessDefault          = defaultValue;
+                    cameras[cameraN].sharpnessStepSize         = stepSize;
+                    cameras[cameraN].sharpnessAutomaticAllowed = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Auto;
+                    cameras[cameraN].sharpnessManualAllowed    = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Manual;
                 }
 
                 if(videoProcessor->GetRange(VideoProcAmpProperty::VideoProcAmp_Gamma, &minimumValue, &maximumValue, &stepSize, &defaultValue, &flags) == S_OK) {
-                    cameras[cameraCount].gammaSupported        = true;
-                    cameras[cameraCount].gammaMinimum          = minimumValue;
-                    cameras[cameraCount].gammaMaximum          = maximumValue;
-                    cameras[cameraCount].gammaDefault          = defaultValue;
-                    cameras[cameraCount].gammaStepSize         = stepSize;
-                    cameras[cameraCount].gammaAutomaticAllowed = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Auto;
-                    cameras[cameraCount].gammaManualAllowed    = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Manual;
+                    cameras[cameraN].gammaSupported        = true;
+                    cameras[cameraN].gammaMinimum          = minimumValue;
+                    cameras[cameraN].gammaMaximum          = maximumValue;
+                    cameras[cameraN].gammaDefault          = defaultValue;
+                    cameras[cameraN].gammaStepSize         = stepSize;
+                    cameras[cameraN].gammaAutomaticAllowed = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Auto;
+                    cameras[cameraN].gammaManualAllowed    = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Manual;
                 }
 
                 if(videoProcessor->GetRange(VideoProcAmpProperty::VideoProcAmp_ColorEnable, &minimumValue, &maximumValue, &stepSize, &defaultValue, &flags) == S_OK) {
-                    cameras[cameraCount].colorSupported = true;
-                    cameras[cameraCount].colorDefault   = defaultValue;
+                    cameras[cameraN].colorSupported = true;
+                    cameras[cameraN].colorDefault   = defaultValue;
                 }
 
                 if(videoProcessor->GetRange(VideoProcAmpProperty::VideoProcAmp_WhiteBalance, &minimumValue, &maximumValue, &stepSize, &defaultValue, &flags) == S_OK) {
-                    cameras[cameraCount].whiteBalanceSupported        = true;
-                    cameras[cameraCount].whiteBalanceMinimum          = minimumValue;
-                    cameras[cameraCount].whiteBalanceMaximum          = maximumValue;
-                    cameras[cameraCount].whiteBalanceDefault          = defaultValue;
-                    cameras[cameraCount].whiteBalanceStepSize         = stepSize;
-                    cameras[cameraCount].whiteBalanceAutomaticAllowed = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Auto;
-                    cameras[cameraCount].whiteBalanceManualAllowed    = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Manual;
+                    cameras[cameraN].whiteBalanceSupported        = true;
+                    cameras[cameraN].whiteBalanceMinimum          = minimumValue;
+                    cameras[cameraN].whiteBalanceMaximum          = maximumValue;
+                    cameras[cameraN].whiteBalanceDefault          = defaultValue;
+                    cameras[cameraN].whiteBalanceStepSize         = stepSize;
+                    cameras[cameraN].whiteBalanceAutomaticAllowed = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Auto;
+                    cameras[cameraN].whiteBalanceManualAllowed    = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Manual;
                 }
 
                 if(videoProcessor->GetRange(VideoProcAmpProperty::VideoProcAmp_BacklightCompensation, &minimumValue, &maximumValue, &stepSize, &defaultValue, &flags) == S_OK) {
-                    cameras[cameraCount].backlightCompensationSupported = true;
-                    cameras[cameraCount].backlightCompensationDefault   = defaultValue;
+                    cameras[cameraN].backlightCompensationSupported = true;
+                    cameras[cameraN].backlightCompensationDefault   = defaultValue;
                 }
 
                 if(videoProcessor->GetRange(VideoProcAmpProperty::VideoProcAmp_Gain, &minimumValue, &maximumValue, &stepSize, &defaultValue, &flags) == S_OK) {
-                    cameras[cameraCount].gainSupported        = true;
-                    cameras[cameraCount].gainMinimum          = minimumValue;
-                    cameras[cameraCount].gainMaximum          = maximumValue;
-                    cameras[cameraCount].gainDefault          = defaultValue;
-                    cameras[cameraCount].gainStepSize         = stepSize;
-                    cameras[cameraCount].gainAutomaticAllowed = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Auto;
-                    cameras[cameraCount].gainManualAllowed    = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Manual;
+                    cameras[cameraN].gainSupported        = true;
+                    cameras[cameraN].gainMinimum          = minimumValue;
+                    cameras[cameraN].gainMaximum          = maximumValue;
+                    cameras[cameraN].gainDefault          = defaultValue;
+                    cameras[cameraN].gainStepSize         = stepSize;
+                    cameras[cameraN].gainAutomaticAllowed = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Auto;
+                    cameras[cameraN].gainManualAllowed    = flags & VideoProcAmpFlags::VideoProcAmp_Flags_Manual;
                 }
 
-                SafeRelease(&videoProcessor);
+                int configN = 0;
+                int configCount = 0;
+                int structSize = 0;
 
-                // some webcams don't have a StreamConfig interface, in that case we won't know the image resolution until after we connect
-                // if the StreamConfig interface is not supported, camera.resolutionsCount will remain at 0
+                // seemingly all cameras provide a StreamConfig interface for their "capture pin"
+                audit(&log, logEnd, L"Getting the Stream Configuration interface for the Capture Pin", builder->FindInterface(&PIN_CATEGORY_CAPTURE, &MEDIATYPE_Video, videoFilter, IID_IAMStreamConfig, (void**) &streamConfig));
+                audit(&log, logEnd, L"Getting the number of Stream Capabilities",                      streamConfig->GetNumberOfCapabilities(&configCount, &structSize));
+                if(structSize != sizeof(VIDEO_STREAM_CONFIG_CAPS))
+                    audit(&log, logEnd, L"Wrong data structure size", S_FALSE);
+
+                for(int captureConfigN = 0; captureConfigN < configCount; captureConfigN++) {
+
+                    if(configN == MAX_CONFIGS_COUNT)
+                        break;
+
+                    VIDEO_STREAM_CONFIG_CAPS caps = { 0 };
+                    audit(&log, logEnd, L"Getting a Stream Capability", streamConfig->GetStreamCaps(captureConfigN, &mediaType, (BYTE*) &caps));
+
+                    // important: some cameras provide duplicates of each configuration, one with a VIDEOINFOHEADER and another with a VIDEOINFOHEADER2
+                    // ignoring the VIDEOINFOHEADER2 versions because their extra details (interlacing, copy protection, etc.) are not useful
+                    if(mediaType->formattype == FORMAT_VideoInfo) {
+                        VIDEOINFOHEADER* vih = (VIDEOINFOHEADER*) (mediaType->pbFormat);
+                        cameras[cameraN].configHandle[configN]      = captureConfigN & ~(1 << 31); // MSBit = 0 for capture pin, lower 31 bits = index for StreamConfig->GetStreamCaps()
+                        cameras[cameraN].configMinInterval[configN] = caps.MinFrameInterval;
+                        cameras[cameraN].configMaxInterval[configN] = caps.MaxFrameInterval;
+                        cameras[cameraN].configWidth[configN]       = vih->bmiHeader.biWidth;
+                        cameras[cameraN].configHeight[configN]      = vih->bmiHeader.biHeight;
+                        cameras[cameraN].configColorDepth[configN]  = vih->bmiHeader.biBitCount;
+                        cameras[cameraN].configFourCC[configN]      = vih->bmiHeader.biCompression;
+                        configN++;
+                    }
+                    DeleteMediaType(&mediaType);
+
+                }
+                SafeRelease(&streamConfig);
+
+                // some (not all!) cameras also provide a StreamConfig interface for their "preview pin"
                 try {
-                    audit(&log, logEnd, L"Getting the Stream Configuration interface", builder->FindInterface(&PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, videoFilter, IID_IAMStreamConfig, (void**) &streamConfig));
-
-                    int formatCount = 0;
-                    int formatSize = 0;
-
-                    audit(&log, logEnd, L"Getting the number of Stream Capabilities", streamConfig->GetNumberOfCapabilities(&formatCount, &formatSize));
-                    if(formatSize != sizeof(VIDEO_STREAM_CONFIG_CAPS))
+                    audit(&log, logEnd, L"Getting the Stream Configuration interface for the Preview Pin", builder->FindInterface(&PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, videoFilter, IID_IAMStreamConfig, (void**) &streamConfig));
+                    audit(&log, logEnd, L"Getting the number of Stream Capabilities",                      streamConfig->GetNumberOfCapabilities(&configCount, &structSize));
+                    if(structSize != sizeof(VIDEO_STREAM_CONFIG_CAPS))
                         audit(&log, logEnd, L"Wrong data structure size", S_FALSE);
 
-                    cameras[cameraCount].resolutionsCount = formatCount;
-                    for(int formatN = 0; formatN < formatCount; formatN++) {
+                    for(int previewConfigN = 0; previewConfigN < configCount; previewConfigN++) {
 
-                        if(formatN == MAX_RESOLUTIONS_COUNT)
+                        if(configN == MAX_CONFIGS_COUNT)
                             break;
 
                         VIDEO_STREAM_CONFIG_CAPS caps = { 0 };
-                        audit(&log, logEnd, L"Getting a Stream Capability", streamConfig->GetStreamCaps(formatN, &mediaType, (BYTE*) &caps));
-                        cameras[cameraCount].resolutionWidth[formatN]  = caps.MaxOutputSize.cx;
-                        cameras[cameraCount].resolutionHeight[formatN] = caps.MaxOutputSize.cy;
+                        audit(&log, logEnd, L"Getting a Stream Capability", streamConfig->GetStreamCaps(previewConfigN, &mediaType, (BYTE*) &caps));
+
+                        // important: some cameras provide duplicates of each configuration, one with a VIDEOINFOHEADER and another with a VIDEOINFOHEADER2
+                        // ignoring the VIDEOINFOHEADER2 versions because their extra details (interlacing, copy protection, etc.) are not useful
+                        if(mediaType->formattype == FORMAT_VideoInfo) {
+                            VIDEOINFOHEADER* vih = (VIDEOINFOHEADER*) (mediaType->pbFormat);
+
+                            // the configurations for their preview pin may or may not be duplicates of what they provided for their capture pin, so skip duplicates
+                            boolean alreadyEnumeratedOnCapturePin = false;
+                            for(int prev = 0; prev < configN; prev++)
+                                if(cameras[cameraN].configMinInterval[prev] == caps.MinFrameInterval &&
+                                   cameras[cameraN].configMaxInterval[prev] == caps.MaxFrameInterval &&
+                                   cameras[cameraN].configWidth[prev]       == vih->bmiHeader.biWidth &&
+                                   cameras[cameraN].configHeight[prev]      == vih->bmiHeader.biHeight &&
+                                   cameras[cameraN].configColorDepth[prev]  == vih->bmiHeader.biBitCount &&
+                                   cameras[cameraN].configFourCC[prev]      == vih->bmiHeader.biCompression) {
+                                    alreadyEnumeratedOnCapturePin = true;
+                                    break;
+                                }
+
+                            if(alreadyEnumeratedOnCapturePin)
+                                continue;
+
+                            cameras[cameraN].configHandle[configN]      = previewConfigN | (1 << 31); // MSBit = 1 for the preview pin, lower 31 bits = index for StreamConfig->GetStreamCaps()
+                            cameras[cameraN].configMinInterval[configN] = caps.MinFrameInterval;
+                            cameras[cameraN].configMaxInterval[configN] = caps.MaxFrameInterval;
+                            cameras[cameraN].configWidth[configN]       = vih->bmiHeader.biWidth;
+                            cameras[cameraN].configHeight[configN]      = vih->bmiHeader.biHeight;
+                            cameras[cameraN].configColorDepth[configN]  = vih->bmiHeader.biBitCount;
+                            cameras[cameraN].configFourCC[configN]      = vih->bmiHeader.biCompression;
+                            configN++;
+                        }
                         DeleteMediaType(&mediaType);
 
                     }
-                } catch (...) {
+                    SafeRelease(&streamConfig);
+                } catch(...) {
                     DeleteMediaType(&mediaType);
                     SafeRelease(&streamConfig);
                 }
 
-                SafeRelease(&streamConfig);
+                cameras[cameraN].configsCount = configN;
+
+                // success, this camera is usable
+                cameras[cameraN].valid = true;
+
+                SafeRelease(&videoProcessor);
+                SafeRelease(&cameraControl);
                 SafeRelease(&videoFilter);
                 SafeRelease(&properties);
                 SafeRelease(&deviceMoniker);
 
-                // success
-                cameras[cameraCount].valid = true;
+            } catch(...) {
 
-            } catch (...) {
-
-                // this camera is invalid, skip it
-                cameras[cameraCount].valid = false;
+                // failure, this camera is not usable
+                cameras[cameraN].valid = false;
 
                 VariantClear(&variant);
                 DeleteMediaType(&mediaType);
+
                 SafeRelease(&streamConfig);
                 SafeRelease(&videoProcessor);
                 SafeRelease(&cameraControl);
@@ -495,33 +556,26 @@ extern "C" __declspec(dllexport) int32_t getCameras(Camera cameras[], uint32_t m
 
             }
 
-            cameraCount++;
+            cameraN++;
 
         }
 
     } catch(...) {
 
-        // aborting
-        cameraCount = 0;
+        // failure, unable to enumerate cameras
+        cameraN = 0;
+
+        SafeRelease(&deviceMoniker);
+        SafeRelease(&videoInputsEnumerator);
+        SafeRelease(&deviceEnumerator);
+        SafeRelease(&builder);
+        SafeRelease(&graph);
+        CoUninitialize();
 
     }
 
-    // free all resources
-    DeleteMediaType(&mediaType);
-    SafeRelease(&streamConfig);
-    SafeRelease(&videoProcessor);
-    SafeRelease(&cameraControl);
-    SafeRelease(&videoFilter);
-    SafeRelease(&properties);
-    SafeRelease(&deviceMoniker);
-    SafeRelease(&videoInputsEnumerator);
-    SafeRelease(&deviceEnumerator);
-    SafeRelease(&graph);
-    SafeRelease(&builder);
-    CoUninitialize();
-
     // done
-    return cameraCount;
+    return cameraN;
 
 }
 
@@ -536,15 +590,23 @@ static IAMVideoProcAmp*  videoProcessorForDevice[MAX_CAMERA_COUNT];
 /*
  * Connects to a camera and starts receiving images.
  * 
- * @param devicePath      A devicePath       from getCameras().
- * @param width           A resolutionWidth  from getCameras(). If resolutionsCount was 0, this will be ignored.
- * @param height          A resolutionHeight from getCameras(). If resolutionsCount was 0, this will be ignored.
- * @param handler         Your "void handler(uint8_t* buffer, uint32_t bufferByteCount, int32_t width, int32_t height)" that will receive BGR24 images.
+ * A "configuration index" is used to select one of the resolution/color depth/FourCC combinations.
+ * That configuration also has an allowed "frame interval" range, and a specific frame interval is used to select the desired FPS.
+ * Note that the actual FPS may vary. For example, many cameras will reduce the FPS in low light conditions.
+ * The frame interval has units of 100ns. Example: 166666 = 16666600ns = 60 FPS.
+ * 
+ * Images will be provided to an event handler. They will be JPEGs if the camera can provide JPEGs, otherwise they will be uncompressed BGR24.
+ * The buffer provided to the event handler must be "used" before the handler returns. (Do not keep a pointer to the buffer.)
+ * 
+ * @param devicePath      A devicePath from getCameras().
+ * @param configHandle    A configHandle from getCameras().
+ * @param interval        A value between configMinInterval and configMaxInterval from getCameras().
+ * @param handler         Your "void handler(uint8_t* buffer, int32_t bufferByteCount, int32_t width, int32_t height, bool isJpeg)" that will receive JPEG or BGR24 images.
  * @param log             Pointer to a wchar_t string, which will be filled with a log of technical details. Can be null.
  * @param logByteCount    Size of the log, in bytes.
  * @returns               True on success, or false if an error occurred.
  */
-extern "C" __declspec(dllexport) bool connectCamera(const wchar_t* devicePath, int32_t width, int32_t height, void (*handler)(uint8_t* buffer, int32_t bufferByteCount, int32_t width, int32_t heigth), wchar_t* log, int64_t logByteCount) {
+extern "C" __declspec(dllexport) bool connectCamera(const wchar_t* devicePath, int32_t configHandle, int64_t interval, void (*handler)(uint8_t* buffer, int32_t bufferByteCount, int32_t width, int32_t heigth, bool isJpeg), wchar_t* log, int64_t logByteCount) {
 
     wchar_t*  logEnd = log + (logByteCount / sizeof(wchar_t));
 
@@ -554,7 +616,7 @@ extern "C" __declspec(dllexport) bool connectCamera(const wchar_t* devicePath, i
     
     IGraphBuilder* graph = NULL;
     ICaptureGraphBuilder2* builder = NULL;
-    ICreateDevEnum* systemEnumerator = NULL;
+    ICreateDevEnum* deviceEnumerator = NULL;
     IEnumMoniker* videoInputsEnumerator = NULL;
     IMoniker* deviceMoniker = NULL;
     IPropertyBag* properties = NULL;
@@ -579,12 +641,12 @@ extern "C" __declspec(dllexport) bool connectCamera(const wchar_t* devicePath, i
         audit(&log, logEnd, L"Creating the Filter Graph",                  CoCreateInstance(CLSID_FilterGraph, 0, CLSCTX_INPROC_SERVER, IID_IGraphBuilder, (void**) &graph));
         audit(&log, logEnd, L"Creating the Capture Graph Builder",         CoCreateInstance(CLSID_CaptureGraphBuilder2, NULL, CLSCTX_INPROC_SERVER, IID_ICaptureGraphBuilder2, (void**) &builder));
         audit(&log, logEnd, L"Setting the Builder's Filter Graph",         builder->SetFiltergraph(graph));
-        audit(&log, logEnd, L"Creating the System Device Enumerator",      CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC_SERVER, IID_ICreateDevEnum, (void**) &systemEnumerator));
-        audit(&log, logEnd, L"Creating the Video Input Device Enumerator", systemEnumerator->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &videoInputsEnumerator, 0));
+        audit(&log, logEnd, L"Creating the System Device Enumerator",      CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC_SERVER, IID_ICreateDevEnum, (void**) &deviceEnumerator));
+        audit(&log, logEnd, L"Creating the Video Input Device Enumerator", deviceEnumerator->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &videoInputsEnumerator, 0));
 
         // if no cameras are present, CreateClassEnumerator will "succeed" and return S_FALSE, but videoInputsEnumerator will remain NULL
         if(videoInputsEnumerator == NULL)
-            throw - 1;
+            throw -1;
 
         while(videoInputsEnumerator->Next(1, &deviceMoniker, NULL) == S_OK) {
 
@@ -597,76 +659,59 @@ extern "C" __declspec(dllexport) bool connectCamera(const wchar_t* devicePath, i
                 SafeRelease(&properties);
 
                 if(wcscmp(devicePath, variant.bstrVal) != 0) {
-                    audit(&log, logEnd, L"Skipping this device, it is not the requested device", S_OK);
+                    audit(&log, logEnd, L"Skipping this device, it is not the requested device");
                     VariantClear(&variant);
+                    SafeRelease(&deviceMoniker);
                     continue;
                 } else {
-                    audit(&log, logEnd, L"Found the requested device", S_OK);
+                    audit(&log, logEnd, L"Found the requested device");
+                    audit(&log, logEnd, L"Getting the Base Filter", deviceMoniker->BindToObject(0, 0, IID_IBaseFilter, (void**) &videoFilter));
                     VariantClear(&variant);
+                    SafeRelease(&deviceMoniker);
                 }
-
-                audit(&log, logEnd, L"Getting the Base Filter", deviceMoniker->BindToObject(0, 0, IID_IBaseFilter, (void**) &videoFilter));
-                SafeRelease(&deviceMoniker);
 
                 audit(&log, logEnd, L"Adding the Base Filter to the graph",   graph->AddFilter(videoFilter, L"Capture Filter"));
                 audit(&log, logEnd, L"Getting the Camera Control interface",  videoFilter->QueryInterface(IID_IAMCameraControl, (void**) &cameraControl));
                 audit(&log, logEnd, L"Getting the Video Processor interface", videoFilter->QueryInterface(IID_IAMVideoProcAmp, (void**) &videoProcessor));
 
-                // some webcams don't have a StreamConfig interface, in that case we won't know the resolution until after we connect
-                try {
-                    int formatCount = 0;
-                    int formatSize = 0;
-                    audit(&log, logEnd, L"Getting the Stream Configuration interface", builder->FindInterface(&PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, videoFilter, IID_IAMStreamConfig, (void**)&streamConfig));
-                    audit(&log, logEnd, L"Getting the number of Stream Capabilities",  streamConfig->GetNumberOfCapabilities(&formatCount, &formatSize));
+                bool capturePin = (configHandle & (1 << 31)) == 0; // MSBit == 0 for the capture pin, MSBit == 1 for the preview pin
+                int32_t configIndex = configHandle & ~(1 << 31); // lower 31 bits = index for StreamConfig->GetStreamCaps()
+                audit(&log, logEnd, L"Getting the Stream Configuration interface", builder->FindInterface(capturePin ? &PIN_CATEGORY_CAPTURE : &PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, videoFilter, IID_IAMStreamConfig, (void**) &streamConfig));
+                    
+                VIDEO_STREAM_CONFIG_CAPS caps = { 0 };
+                audit(&log, logEnd, L"Getting the requested Stream Capability", streamConfig->GetStreamCaps(configIndex, &mediaType, (BYTE*) &caps));
 
-                    for (int formatN = 0; formatN < formatCount; formatN++) {
-                        if (formatN == MAX_RESOLUTIONS_COUNT)
-                            break;
-
-                        VIDEO_STREAM_CONFIG_CAPS caps = { 0 };
-                        audit(&log, logEnd, L"Getting a Stream Capability", streamConfig->GetStreamCaps(formatN, &mediaType, (BYTE*)&caps));
-
-                        if(width == caps.MaxOutputSize.cx && height == caps.MaxOutputSize.cy) {
-                            VIDEOINFOHEADER* vih = (VIDEOINFOHEADER*)(mediaType->pbFormat);
-                            vih->AvgTimePerFrame = 1;
-                            audit(&log, logEnd, L"Found the Stream Capability with the requested resolution, using it and requesting max FPS", streamConfig->SetFormat(mediaType));
-                            DeleteMediaType(&mediaType);
-                            break;
-                        } else {
-                            audit(&log, logEnd, L"Skipping this Stream Capability, it is not the requested one", S_OK);
-                            DeleteMediaType(&mediaType);
-                            continue;
-                        }
-                    }
-                } catch (...) {
-                    DeleteMediaType(&mediaType);
-                    SafeRelease(&streamConfig);
-                }
+                VIDEOINFOHEADER* vih = (VIDEOINFOHEADER*) (mediaType->pbFormat);
+                bool isJpeg = (vih->bmiHeader.biCompression == MAKEFOURCC('M','J','P','G'));
+                vih->AvgTimePerFrame = interval;
+                audit(&log, logEnd, L"Configuring the Stream Capability with the requested frame interval", streamConfig->SetFormat(mediaType));
 
                 audit(&log, logEnd, L"Creating the Sample Grabber filter",     CoCreateInstance(CLSID_SampleGrabber, 0, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**) &grabberFilter));
                 audit(&log, logEnd, L"Adding the Sample Grabber to the graph", graph->AddFilter(grabberFilter, L"Sample Grabber"));
                 audit(&log, logEnd, L"Getting the Sample Grabber interface",   grabberFilter->QueryInterface(IID_ISampleGrabber, (void**) &grabber));
 
+                // if the camera provides JPEGs, request the original JPEGs
+                // otherwise, request conversion to raw BGR24 images
                 AM_MEDIA_TYPE type = { 0 };
-                type.majortype = MEDIATYPE_Video;
-                type.subtype = MEDIASUBTYPE_RGB24;
+                type.majortype  = MEDIATYPE_Video;
+                type.subtype    = isJpeg ? MEDIASUBTYPE_MJPG : MEDIASUBTYPE_RGB24;
                 type.formattype = FORMAT_VideoInfo;
 
-                audit(&log, logEnd, L"Setting the Sample Grabber's media type to RGB24 Video", grabber->SetMediaType(&type));
-                audit(&log, logEnd, L"Setting the Sample Grabber to not buffer samples",       grabber->SetBufferSamples(FALSE));
-                audit(&log, logEnd, L"Getting the Media Filter interface",                     graph->QueryInterface(IID_IMediaFilter, (void**) &mediaFilter));
-                audit(&log, logEnd, L"Disabling the reference clock",                          mediaFilter->SetSyncSource(NULL));
+                audit(&log, logEnd, L"Setting the Sample Grabber's media type",          grabber->SetMediaType(&type));
+                audit(&log, logEnd, L"Setting the Sample Grabber to not buffer samples", grabber->SetBufferSamples(FALSE));
+                audit(&log, logEnd, L"Getting the Media Filter interface",               graph->QueryInterface(IID_IMediaFilter, (void**) &mediaFilter));
+                audit(&log, logEnd, L"Disabling the reference clock",                    mediaFilter->SetSyncSource(NULL));
                 SafeRelease(&mediaFilter);
                 audit(&log, logEnd, L"Creating the Null Renderer filter",     CoCreateInstance(CLSID_NullRenderer, 0, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**) &nullRenderer));
                 audit(&log, logEnd, L"Adding the Null Renderer to the graph", graph->AddFilter(nullRenderer, L"Null Renderer"));
-                audit(&log, logEnd, L"Rendering the Stream",                  builder->RenderStream(&PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, videoFilter, grabberFilter, nullRenderer));
+                audit(&log, logEnd, L"Rendering the Stream",                  builder->RenderStream(capturePin ? &PIN_CATEGORY_CAPTURE : &PIN_CATEGORY_PREVIEW, &MEDIATYPE_Video, videoFilter, grabberFilter, nullRenderer));
 
                 audit(&log, logEnd, L"Getting the Sample Grabber's media type", grabber->GetConnectedMediaType(&type));
                 VIDEOINFOHEADER* info = (VIDEOINFOHEADER*) type.pbFormat;
-                int32_t actualWidth  = info->bmiHeader.biWidth;
-                int32_t actualHeight = info->bmiHeader.biHeight;
+                int32_t width  = info->bmiHeader.biWidth;
+                int32_t height = info->bmiHeader.biHeight;
 
-                CSampleGrabberCB* CB = new CSampleGrabberCB(handler, actualWidth, actualHeight);
+                CSampleGrabberCB* CB = new CSampleGrabberCB(handler, width, height, isJpeg);
                 audit(&log, logEnd, L"Setting the Sample Grabber's callback", grabber->SetCallback(CB, 1));
                 audit(&log, logEnd, L"Getting the Media Control interface",   graph->QueryInterface(IID_IMediaControl, (void**) &control));
                 audit(&log, logEnd, L"Getting the Media Event interface",     graph->QueryInterface(IID_IMediaEvent, (void**) &event));
@@ -691,49 +736,73 @@ extern "C" __declspec(dllexport) bool connectCamera(const wchar_t* devicePath, i
                 }
                 audit(&log, logEnd, L"Saving the MediaControl, MediaEvent, CameraControl and VideoProcAmp interfaces", saved ? 1 : -1);
 
-                // done
+                // *preliminary* success, connected to the camera, but it is possible that the camera is already in use
                 success = true;
+
+                DeleteMediaType(&mediaType);
+                SafeRelease(&mediaFilter);
+                SafeRelease(&nullRenderer);
+                SafeRelease(&grabber);
+                SafeRelease(&grabberFilter);
+                SafeRelease(&streamConfig);
+                SafeRelease(&videoFilter);
+                SafeRelease(&properties);
+                SafeRelease(&deviceMoniker);
+                SafeRelease(&videoInputsEnumerator);
+                SafeRelease(&deviceEnumerator);
+                SafeRelease(&builder);
+                SafeRelease(&graph);
+                CoUninitialize();
+
                 break;
 
             } catch(...) {
                 
-                // aborting
-                VariantClear(&variant);
+                // failure, unable to connect or the "map" is full
                 success = false;
+
+                if(control != NULL)
+                    control->Stop();
+                SafeRelease(&event);
+                SafeRelease(&control);
+                SafeRelease(&videoProcessor);
+                SafeRelease(&cameraControl);
+                VariantClear(&variant);
+
+                DeleteMediaType(&mediaType);
+                SafeRelease(&mediaFilter);
+                SafeRelease(&nullRenderer);
+                SafeRelease(&grabber);
+                SafeRelease(&grabberFilter);
+                SafeRelease(&streamConfig);
+                SafeRelease(&videoFilter);
+                SafeRelease(&properties);
+                SafeRelease(&deviceMoniker);
+                SafeRelease(&videoInputsEnumerator);
+                SafeRelease(&deviceEnumerator);
+                SafeRelease(&builder);
+                SafeRelease(&graph);
+                CoUninitialize();
+
                 break;
 
             }
 
         }
 
-    } catch (...) {
+    } catch(...) {
 
-        // aborting
+        // failure, unable to enumerate cameras
         success = false;
+        
+        SafeRelease(&deviceMoniker);
+        SafeRelease(&videoInputsEnumerator);
+        SafeRelease(&deviceEnumerator);
+        SafeRelease(&builder);
+        SafeRelease(&graph);
+        CoUninitialize();
 
     }
-
-    // free resources
-    if(success == false) {
-        SafeRelease(&event);
-        SafeRelease(&control);
-        SafeRelease(&videoProcessor);
-        SafeRelease(&cameraControl);
-    }
-    DeleteMediaType(&mediaType);
-    SafeRelease(&mediaFilter);
-    SafeRelease(&nullRenderer);
-    SafeRelease(&grabber);
-    SafeRelease(&grabberFilter);
-    SafeRelease(&streamConfig);
-    SafeRelease(&videoFilter);
-    SafeRelease(&properties);
-    SafeRelease(&deviceMoniker);
-    SafeRelease(&videoInputsEnumerator);
-    SafeRelease(&systemEnumerator);
-    SafeRelease(&builder);
-    SafeRelease(&graph);
-    CoUninitialize();
     
     if(success) {
         try {
@@ -766,7 +835,7 @@ extern "C" __declspec(dllexport) bool disconnectCamera(const wchar_t* devicePath
             // map slot is unused
             continue;
         } else if(wcscmp(devicePath, device[i]) == 0) {
-            // found device in the map, disconnect and remove it from the map
+            // camera is in the map, disconnect and remove it from the map
             controlForDevice[i]->Stop();
             SafeRelease(&controlForDevice[i]);
             SafeRelease(&eventForDevice[i]);
@@ -778,7 +847,7 @@ extern "C" __declspec(dllexport) bool disconnectCamera(const wchar_t* devicePath
         }
     }
 
-    // device is not in the map
+    // camera is not in the map
     return false;
 
 }
@@ -787,9 +856,9 @@ extern "C" __declspec(dllexport) bool disconnectCamera(const wchar_t* devicePath
  * Checks a camera for an event.
  * 
  * @param devicePath    A devicePath from getCameras().
- * @returns             -1 if the device is not connected.
- *                      0  if the device is connected and no event has occurred.
- *                      >0 if the device is connected and an event has occurred. The number will be an eventCode defined in <evcode.h>
+ * @returns             -1 if the camera is not connected.
+ *                      0  if the camera is connected and no event has occurred.
+ *                      >0 if the camera is connected and an event has occurred. The number will be an eventCode defined in <evcode.h>
  *                      See https://learn.microsoft.com/en-us/windows/win32/directshow/event-notification-codes
  */
 extern "C" __declspec(dllexport) int32_t checkForCameraEvent(const wchar_t* devicePath) {
@@ -799,7 +868,7 @@ extern "C" __declspec(dllexport) int32_t checkForCameraEvent(const wchar_t* devi
             // map slot is unused
             continue;
         } else if(wcscmp(devicePath, device[i]) == 0) {
-            // device is in the map, query it
+            // camera is in the map, query it
             long eventCode = 0;
             LONG_PTR param1 = 0;
             LONG_PTR param2 = 0;
@@ -815,7 +884,7 @@ extern "C" __declspec(dllexport) int32_t checkForCameraEvent(const wchar_t* devi
         }
     }
 
-    // device is not in the map
+    // camera is not in the map
     return -1;
 
 }
@@ -837,7 +906,7 @@ extern "C" __declspec(dllexport) bool setCameraSetting(const wchar_t* devicePath
             // map slot is unused
             continue;
         } else if(wcscmp(devicePath, device[i]) == 0) {
-            // device is in the map, adjust it
+            // camera is in the map, adjust it
             if(interfaceEnum == 0)
                 return cameraControlForDevice[i]->Set(settingEnum, manualValue, isManual ? CameraControl_Flags_Manual : CameraControl_Flags_Auto) == S_OK;
             else
@@ -845,7 +914,7 @@ extern "C" __declspec(dllexport) bool setCameraSetting(const wchar_t* devicePath
         }
     }
 
-    // device is not in the map
+    // camera is not in the map
     return false;
 
 }
@@ -866,7 +935,7 @@ extern "C" __declspec(dllexport) int64_t getCameraSetting(const wchar_t* deviceP
             // map slot is unused
             continue;
         } else if(wcscmp(devicePath, device[i]) == 0) {
-            // device is in the map, use it
+            // camera is in the map, query it
             long value;
             long flags;
             HRESULT hr = (interfaceEnum == 0) ? cameraControlForDevice[i]->Get(settingEnum, &value, &flags) :
@@ -874,7 +943,7 @@ extern "C" __declspec(dllexport) int64_t getCameraSetting(const wchar_t* deviceP
             return (hr == S_OK) ? (value | ((int64_t) flags << 32)) : -1;
         }
     }
-    // device is not in the map
+    // camera is not in the map
     return false;
 
 }

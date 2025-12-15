@@ -49,9 +49,9 @@ public class Webcam {
 			String osName = System.getProperty("os.name").toLowerCase();
 			String osArch = System.getProperty("os.arch").toLowerCase();
 			String libraryFilename = osName.startsWith("windows") && osArch.equals("amd64") ? "webcam-x64.dll"   :
-			                         osName.startsWith("windows") && osArch.equals("arm64") ? "webcam-arm64.dll" : // not yet implemented
-			                         osName.startsWith("linux")   && osArch.equals("amd64") ? "webcam-x64.so"    : // not yet implemented
-			                         osName.startsWith("linux")   && osArch.equals("arm64") ? "webcam-arm64.so"  : // not yet implemented
+			                         osName.startsWith("windows") && osArch.equals("arm64") ? "webcam-aarch64.dll" : // not yet implemented
+			                         osName.startsWith("linux")   && osArch.equals("amd64") ? "webcam-x64.so"      : // not yet implemented
+			                         osName.startsWith("linux")   && osArch.equals("arm64") ? "webcam-aarch64.so"  : // not yet implemented
 			                                                                                  "";
 			System.load(Paths.get(jarDirectory, "lib", libraryFilename).toString());
 			success = true;
@@ -63,31 +63,30 @@ public class Webcam {
 	}
 	
 	public static volatile List<Camera> list = getCameras();
-	public static final String UNKNOWN_RESOLUTION = "(Max Resolution)"; // some webcam's don't list any resolutions
 	
 	/**
 	 * Represents a camera and all of its settings.
 	 */
-	public record Camera(String name,                   // from the DirectShow "Friendly Name" (will be shown to the user)
-	                     MemorySegment handle,          // from the DirectShow "Device Path" (a wchar_t[] null-terminated string)
-	                     Setting pan,                   // from the DirectShow "Camera Control" interface
-	                     Setting tilt,                  // from the DirectShow "Camera Control" interface
-	                     Setting roll,                  // from the DirectShow "Camera Control" interface
-	                     Setting zoom,                  // from the DirectShow "Camera Control" interface
-	                     Setting exposure,              // from the DirectShow "Camera Control" interface
-	                     Setting iris,                  // from the DirectShow "Camera Control" interface
-	                     Setting focus,                 // from the DirectShow "Camera Control" interface
-	                     Setting brightness,            // from the DirectShow "Video Processor" interface
-	                     Setting contrast,              // from the DirectShow "Video Processor" interface
-	                     Setting hue,                   // from the DirectShow "Video Processor" interface
-	                     Setting saturation,            // from the DirectShow "Video Processor" interface
-	                     Setting sharpness,             // from the DirectShow "Video Processor" interface
-	                     Setting gamma,                 // from the DirectShow "Video Processor" interface
-	                     Setting color,                 // from the DirectShow "Video Processor" interface
-	                     Setting whiteBalance,          // from the DirectShow "Video Processor" interface
-	                     Setting backlightCompensation, // from the DirectShow "Video Processor" interface
-	                     Setting gain,                  // from the DirectShow "Video Processor" interface
-	                     List<String> resolutions,      // from the DirectShow "Stream Configuration" interface
+	public record Camera(String name,                        // from the DirectShow "Friendly Name" (will be shown to the user)
+	                     MemorySegment handle,               // from the DirectShow "Device Path" (a wchar_t[] null-terminated string)
+	                     Setting pan,                        // from the DirectShow "Camera Control" interface
+	                     Setting tilt,                       // from the DirectShow "Camera Control" interface
+	                     Setting roll,                       // from the DirectShow "Camera Control" interface
+	                     Setting zoom,                       // from the DirectShow "Camera Control" interface
+	                     Setting exposure,                   // from the DirectShow "Camera Control" interface
+	                     Setting iris,                       // from the DirectShow "Camera Control" interface
+	                     Setting focus,                      // from the DirectShow "Camera Control" interface
+	                     Setting brightness,                 // from the DirectShow "Video Processor" interface
+	                     Setting contrast,                   // from the DirectShow "Video Processor" interface
+	                     Setting hue,                        // from the DirectShow "Video Processor" interface
+	                     Setting saturation,                 // from the DirectShow "Video Processor" interface
+	                     Setting sharpness,                  // from the DirectShow "Video Processor" interface
+	                     Setting gamma,                      // from the DirectShow "Video Processor" interface
+	                     Setting color,                      // from the DirectShow "Video Processor" interface
+	                     Setting whiteBalance,               // from the DirectShow "Video Processor" interface
+	                     Setting backlightCompensation,      // from the DirectShow "Video Processor" interface
+	                     Setting gain,                       // from the DirectShow "Video Processor" interface
+	                     List<Configuration> configurations, // from the DirectShow "Stream Configuration" interface
 	                     AtomicReference<Arena> sharedMemory) {
 		
 		public List<Widget> createSettingsWidgets() {
@@ -135,7 +134,7 @@ public class Webcam {
 			s.append("White Balance:          " + whiteBalance.toString() + "\n");
 			s.append("Backlight Compensation: " + backlightCompensation.toString() + "\n");
 			s.append("Gain:                   " + gain.toString() + "\n");
-			s.append("Resolutions:            " + resolutions.stream().collect(Collectors.joining(", ")));
+			s.append("Configurations:         " + configurations.stream().map(config -> config.toString()).collect(Collectors.joining(", ")));
 			return s.toString();
 		}
 		
@@ -144,7 +143,7 @@ public class Webcam {
 	/**
 	 * A setting and all of its attributes.
 	 */
-	public record Setting(String name,
+	private record Setting(String name,
 	                      boolean supported,
 	                      int min,
 	                      int max,
@@ -184,6 +183,40 @@ public class Webcam {
 				                   .withEnableCheckbox(manualAllowed && automaticAllowed, false, "Automatic or manual.")
 				                   .onChange((isManual, newManualValue) -> setSetting(camera, this, isManual, newManualValue));
 			
+		}
+		
+	}
+	
+	/**
+	 * A stream configuration and all of its attributes.
+	 */
+	public record Configuration(int handle,       // MSBit = 0 for capture pin, or 1 for preview pin. Lower 31 bits = index for StreamConfig->GetStreamCaps()
+	                            int width,        // pixels
+	                            int height,       // pixels
+	                            long interval,    // 1 = 100ns
+	                            short colorDepth, // bits per pixel
+	                            String fourCC) {  // FourCC image type
+		
+		@Override public String toString() {
+			return "%dx%d  %d FPS  (%dbit %s)".formatted(width, height, Math.round(10000000.0 / interval), colorDepth, fourCC);
+		}
+		
+		public static Configuration fromText(String text) {
+			try {
+				String resolution = text.split("  ")[0];
+				String fps        = text.split("  ")[1];
+				String codec      = text.split("  ")[2];
+				codec = codec.substring(1, codec.length() - 1);
+				int index        = -1; // unknown
+				int width        = Integer.parseInt(resolution.split("x")[0]);
+				int height       = Integer.parseInt(resolution.split("x")[1]);
+				long interval    = Math.round(10000000.0 / Integer.parseInt(fps.split(" ")[0]));
+				short colorDepth = Short.parseShort(codec.split("bit")[0]);
+				String fourCC    = codec.split(" ")[1];
+				return new Configuration(index, width, height, interval, colorDepth, fourCC);
+			} catch(Exception e) {
+				return null;
+			}
 		}
 		
 	}
@@ -372,22 +405,53 @@ public class Webcam {
 				                                   camera.gainManualAllowed(cameraStruct),
 				                                   false, 9);
 				
-				List<String> resolutions = new ArrayList<String>();
-				int resolutionsCount = camera.resolutionsCount(cameraStruct);
-				for(int j = 0; j < resolutionsCount; j++) {
-					int width  = camera.resolutionWidth (cameraStruct, j);
-					int height = camera.resolutionHeight(cameraStruct, j);
-					resolutions.add(width + " x " + height);
+				List<Configuration> configs = new ArrayList<Configuration>();
+				int configsCount = camera.configsCount(cameraStruct);
+				for(int j = 0; j < configsCount; j++) {
+					int handle          = camera.configHandle(cameraStruct, j);
+					int width           = camera.configWidth(cameraStruct, j);
+					int height          = camera.configHeight(cameraStruct, j);
+					long minInterval    = camera.configMinInterval(cameraStruct, j);
+					long maxInterval    = camera.configMaxInterval(cameraStruct, j);
+					short colorDepth    = camera.configColorDepth(cameraStruct, j);
+					int fourCC          = camera.configFourCC(cameraStruct, j);
+					String fourCCstring = new String(new char[] {(char) ((fourCC >>  0) & 0xFF),
+					                                             (char) ((fourCC >>  8) & 0xFF),
+					                                             (char) ((fourCC >> 16) & 0xFF),
+					                                             (char) ((fourCC >> 24) & 0xFF)});
+					
+					if(minInterval == maxInterval) {
+						// only one FPS is supported
+						configs.add(new Configuration(handle, width, height, minInterval, colorDepth, fourCCstring));
+					} else {
+						// a range of FPSs are supported
+						// ensure 30/50/60 FPS options are shown if they are inside the range
+						configs.add(new Configuration(handle, width, height, minInterval, colorDepth, fourCCstring));
+						configs.add(new Configuration(handle, width, height, maxInterval, colorDepth, fourCCstring));
+						int interval30fps = 333333;
+						int interval50fps = 200000;
+						int interval60fps = 166666;
+						if(interval30fps > minInterval && interval30fps < maxInterval)
+							configs.add(new Configuration(handle, width, height, interval30fps, colorDepth, fourCCstring));
+						if(interval50fps > minInterval && interval50fps < maxInterval)
+							configs.add(new Configuration(handle, width, height, interval50fps, colorDepth, fourCCstring));
+						if(interval60fps > minInterval && interval60fps < maxInterval)
+							configs.add(new Configuration(handle, width, height, interval60fps, colorDepth, fourCCstring));
+					}
 				}
-				if(resolutionsCount == 0)
-					resolutions.add(UNKNOWN_RESOLUTION);
+				
+				// sort the configurations: widest first, then tallest, then highest FPS, then highest color depth
+				configs.sort((a, b) -> b.width - a.width);
+				configs.sort((a, b) -> (a.width != b.width) ? 0 : b.height - a.height);
+				configs.sort((a, b) -> (a.width != b.width || a.height != b.height) ? 0 : (int) (a.interval - b.interval));
+				configs.sort((a, b) -> (a.width != b.width || a.height != b.height || a.interval != b.interval) ? 0 : (int) (b.colorDepth - a.colorDepth));
 
 				// create a record that represents this camera, and put it in the list of cameras
 				Camera cam = new Camera(friendlyName,
 				                        Arena.ofAuto().allocateFrom(devicePath, StandardCharsets.UTF_16LE),
 				                        pan, tilt, roll, zoom, exposure, iris, focus,
 				                        brightness, contrast, hue, saturation, sharpness, gamma, color, whiteBalance, backComp, gain,
-				                        resolutions,
+				                        configs,
 				                        new AtomicReference<Arena>());
 				
 				cameras.add(cam);
@@ -407,21 +471,20 @@ public class Webcam {
 		
 	}
 	
-	public record Image(ByteBuffer buffer, int width, int height) {}
+	public record Image(ByteBuffer buffer, int width, int height, boolean isJpeg) {}
 	
 	/**
 	 * Connects to a camera and starts receiving images.
 	 * 
-	 * @param camera             One of the Cameras from getCameras().
-	 * @param requestedWidth     Image width,  in pixels. Must be one of the resolutions listed in the Camera record. Use 0 if no resolutions were listed.
-	 * @param requestedHeight    Image height, in pixels. Must be one of the resolutions listed in the Camera record. Use 0 if no resolutions were listed.
-	 * @param handler            Will be called each time a new image is available. Must be thread-safe. The ByteBuffer will contain BGR24 data.
-	 * @return                   True on success.
-	 *                           False if the camera is not present.
-	 *                           False if the camera is already in use.
-	 *                           False if the DLL was not loaded.
+	 * @param camera           One of the Cameras from getCameras().
+	 * @param configuration    One of the Configurations listed in the Camera record.
+	 * @param handler          Will be called each time a new image is available. Must be thread-safe. The ByteBuffer will contain JPEG or BGR24 data.
+	 * @return                 True on success.
+	 *                         False if the camera is not present.
+	 *                         False if the camera is already in use.
+	 *                         False if the DLL was not loaded.
 	 */
-	public static synchronized boolean connect(Camera camera, int requestedWidth, int requestedHeight, Consumer<Image> handler) {
+	public static synchronized boolean connect(Camera camera, Configuration configuration, Consumer<Image> handler) {
 		
 		if(!enabled)
 			return false;
@@ -432,19 +495,25 @@ public class Webcam {
 			Arena sharedMemory = camera.sharedMemory.get();
 			
 			MemorySegment log          = MemorySegment.NULL; // sharedMemory.allocate(100_000);
-			MemorySegment frameHandler = connect$handler.allocate((buffer, bufferByteCount, width, height) -> {
+			MemorySegment frameHandler = connectCamera$handler.allocate((buffer, bufferByteCount, width, height, isJpeg) -> {
 				
-				// create a copy to ensure we own the memory, and vertically mirror it because DirectShow orders the lines "backwards"
-				ByteBuffer original = buffer.asSlice(0, bufferByteCount).asByteBuffer();
-				ByteBuffer mirrored = ByteBuffer.allocateDirect(width*height*3);
-				int bytesPerLine = width*3;
-				for(int line = 0; line < height; line++)
-					mirrored.put(line * bytesPerLine, original, ((height-line-1) * bytesPerLine), bytesPerLine);
-				
-				handler.accept(new Image(mirrored, width, height));
-				
+				if(isJpeg) {
+					// create a copy to ensure we own the memory
+					ByteBuffer copy = ByteBuffer.allocateDirect(bufferByteCount);
+					copy.put(buffer.asSlice(0, bufferByteCount).asByteBuffer());
+					copy.rewind();
+					handler.accept(new Image(copy, width, height, true));
+				} else {
+					// create a copy to ensure we own the memory, and vertically mirror it because DirectShow orders the lines "backwards"
+					ByteBuffer original = buffer.asSlice(0, bufferByteCount).asByteBuffer();
+					ByteBuffer mirrored = ByteBuffer.allocateDirect(width*height*3);
+					int bytesPerLine = width*3;
+					for(int line = 0; line < height; line++)
+						mirrored.put(line * bytesPerLine, original, ((height-line-1) * bytesPerLine), bytesPerLine);
+					handler.accept(new Image(mirrored, width, height, false));
+				}
 			}, sharedMemory);
-			boolean success = WebcamDLL.connectCamera(camera.handle, requestedWidth, requestedHeight, frameHandler, log, log.byteSize());
+			boolean success = WebcamDLL.connectCamera(camera.handle, configuration.handle, configuration.interval, frameHandler, log, log.byteSize());
 			
 			if(log != MemorySegment.NULL)
 				Notifications.printInfo(log.getString(0, StandardCharsets.UTF_16LE));
@@ -524,8 +593,8 @@ public class Webcam {
 	 * @param camera     One of the Cameras from getCameras().
 	 * @param setting    One of the Settings in that Camera record.
 	 * @return           The low 32 bits contain the manualValue, and the high 32 bits contain the isManual boolean.
-	 *                   -1 on error.
-	 *                   -1 if the DLL was not loaded.
+	 *                   Or -1 on error.
+	 *                   Or -1 if the DLL was not loaded.
 	 */
 	public static synchronized long getSetting(Camera camera, Setting setting) {
 		

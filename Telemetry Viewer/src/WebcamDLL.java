@@ -39,7 +39,7 @@ public class WebcamDLL extends WebcamDLL$shared {
     /**
      * Function descriptor for:
      * {@snippet lang=c :
-     * int32_t getCameras(Camera cameras[], uint32_t maxCameraCount, wchar_t *log, int64_t logByteCount)
+     * int32_t getCameras(Camera cameras[], int32_t maxCameraCount, wchar_t *log, int64_t logByteCount)
      * }
      */
     public static FunctionDescriptor getCameras$descriptor() {
@@ -49,7 +49,7 @@ public class WebcamDLL extends WebcamDLL$shared {
     /**
      * Downcall method handle for:
      * {@snippet lang=c :
-     * int32_t getCameras(Camera cameras[], uint32_t maxCameraCount, wchar_t *log, int64_t logByteCount)
+     * int32_t getCameras(Camera cameras[], int32_t maxCameraCount, wchar_t *log, int64_t logByteCount)
      * }
      */
     public static MethodHandle getCameras$handle() {
@@ -59,7 +59,7 @@ public class WebcamDLL extends WebcamDLL$shared {
     /**
      * Address for:
      * {@snippet lang=c :
-     * int32_t getCameras(Camera cameras[], uint32_t maxCameraCount, wchar_t *log, int64_t logByteCount)
+     * int32_t getCameras(Camera cameras[], int32_t maxCameraCount, wchar_t *log, int64_t logByteCount)
      * }
      */
     public static MemorySegment getCameras$address() {
@@ -68,7 +68,7 @@ public class WebcamDLL extends WebcamDLL$shared {
 
     /**
      * {@snippet lang=c :
-     * int32_t getCameras(Camera cameras[], uint32_t maxCameraCount, wchar_t *log, int64_t logByteCount)
+     * int32_t getCameras(Camera cameras[], int32_t maxCameraCount, wchar_t *log, int64_t logByteCount)
      * }
      */
     public static int getCameras(MemorySegment cameras, int maxCameraCount, MemorySegment log, long logByteCount) {
@@ -90,7 +90,7 @@ public class WebcamDLL extends WebcamDLL$shared {
             WebcamDLL.C_BOOL,
             WebcamDLL.C_POINTER,
             WebcamDLL.C_INT,
-            WebcamDLL.C_INT,
+            WebcamDLL.C_LONG_LONG,
             WebcamDLL.C_POINTER,
             WebcamDLL.C_POINTER,
             WebcamDLL.C_LONG_LONG
@@ -104,7 +104,7 @@ public class WebcamDLL extends WebcamDLL$shared {
     /**
      * Function descriptor for:
      * {@snippet lang=c :
-     * _Bool connectCamera(const wchar_t *devicePath, int32_t width, int32_t height, void (*handler)(uint8_t *, int32_t, int32_t, int32_t), wchar_t *log, int64_t logByteCount)
+     * _Bool connectCamera(const wchar_t *devicePath, int32_t configIndex, int64_t interval, void (*handler)(uint8_t *, int32_t, int32_t, int32_t, _Bool), wchar_t *log, int64_t logByteCount)
      * }
      */
     public static FunctionDescriptor connectCamera$descriptor() {
@@ -114,7 +114,7 @@ public class WebcamDLL extends WebcamDLL$shared {
     /**
      * Downcall method handle for:
      * {@snippet lang=c :
-     * _Bool connectCamera(const wchar_t *devicePath, int32_t width, int32_t height, void (*handler)(uint8_t *, int32_t, int32_t, int32_t), wchar_t *log, int64_t logByteCount)
+     * _Bool connectCamera(const wchar_t *devicePath, int32_t configIndex, int64_t interval, void (*handler)(uint8_t *, int32_t, int32_t, int32_t, _Bool), wchar_t *log, int64_t logByteCount)
      * }
      */
     public static MethodHandle connectCamera$handle() {
@@ -124,7 +124,7 @@ public class WebcamDLL extends WebcamDLL$shared {
     /**
      * Address for:
      * {@snippet lang=c :
-     * _Bool connectCamera(const wchar_t *devicePath, int32_t width, int32_t height, void (*handler)(uint8_t *, int32_t, int32_t, int32_t), wchar_t *log, int64_t logByteCount)
+     * _Bool connectCamera(const wchar_t *devicePath, int32_t configIndex, int64_t interval, void (*handler)(uint8_t *, int32_t, int32_t, int32_t, _Bool), wchar_t *log, int64_t logByteCount)
      * }
      */
     public static MemorySegment connectCamera$address() {
@@ -133,16 +133,16 @@ public class WebcamDLL extends WebcamDLL$shared {
 
     /**
      * {@snippet lang=c :
-     * _Bool connectCamera(const wchar_t *devicePath, int32_t width, int32_t height, void (*handler)(uint8_t *, int32_t, int32_t, int32_t), wchar_t *log, int64_t logByteCount)
+     * _Bool connectCamera(const wchar_t *devicePath, int32_t configIndex, int64_t interval, void (*handler)(uint8_t *, int32_t, int32_t, int32_t, _Bool), wchar_t *log, int64_t logByteCount)
      * }
      */
-    public static boolean connectCamera(MemorySegment devicePath, int width, int height, MemorySegment handler, MemorySegment log, long logByteCount) {
+    public static boolean connectCamera(MemorySegment devicePath, int configIndex, long interval, MemorySegment handler, MemorySegment log, long logByteCount) {
         var mh$ = connectCamera.HANDLE;
         try {
             if (TRACE_DOWNCALLS) {
-                traceDowncall("connectCamera", devicePath, width, height, handler, log, logByteCount);
+                traceDowncall("connectCamera", devicePath, configIndex, interval, handler, log, logByteCount);
             }
-            return (boolean)mh$.invokeExact(devicePath, width, height, handler, log, logByteCount);
+            return (boolean)mh$.invokeExact(devicePath, configIndex, interval, handler, log, logByteCount);
         } catch (Error | RuntimeException ex) {
            throw ex;
         } catch (Throwable ex$) {

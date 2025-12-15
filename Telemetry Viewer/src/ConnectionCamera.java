@@ -45,7 +45,7 @@ public class ConnectionCamera extends Connection {
 
 	// camera configuration, if local camera
 	private Webcam.Camera camera;
-	public WidgetCombobox<String> resolution;
+	public WidgetCombobox<Webcam.Configuration> configuration;
 	
 	// camera configuration, if network camera
 	public WidgetTextfield<String>     url;
@@ -65,6 +65,7 @@ public class ConnectionCamera extends Connection {
 	// images in memory
 	private volatile Frame liveImage = new Frame("[not connected]");
 	private volatile Frame oldImage  = new Frame("[no image]");
+	private volatile int startingFrameCount = 0; // how many frame existed when the connection was established
 	
 	// images archived to disk
 	private class FrameInfo {
@@ -94,13 +95,13 @@ public class ConnectionCamera extends Connection {
 			
 			camera = Webcam.list.stream().filter(cam -> cam.name().equals(getName())).findFirst().orElse(null);
 			
-			List<String> resolutions = (camera != null) ? camera.resolutions()  : List.of();
-			String       selectedRes = (camera != null) ? resolutions.getLast() : null;
-			resolution = new WidgetCombobox<String>(null, resolutions, selectedRes)
-			                 .setExportLabel("resolution");
+			List<Webcam.Configuration> configs        = (camera != null) ? camera.configurations()  : List.of();
+			Webcam.Configuration       selectedConfig = (camera != null) ? configs.getFirst()       : null;
+			configuration = new WidgetCombobox<Webcam.Configuration>(null, configs, selectedConfig)
+			                    .setExportLabel("configuration");
 			
 			configWidgets.add(name);
-			configWidgets.add(resolution);
+			configWidgets.add(configuration);
 			
 			if(camera != null)
 				transmitWidgets.addAll(camera.createSettingsWidgets());
@@ -258,6 +259,7 @@ public class ConnectionCamera extends Connection {
 					return;
 				}
 				setStatus(Status.CONNECTED, false);
+				startingFrameCount = framesIndex.size();
 				
 				// configure the camera based on the settings widgets
 				SwingUtilities.invokeLater(() -> {
@@ -343,23 +345,26 @@ public class ConnectionCamera extends Connection {
 				
 				// connect
 				setStatus(Status.CONNECTING, false);
-				int width  = resolution.is(Webcam.UNKNOWN_RESOLUTION) ? 0 : Integer.parseInt(resolution.get().split(" x ")[0]);
-				int height = resolution.is(Webcam.UNKNOWN_RESOLUTION) ? 0 : Integer.parseInt(resolution.get().split(" x ")[1]);
 				AtomicInteger frameCount = new AtomicInteger(framesIndex.size());
-				int oldFrameCount = frameCount.get();
 				
-				boolean success = Webcam.connect(camera, width, height, newFrame -> {
+				boolean success = Webcam.connect(camera, configuration.get(), newFrame -> {
 					// save and show the image
 					long timestamp = System.currentTimeMillis();
-					saveImage(frameCount.get(), newFrame.buffer(), newFrame.width(), newFrame.height(), false, timestamp);
-					showImage(newFrame.buffer(), newFrame.width(), newFrame.height(), false, timestamp);
+					if(newFrame.isJpeg()) {
+						byte[] jpegBytes = new byte[newFrame.buffer().capacity()];
+						newFrame.buffer().get(jpegBytes);
+						saveJpeg(jpegBytes, timestamp);
+						showJpeg(jpegBytes, timestamp);
+					} else {
+						saveImage(frameCount.get(), newFrame.buffer(), newFrame.width(), newFrame.height(), false, timestamp);
+						showImage(                  newFrame.buffer(), newFrame.width(), newFrame.height(), false, timestamp);
+					}
 					frameCount.incrementAndGet();
-					if(frameCount.get() == oldFrameCount + 1 && resolution.get().equals(Webcam.UNKNOWN_RESOLUTION))
-						resolution.disableWithMessage(newFrame.width() + " x " + newFrame.height());
 				});
 				
 				if(success) {
 					setStatus(Status.CONNECTED, false);
+					startingFrameCount = framesIndex.size();
 				} else {
 					disconnect("Unable to connect to " + getName() + ".", false);
 					return;
@@ -585,7 +590,6 @@ public class ConnectionCamera extends Connection {
 				oldImage = new Frame(bgrBytes, width, height, false, label, info.timestamp);
 				return oldImage;
 			} catch(Exception e2) {
-				e2.printStackTrace();
 				return new Frame("[error decoding image]");
 			}
 		}
@@ -597,9 +601,11 @@ public class ConnectionCamera extends Connection {
 		// if importing a camera that doesn't exist on this device, don't fail importing
 		if(type == Type.LOCAL && camera == null) {
 			
-			// use whatever resolution is claimed
-			String res = lines.parseString("resolution = %s");
-			resolution.resetValues(List.of(res), res);
+			// use whatever configuration is claimed
+			String text = lines.parseString("configuration = %s");
+			Webcam.Configuration config = Webcam.Configuration.fromText(text);
+			if(config != null)
+				configuration.resetValues(List.of(config), config);
 			
 			// ignore any remaining settings widgets
 			while(!lines.peek().isBlank())
@@ -796,11 +802,14 @@ public class ConnectionCamera extends Connection {
 					bgrBytes = ((DataBufferByte)bi.getRaster().getDataBuffer()).getData();
 				}
 				
-				// update the liveImage object
-				int frameCount = framesIndex.size();
+				// calculate the FPS based on the 30 most recent frames, or less if <30 frames have been received since connecting
 				double fps = 0;
-				if(frameCount > 30)
-					fps = 30000.0 / (double) (framesIndex.get(frameCount - 1).timestamp - framesIndex.get(frameCount - 30).timestamp);
+				int frameCount = framesIndex.size();
+				int framesToConsider = Math.min(30, frameCount - startingFrameCount);
+				if(framesToConsider > 1)
+					fps = ((framesToConsider - 1) * 1000.0) / (double) (framesIndex.get(frameCount - 1).timestamp - framesIndex.get(frameCount - framesToConsider).timestamp);
+
+				// update the liveImage object
 				String label = String.format("%s (%d x %d, %01.1f FPS)", getName(), width, height, fps);
 				liveImage = new Frame(bgrBytes, width, height, false, label, timestamp);
 				
@@ -808,8 +817,7 @@ public class ConnectionCamera extends Connection {
 				
 			} catch(Exception e) {
 				
-				Notifications.showFailureForMilliseconds("Unable to decode one of the frames from " + getName() + "\n" + e.getMessage(), 5000, true);
-				e.printStackTrace();
+				liveImage = new Frame("[error decoding image]");
 				liveJpegThreads.decrementAndGet();
 				
 			}
@@ -907,10 +915,12 @@ public class ConnectionCamera extends Connection {
 	 */
 	private void showImage(ByteBuffer image, int width, int height, boolean isRGB, long timestamp) {
 		
-		int frameCount = framesIndex.size();
+		// calculate the FPS based on the 30 most recent frames, or less if <30 frames have been received since connecting
 		double fps = 0;
-		if(frameCount > 30)
-			fps = 30000.0 / (double) (framesIndex.get(frameCount - 1).timestamp - framesIndex.get(frameCount - 30).timestamp);
+		int frameCount = framesIndex.size();
+		int framesToConsider = Math.min(30, frameCount - startingFrameCount);
+		if(framesToConsider > 1)
+			fps = ((framesToConsider - 1) * 1000.0) / (double) (framesIndex.get(frameCount - 1).timestamp - framesIndex.get(frameCount - framesToConsider).timestamp);
 		String label = String.format("%s (%d x %d, %01.1f FPS)", getName(), width, height, fps);
 		
 		image.rewind();

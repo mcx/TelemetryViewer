@@ -125,9 +125,14 @@ import static java.lang.foreign.MemoryLayout.PathElement.*;
  *     int32_t gainStepSize;
  *     _Bool gainAutomaticAllowed;
  *     _Bool gainManualAllowed;
- *     int32_t resolutionsCount;
- *     int32_t resolutionWidth[16];
- *     int32_t resolutionHeight[16];
+ *     int32_t configsCount;
+ *     int32_t configHandle[32];
+ *     int32_t configWidth[32];
+ *     int32_t configHeight[32];
+ *     int64_t configMinInterval[32];
+ *     int64_t configMaxInterval[32];
+ *     int16_t configColorDepth[32];
+ *     int32_t configFourCC[32];
  * }
  * }
  */
@@ -267,9 +272,15 @@ public class camera {
         WebcamDLL.C_BOOL.withName("gainAutomaticAllowed"),
         WebcamDLL.C_BOOL.withName("gainManualAllowed"),
         MemoryLayout.paddingLayout(2),
-        WebcamDLL.C_INT.withName("resolutionsCount"),
-        MemoryLayout.sequenceLayout(16, WebcamDLL.C_INT).withName("resolutionWidth"),
-        MemoryLayout.sequenceLayout(16, WebcamDLL.C_INT).withName("resolutionHeight")
+        WebcamDLL.C_INT.withName("configsCount"),
+        MemoryLayout.sequenceLayout(32, WebcamDLL.C_INT).withName("configHandle"),
+        MemoryLayout.sequenceLayout(32, WebcamDLL.C_INT).withName("configWidth"),
+        MemoryLayout.sequenceLayout(32, WebcamDLL.C_INT).withName("configHeight"),
+        MemoryLayout.paddingLayout(4),
+        MemoryLayout.sequenceLayout(32, WebcamDLL.C_LONG_LONG).withName("configMinInterval"),
+        MemoryLayout.sequenceLayout(32, WebcamDLL.C_LONG_LONG).withName("configMaxInterval"),
+        MemoryLayout.sequenceLayout(32, WebcamDLL.C_SHORT).withName("configColorDepth"),
+        MemoryLayout.sequenceLayout(32, WebcamDLL.C_INT).withName("configFourCC")
     ).withName("camera");
 
     /**
@@ -5273,202 +5284,587 @@ public class camera {
         struct.set(gainManualAllowed$LAYOUT, gainManualAllowed$OFFSET, fieldValue);
     }
 
-    private static final OfInt resolutionsCount$LAYOUT = (OfInt)$LAYOUT.select(groupElement("resolutionsCount"));
+    private static final OfInt configsCount$LAYOUT = (OfInt)$LAYOUT.select(groupElement("configsCount"));
 
     /**
      * Layout for field:
      * {@snippet lang=c :
-     * int32_t resolutionsCount
+     * int32_t configsCount
      * }
      */
-    public static final OfInt resolutionsCount$layout() {
-        return resolutionsCount$LAYOUT;
+    public static final OfInt configsCount$layout() {
+        return configsCount$LAYOUT;
     }
 
-    private static final long resolutionsCount$OFFSET = $LAYOUT.byteOffset(groupElement("resolutionsCount"));
+    private static final long configsCount$OFFSET = $LAYOUT.byteOffset(groupElement("configsCount"));
 
     /**
      * Offset for field:
      * {@snippet lang=c :
-     * int32_t resolutionsCount
+     * int32_t configsCount
      * }
      */
-    public static final long resolutionsCount$offset() {
-        return resolutionsCount$OFFSET;
+    public static final long configsCount$offset() {
+        return configsCount$OFFSET;
     }
 
     /**
      * Getter for field:
      * {@snippet lang=c :
-     * int32_t resolutionsCount
+     * int32_t configsCount
      * }
      */
-    public static int resolutionsCount(MemorySegment struct) {
-        return struct.get(resolutionsCount$LAYOUT, resolutionsCount$OFFSET);
+    public static int configsCount(MemorySegment struct) {
+        return struct.get(configsCount$LAYOUT, configsCount$OFFSET);
     }
 
     /**
      * Setter for field:
      * {@snippet lang=c :
-     * int32_t resolutionsCount
+     * int32_t configsCount
      * }
      */
-    public static void resolutionsCount(MemorySegment struct, int fieldValue) {
-        struct.set(resolutionsCount$LAYOUT, resolutionsCount$OFFSET, fieldValue);
+    public static void configsCount(MemorySegment struct, int fieldValue) {
+        struct.set(configsCount$LAYOUT, configsCount$OFFSET, fieldValue);
     }
 
-    private static final SequenceLayout resolutionWidth$LAYOUT = (SequenceLayout)$LAYOUT.select(groupElement("resolutionWidth"));
+    private static final SequenceLayout configHandle$LAYOUT = (SequenceLayout)$LAYOUT.select(groupElement("configHandle"));
 
     /**
      * Layout for field:
      * {@snippet lang=c :
-     * int32_t resolutionWidth[16]
+     * int32_t configHandle[32]
      * }
      */
-    public static final SequenceLayout resolutionWidth$layout() {
-        return resolutionWidth$LAYOUT;
+    public static final SequenceLayout configHandle$layout() {
+        return configHandle$LAYOUT;
     }
 
-    private static final long resolutionWidth$OFFSET = $LAYOUT.byteOffset(groupElement("resolutionWidth"));
+    private static final long configHandle$OFFSET = $LAYOUT.byteOffset(groupElement("configHandle"));
 
     /**
      * Offset for field:
      * {@snippet lang=c :
-     * int32_t resolutionWidth[16]
+     * int32_t configHandle[32]
      * }
      */
-    public static final long resolutionWidth$offset() {
-        return resolutionWidth$OFFSET;
+    public static final long configHandle$offset() {
+        return configHandle$OFFSET;
     }
 
     /**
      * Getter for field:
      * {@snippet lang=c :
-     * int32_t resolutionWidth[16]
+     * int32_t configHandle[32]
      * }
      */
-    public static MemorySegment resolutionWidth(MemorySegment struct) {
-        return struct.asSlice(resolutionWidth$OFFSET, resolutionWidth$LAYOUT.byteSize());
+    public static MemorySegment configHandle(MemorySegment struct) {
+        return struct.asSlice(configHandle$OFFSET, configHandle$LAYOUT.byteSize());
     }
 
     /**
      * Setter for field:
      * {@snippet lang=c :
-     * int32_t resolutionWidth[16]
+     * int32_t configHandle[32]
      * }
      */
-    public static void resolutionWidth(MemorySegment struct, MemorySegment fieldValue) {
-        MemorySegment.copy(fieldValue, 0L, struct, resolutionWidth$OFFSET, resolutionWidth$LAYOUT.byteSize());
+    public static void configHandle(MemorySegment struct, MemorySegment fieldValue) {
+        MemorySegment.copy(fieldValue, 0L, struct, configHandle$OFFSET, configHandle$LAYOUT.byteSize());
     }
 
-    private static long[] resolutionWidth$DIMS = { 16 };
+    private static long[] configHandle$DIMS = { 32 };
 
     /**
      * Dimensions for array field:
      * {@snippet lang=c :
-     * int32_t resolutionWidth[16]
+     * int32_t configHandle[32]
      * }
      */
-    public static long[] resolutionWidth$dimensions() {
-        return resolutionWidth$DIMS;
+    public static long[] configHandle$dimensions() {
+        return configHandle$DIMS;
     }
-    private static final VarHandle resolutionWidth$ELEM_HANDLE = resolutionWidth$LAYOUT.varHandle(sequenceElement());
+    private static final VarHandle configHandle$ELEM_HANDLE = configHandle$LAYOUT.varHandle(sequenceElement());
 
     /**
      * Indexed getter for field:
      * {@snippet lang=c :
-     * int32_t resolutionWidth[16]
+     * int32_t configHandle[32]
      * }
      */
-    public static int resolutionWidth(MemorySegment struct, long index0) {
-        return (int)resolutionWidth$ELEM_HANDLE.get(struct, resolutionWidth$OFFSET, index0);
+    public static int configHandle(MemorySegment struct, long index0) {
+        return (int)configHandle$ELEM_HANDLE.get(struct, configHandle$OFFSET, index0);
     }
 
     /**
      * Indexed setter for field:
      * {@snippet lang=c :
-     * int32_t resolutionWidth[16]
+     * int32_t configHandle[32]
      * }
      */
-    public static void resolutionWidth(MemorySegment struct, long index0, int fieldValue) {
-        resolutionWidth$ELEM_HANDLE.set(struct, resolutionWidth$OFFSET, index0, fieldValue);
+    public static void configHandle(MemorySegment struct, long index0, int fieldValue) {
+        configHandle$ELEM_HANDLE.set(struct, configHandle$OFFSET, index0, fieldValue);
     }
 
-    private static final SequenceLayout resolutionHeight$LAYOUT = (SequenceLayout)$LAYOUT.select(groupElement("resolutionHeight"));
+    private static final SequenceLayout configWidth$LAYOUT = (SequenceLayout)$LAYOUT.select(groupElement("configWidth"));
 
     /**
      * Layout for field:
      * {@snippet lang=c :
-     * int32_t resolutionHeight[16]
+     * int32_t configWidth[32]
      * }
      */
-    public static final SequenceLayout resolutionHeight$layout() {
-        return resolutionHeight$LAYOUT;
+    public static final SequenceLayout configWidth$layout() {
+        return configWidth$LAYOUT;
     }
 
-    private static final long resolutionHeight$OFFSET = $LAYOUT.byteOffset(groupElement("resolutionHeight"));
+    private static final long configWidth$OFFSET = $LAYOUT.byteOffset(groupElement("configWidth"));
 
     /**
      * Offset for field:
      * {@snippet lang=c :
-     * int32_t resolutionHeight[16]
+     * int32_t configWidth[32]
      * }
      */
-    public static final long resolutionHeight$offset() {
-        return resolutionHeight$OFFSET;
+    public static final long configWidth$offset() {
+        return configWidth$OFFSET;
     }
 
     /**
      * Getter for field:
      * {@snippet lang=c :
-     * int32_t resolutionHeight[16]
+     * int32_t configWidth[32]
      * }
      */
-    public static MemorySegment resolutionHeight(MemorySegment struct) {
-        return struct.asSlice(resolutionHeight$OFFSET, resolutionHeight$LAYOUT.byteSize());
+    public static MemorySegment configWidth(MemorySegment struct) {
+        return struct.asSlice(configWidth$OFFSET, configWidth$LAYOUT.byteSize());
     }
 
     /**
      * Setter for field:
      * {@snippet lang=c :
-     * int32_t resolutionHeight[16]
+     * int32_t configWidth[32]
      * }
      */
-    public static void resolutionHeight(MemorySegment struct, MemorySegment fieldValue) {
-        MemorySegment.copy(fieldValue, 0L, struct, resolutionHeight$OFFSET, resolutionHeight$LAYOUT.byteSize());
+    public static void configWidth(MemorySegment struct, MemorySegment fieldValue) {
+        MemorySegment.copy(fieldValue, 0L, struct, configWidth$OFFSET, configWidth$LAYOUT.byteSize());
     }
 
-    private static long[] resolutionHeight$DIMS = { 16 };
+    private static long[] configWidth$DIMS = { 32 };
 
     /**
      * Dimensions for array field:
      * {@snippet lang=c :
-     * int32_t resolutionHeight[16]
+     * int32_t configWidth[32]
      * }
      */
-    public static long[] resolutionHeight$dimensions() {
-        return resolutionHeight$DIMS;
+    public static long[] configWidth$dimensions() {
+        return configWidth$DIMS;
     }
-    private static final VarHandle resolutionHeight$ELEM_HANDLE = resolutionHeight$LAYOUT.varHandle(sequenceElement());
+    private static final VarHandle configWidth$ELEM_HANDLE = configWidth$LAYOUT.varHandle(sequenceElement());
 
     /**
      * Indexed getter for field:
      * {@snippet lang=c :
-     * int32_t resolutionHeight[16]
+     * int32_t configWidth[32]
      * }
      */
-    public static int resolutionHeight(MemorySegment struct, long index0) {
-        return (int)resolutionHeight$ELEM_HANDLE.get(struct, resolutionHeight$OFFSET, index0);
+    public static int configWidth(MemorySegment struct, long index0) {
+        return (int)configWidth$ELEM_HANDLE.get(struct, configWidth$OFFSET, index0);
     }
 
     /**
      * Indexed setter for field:
      * {@snippet lang=c :
-     * int32_t resolutionHeight[16]
+     * int32_t configWidth[32]
      * }
      */
-    public static void resolutionHeight(MemorySegment struct, long index0, int fieldValue) {
-        resolutionHeight$ELEM_HANDLE.set(struct, resolutionHeight$OFFSET, index0, fieldValue);
+    public static void configWidth(MemorySegment struct, long index0, int fieldValue) {
+        configWidth$ELEM_HANDLE.set(struct, configWidth$OFFSET, index0, fieldValue);
+    }
+
+    private static final SequenceLayout configHeight$LAYOUT = (SequenceLayout)$LAYOUT.select(groupElement("configHeight"));
+
+    /**
+     * Layout for field:
+     * {@snippet lang=c :
+     * int32_t configHeight[32]
+     * }
+     */
+    public static final SequenceLayout configHeight$layout() {
+        return configHeight$LAYOUT;
+    }
+
+    private static final long configHeight$OFFSET = $LAYOUT.byteOffset(groupElement("configHeight"));
+
+    /**
+     * Offset for field:
+     * {@snippet lang=c :
+     * int32_t configHeight[32]
+     * }
+     */
+    public static final long configHeight$offset() {
+        return configHeight$OFFSET;
+    }
+
+    /**
+     * Getter for field:
+     * {@snippet lang=c :
+     * int32_t configHeight[32]
+     * }
+     */
+    public static MemorySegment configHeight(MemorySegment struct) {
+        return struct.asSlice(configHeight$OFFSET, configHeight$LAYOUT.byteSize());
+    }
+
+    /**
+     * Setter for field:
+     * {@snippet lang=c :
+     * int32_t configHeight[32]
+     * }
+     */
+    public static void configHeight(MemorySegment struct, MemorySegment fieldValue) {
+        MemorySegment.copy(fieldValue, 0L, struct, configHeight$OFFSET, configHeight$LAYOUT.byteSize());
+    }
+
+    private static long[] configHeight$DIMS = { 32 };
+
+    /**
+     * Dimensions for array field:
+     * {@snippet lang=c :
+     * int32_t configHeight[32]
+     * }
+     */
+    public static long[] configHeight$dimensions() {
+        return configHeight$DIMS;
+    }
+    private static final VarHandle configHeight$ELEM_HANDLE = configHeight$LAYOUT.varHandle(sequenceElement());
+
+    /**
+     * Indexed getter for field:
+     * {@snippet lang=c :
+     * int32_t configHeight[32]
+     * }
+     */
+    public static int configHeight(MemorySegment struct, long index0) {
+        return (int)configHeight$ELEM_HANDLE.get(struct, configHeight$OFFSET, index0);
+    }
+
+    /**
+     * Indexed setter for field:
+     * {@snippet lang=c :
+     * int32_t configHeight[32]
+     * }
+     */
+    public static void configHeight(MemorySegment struct, long index0, int fieldValue) {
+        configHeight$ELEM_HANDLE.set(struct, configHeight$OFFSET, index0, fieldValue);
+    }
+
+    private static final SequenceLayout configMinInterval$LAYOUT = (SequenceLayout)$LAYOUT.select(groupElement("configMinInterval"));
+
+    /**
+     * Layout for field:
+     * {@snippet lang=c :
+     * int64_t configMinInterval[32]
+     * }
+     */
+    public static final SequenceLayout configMinInterval$layout() {
+        return configMinInterval$LAYOUT;
+    }
+
+    private static final long configMinInterval$OFFSET = $LAYOUT.byteOffset(groupElement("configMinInterval"));
+
+    /**
+     * Offset for field:
+     * {@snippet lang=c :
+     * int64_t configMinInterval[32]
+     * }
+     */
+    public static final long configMinInterval$offset() {
+        return configMinInterval$OFFSET;
+    }
+
+    /**
+     * Getter for field:
+     * {@snippet lang=c :
+     * int64_t configMinInterval[32]
+     * }
+     */
+    public static MemorySegment configMinInterval(MemorySegment struct) {
+        return struct.asSlice(configMinInterval$OFFSET, configMinInterval$LAYOUT.byteSize());
+    }
+
+    /**
+     * Setter for field:
+     * {@snippet lang=c :
+     * int64_t configMinInterval[32]
+     * }
+     */
+    public static void configMinInterval(MemorySegment struct, MemorySegment fieldValue) {
+        MemorySegment.copy(fieldValue, 0L, struct, configMinInterval$OFFSET, configMinInterval$LAYOUT.byteSize());
+    }
+
+    private static long[] configMinInterval$DIMS = { 32 };
+
+    /**
+     * Dimensions for array field:
+     * {@snippet lang=c :
+     * int64_t configMinInterval[32]
+     * }
+     */
+    public static long[] configMinInterval$dimensions() {
+        return configMinInterval$DIMS;
+    }
+    private static final VarHandle configMinInterval$ELEM_HANDLE = configMinInterval$LAYOUT.varHandle(sequenceElement());
+
+    /**
+     * Indexed getter for field:
+     * {@snippet lang=c :
+     * int64_t configMinInterval[32]
+     * }
+     */
+    public static long configMinInterval(MemorySegment struct, long index0) {
+        return (long)configMinInterval$ELEM_HANDLE.get(struct, configMinInterval$OFFSET, index0);
+    }
+
+    /**
+     * Indexed setter for field:
+     * {@snippet lang=c :
+     * int64_t configMinInterval[32]
+     * }
+     */
+    public static void configMinInterval(MemorySegment struct, long index0, long fieldValue) {
+        configMinInterval$ELEM_HANDLE.set(struct, configMinInterval$OFFSET, index0, fieldValue);
+    }
+
+    private static final SequenceLayout configMaxInterval$LAYOUT = (SequenceLayout)$LAYOUT.select(groupElement("configMaxInterval"));
+
+    /**
+     * Layout for field:
+     * {@snippet lang=c :
+     * int64_t configMaxInterval[32]
+     * }
+     */
+    public static final SequenceLayout configMaxInterval$layout() {
+        return configMaxInterval$LAYOUT;
+    }
+
+    private static final long configMaxInterval$OFFSET = $LAYOUT.byteOffset(groupElement("configMaxInterval"));
+
+    /**
+     * Offset for field:
+     * {@snippet lang=c :
+     * int64_t configMaxInterval[32]
+     * }
+     */
+    public static final long configMaxInterval$offset() {
+        return configMaxInterval$OFFSET;
+    }
+
+    /**
+     * Getter for field:
+     * {@snippet lang=c :
+     * int64_t configMaxInterval[32]
+     * }
+     */
+    public static MemorySegment configMaxInterval(MemorySegment struct) {
+        return struct.asSlice(configMaxInterval$OFFSET, configMaxInterval$LAYOUT.byteSize());
+    }
+
+    /**
+     * Setter for field:
+     * {@snippet lang=c :
+     * int64_t configMaxInterval[32]
+     * }
+     */
+    public static void configMaxInterval(MemorySegment struct, MemorySegment fieldValue) {
+        MemorySegment.copy(fieldValue, 0L, struct, configMaxInterval$OFFSET, configMaxInterval$LAYOUT.byteSize());
+    }
+
+    private static long[] configMaxInterval$DIMS = { 32 };
+
+    /**
+     * Dimensions for array field:
+     * {@snippet lang=c :
+     * int64_t configMaxInterval[32]
+     * }
+     */
+    public static long[] configMaxInterval$dimensions() {
+        return configMaxInterval$DIMS;
+    }
+    private static final VarHandle configMaxInterval$ELEM_HANDLE = configMaxInterval$LAYOUT.varHandle(sequenceElement());
+
+    /**
+     * Indexed getter for field:
+     * {@snippet lang=c :
+     * int64_t configMaxInterval[32]
+     * }
+     */
+    public static long configMaxInterval(MemorySegment struct, long index0) {
+        return (long)configMaxInterval$ELEM_HANDLE.get(struct, configMaxInterval$OFFSET, index0);
+    }
+
+    /**
+     * Indexed setter for field:
+     * {@snippet lang=c :
+     * int64_t configMaxInterval[32]
+     * }
+     */
+    public static void configMaxInterval(MemorySegment struct, long index0, long fieldValue) {
+        configMaxInterval$ELEM_HANDLE.set(struct, configMaxInterval$OFFSET, index0, fieldValue);
+    }
+
+    private static final SequenceLayout configColorDepth$LAYOUT = (SequenceLayout)$LAYOUT.select(groupElement("configColorDepth"));
+
+    /**
+     * Layout for field:
+     * {@snippet lang=c :
+     * int16_t configColorDepth[32]
+     * }
+     */
+    public static final SequenceLayout configColorDepth$layout() {
+        return configColorDepth$LAYOUT;
+    }
+
+    private static final long configColorDepth$OFFSET = $LAYOUT.byteOffset(groupElement("configColorDepth"));
+
+    /**
+     * Offset for field:
+     * {@snippet lang=c :
+     * int16_t configColorDepth[32]
+     * }
+     */
+    public static final long configColorDepth$offset() {
+        return configColorDepth$OFFSET;
+    }
+
+    /**
+     * Getter for field:
+     * {@snippet lang=c :
+     * int16_t configColorDepth[32]
+     * }
+     */
+    public static MemorySegment configColorDepth(MemorySegment struct) {
+        return struct.asSlice(configColorDepth$OFFSET, configColorDepth$LAYOUT.byteSize());
+    }
+
+    /**
+     * Setter for field:
+     * {@snippet lang=c :
+     * int16_t configColorDepth[32]
+     * }
+     */
+    public static void configColorDepth(MemorySegment struct, MemorySegment fieldValue) {
+        MemorySegment.copy(fieldValue, 0L, struct, configColorDepth$OFFSET, configColorDepth$LAYOUT.byteSize());
+    }
+
+    private static long[] configColorDepth$DIMS = { 32 };
+
+    /**
+     * Dimensions for array field:
+     * {@snippet lang=c :
+     * int16_t configColorDepth[32]
+     * }
+     */
+    public static long[] configColorDepth$dimensions() {
+        return configColorDepth$DIMS;
+    }
+    private static final VarHandle configColorDepth$ELEM_HANDLE = configColorDepth$LAYOUT.varHandle(sequenceElement());
+
+    /**
+     * Indexed getter for field:
+     * {@snippet lang=c :
+     * int16_t configColorDepth[32]
+     * }
+     */
+    public static short configColorDepth(MemorySegment struct, long index0) {
+        return (short)configColorDepth$ELEM_HANDLE.get(struct, configColorDepth$OFFSET, index0);
+    }
+
+    /**
+     * Indexed setter for field:
+     * {@snippet lang=c :
+     * int16_t configColorDepth[32]
+     * }
+     */
+    public static void configColorDepth(MemorySegment struct, long index0, short fieldValue) {
+        configColorDepth$ELEM_HANDLE.set(struct, configColorDepth$OFFSET, index0, fieldValue);
+    }
+
+    private static final SequenceLayout configFourCC$LAYOUT = (SequenceLayout)$LAYOUT.select(groupElement("configFourCC"));
+
+    /**
+     * Layout for field:
+     * {@snippet lang=c :
+     * int32_t configFourCC[32]
+     * }
+     */
+    public static final SequenceLayout configFourCC$layout() {
+        return configFourCC$LAYOUT;
+    }
+
+    private static final long configFourCC$OFFSET = $LAYOUT.byteOffset(groupElement("configFourCC"));
+
+    /**
+     * Offset for field:
+     * {@snippet lang=c :
+     * int32_t configFourCC[32]
+     * }
+     */
+    public static final long configFourCC$offset() {
+        return configFourCC$OFFSET;
+    }
+
+    /**
+     * Getter for field:
+     * {@snippet lang=c :
+     * int32_t configFourCC[32]
+     * }
+     */
+    public static MemorySegment configFourCC(MemorySegment struct) {
+        return struct.asSlice(configFourCC$OFFSET, configFourCC$LAYOUT.byteSize());
+    }
+
+    /**
+     * Setter for field:
+     * {@snippet lang=c :
+     * int32_t configFourCC[32]
+     * }
+     */
+    public static void configFourCC(MemorySegment struct, MemorySegment fieldValue) {
+        MemorySegment.copy(fieldValue, 0L, struct, configFourCC$OFFSET, configFourCC$LAYOUT.byteSize());
+    }
+
+    private static long[] configFourCC$DIMS = { 32 };
+
+    /**
+     * Dimensions for array field:
+     * {@snippet lang=c :
+     * int32_t configFourCC[32]
+     * }
+     */
+    public static long[] configFourCC$dimensions() {
+        return configFourCC$DIMS;
+    }
+    private static final VarHandle configFourCC$ELEM_HANDLE = configFourCC$LAYOUT.varHandle(sequenceElement());
+
+    /**
+     * Indexed getter for field:
+     * {@snippet lang=c :
+     * int32_t configFourCC[32]
+     * }
+     */
+    public static int configFourCC(MemorySegment struct, long index0) {
+        return (int)configFourCC$ELEM_HANDLE.get(struct, configFourCC$OFFSET, index0);
+    }
+
+    /**
+     * Indexed setter for field:
+     * {@snippet lang=c :
+     * int32_t configFourCC[32]
+     * }
+     */
+    public static void configFourCC(MemorySegment struct, long index0, int fieldValue) {
+        configFourCC$ELEM_HANDLE.set(struct, configFourCC$OFFSET, index0, fieldValue);
     }
 
     /**

@@ -4,7 +4,7 @@
 #include <stdbool.h>
 
 #define MAX_STRING_LENGTH 1024
-#define MAX_RESOLUTIONS_COUNT 16
+#define MAX_CONFIGS_COUNT 32
 
 struct camera {
 
@@ -143,11 +143,15 @@ struct camera {
     bool    gainAutomaticAllowed;
     bool    gainManualAllowed;
 
-    // from StreamConfig
-    int32_t resolutionsCount;
-    int32_t resolutionWidth[MAX_RESOLUTIONS_COUNT];
-    int32_t resolutionHeight[MAX_RESOLUTIONS_COUNT];
-
+    // from StreamConfig and MediaType
+    int32_t configsCount;
+    int32_t configHandle[MAX_CONFIGS_COUNT];      // MSBit = 0 for capture pin, or 1 for preview pin. Lower 31 bits = index for StreamConfig->GetStreamCaps()
+    int32_t configWidth[MAX_CONFIGS_COUNT];       // pixels
+    int32_t configHeight[MAX_CONFIGS_COUNT];      // pixels
+    int64_t configMinInterval[MAX_CONFIGS_COUNT]; // 1 = 100ns
+    int64_t configMaxInterval[MAX_CONFIGS_COUNT]; // 1 = 100ns
+    int16_t configColorDepth[MAX_CONFIGS_COUNT];  // bits per pixel
+    int32_t configFourCC[MAX_CONFIGS_COUNT];      // FourCC image type
 };
 typedef struct camera Camera;
 
@@ -156,8 +160,8 @@ extern "C" {
 #endif
 
     /*
-     * Gets information on all of the cameras present on this device.
-     *
+     * Gets information about all of the cameras present on this device.
+     * 
      * @param   cameras           An array of Camera structs, that you initialized to all zeros, which will be populated with details.
      * @param   maxCameraCount    Number of elements in the array.
      * @param   log               Pointer to a wchar_t string, which will be filled with a log of technical details. Can be null.
@@ -166,24 +170,32 @@ extern "C" {
      *                            Note that cameras may be marked as invalid (cameras[n].valid == false) so the number of *usable* cameras may be less than this return value.
      *                            For example: if OBS is installed, there will be an "OBS Virtual Camera" but it is invalid and attempting to connect to it will fail.
      */
-    __declspec(dllexport) int32_t getCameras(Camera cameras[], uint32_t maxCameraCount, wchar_t* log, int64_t logByteCount);
+    __declspec(dllexport) int32_t getCameras(Camera cameras[], int32_t maxCameraCount, wchar_t* log, int64_t logByteCount);
 
     /*
      * Connects to a camera and starts receiving images.
-     *
-     * @param devicePath      A devicePath       from getCameras().
-     * @param width           A resolutionWidth  from getCameras(). If resolutionsCount was 0, this will be ignored.
-     * @param height          A resolutionHeight from getCameras(). If resolutionsCount was 0, this will be ignored.
-     * @param handler         Your "void handler(uint8_t* buffer, uint32_t bufferByteCount, int32_t width, int32_t height)" that will receive BGR24 images.
+     * 
+     * A "configuration index" is used to select one of the resolution/color depth/FourCC combinations.
+     * That configuration also has an allowed "frame interval" range, and a specific frame interval is used to select the desired FPS.
+     * Note that the actual FPS may vary. For example, many cameras will reduce the FPS in low light conditions.
+     * The frame interval has units of 100ns. Example: 166666 = 16666600ns = 60 FPS.
+     * 
+     * Images will be provided to an event handler. They will be JPEGs if the camera can provide JPEGs, otherwise they will be uncompressed BGR24.
+     * The buffer provided to the event handler must be "used" before the handler returns. (Do not keep a pointer to the buffer.)
+     * 
+     * @param devicePath      A devicePath from getCameras().
+     * @param configIndex     A configIndex from getCameras().
+     * @param interval        A value between configMinInterval and configMaxInterval from getCameras().
+     * @param handler         Your "void handler(uint8_t* buffer, int32_t bufferByteCount, int32_t width, int32_t height, bool isJpeg)" that will receive JPEG or BGR24 images.
      * @param log             Pointer to a wchar_t string, which will be filled with a log of technical details. Can be null.
      * @param logByteCount    Size of the log, in bytes.
      * @returns               True on success, or false if an error occurred.
      */
-    __declspec(dllexport) bool connectCamera(const wchar_t* devicePath, int32_t width, int32_t height, void (*handler)(uint8_t* buffer, int32_t bufferByteCount, int32_t width, int32_t heigth), wchar_t* log, int64_t logByteCount);
+    __declspec(dllexport) bool connectCamera(const wchar_t* devicePath, int32_t configIndex, int64_t interval, void (*handler)(uint8_t* buffer, int32_t bufferByteCount, int32_t width, int32_t heigth, bool isJpeg), wchar_t* log, int64_t logByteCount);
 
     /*
      * Disconnects from a camera.
-     *
+     * 
      * @param devicePath    A devicePath from getCameras().
      * @returns             True if the camera was connected, or false if the camera was not connected.
      */
@@ -191,18 +203,18 @@ extern "C" {
 
     /*
      * Checks a camera for an event.
-     *
+     * 
      * @param devicePath    A devicePath from getCameras().
-     * @returns             -1 if the device is not connected.
-     *                      0  if the device is connected and no event has occurred.
-     *                      >0 if the device is connected and an event has occurred. The number will be an eventCode defined in <evcode.h>
+     * @returns             -1 if the camera is not connected.
+     *                      0  if the camera is connected and no event has occurred.
+     *                      >0 if the camera is connected and an event has occurred. The number will be an eventCode defined in <evcode.h>
      *                      See https://learn.microsoft.com/en-us/windows/win32/directshow/event-notification-codes
      */
     __declspec(dllexport) int32_t checkForCameraEvent(const wchar_t* devicePath);
 
     /*
      * Adjusts a camera setting.
-     *
+     * 
      * @param devicePath       A devicePath from getCameras().
      * @param interfaceEnum    0 = "CameraControl" interface, or 1 = "VideoProcAmp" interface.
      * @param settingEnum      The CameraControl or VideoProcAmp "Property" to adjust.
@@ -214,7 +226,7 @@ extern "C" {
 
     /*
      * Gets a camera setting.
-     *
+     * 
      * @param devicePath       A devicePath from getCameras().
      * @param interfaceEnum    0 = "CameraControl" interface, or 1 = "VideoProcAmp" interface.
      * @param settingEnum      The CameraControl or VideoProcAmp "Property" to read.
