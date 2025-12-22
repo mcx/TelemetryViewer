@@ -1,0 +1,503 @@
+<project name="Telemetry Viewer">
+	
+	<!-- Telemetry Viewer is currently developed with Windows 11 x64, Eclipse 2025-12 IDE, Ant, and Java 25.
+	     There are several build targets defined in this file, but most people will only care about two of them:
+	     
+	     1. Call the "download tools" target to download the tools needed to package Telemetry Viewer into an EXE or RUN file.
+	     2. Call the "build" target for your OS and architecture. This will compile the java code and package everything into an EXE or RUN file.
+	     
+	     Testing the code on fresh installs of Windows or Linux is helpful to ensure things will work correctly on other people's computers.
+	     The various "run" targets can be used to copy and run Telemetry Viewer on a VM or physical machine via SSH.
+	     The various "terminate" targets can be used to kill Telemetry Viewer and clean up any mess. This is useful if TV becomes unresponsive or slow (due to a bug.)
+	     
+	     I also developed a library for accessing webcams on Windows. It is written in C/C++ with Visual Studio 2022 Community Edition.
+	     If you modify that library, call the "compile webcam..." target to recompile the DLL and regenerate the java bindings.
+	     
+	     Some developer tools (Intel vTune, etc.) work best when they invoke java directly instead of using the EXE/RUN wrapper.
+	     Call the "build jar" target to compile the java code into a fat JAR file, then configure the tool to run Telemetry Viewer with:
+	     "java ~~enable-native-access=ALL-UNNAMED -jar TelemetryViewer.jar" (Replace ~~ with two hyphens.)
+	     
+	     How I setup a development PC:
+	
+	     1.  Install Windows 11: https://www.microsoft.com/en-us/software-download/windows11
+	     2.  Install Java 25: https://download.oracle.com/java/25/latest/jdk-25_windows-x64_bin.exe
+	     3.  The installer will put java.exe on your PATH, but jdeps/jlink/etc are not automatically placed on your PATH. Fix this with:
+	         Start > "environment variables" > Edit the System Environment Variables > Environment Variables > System Variables > Path > Edit > New > "C:\Program Files\Java\jdk-25\bin" > OK > OK > OK
+	     4.  Download the Telemetry Viewer zip file: http://www.farrellf.com/TelemetryViewer/
+	     5.  Download Eclipse Installer 2025-12 R: https://www.eclipse.org/downloads/packages/
+	     6.  Run the installer > choose "Eclipse IDE for Java Developers" > Set VM to "C:\Program Files\Java\jdk-25" > Install > Accept Now > Launch
+	     7.  When Eclipse opens:
+	             check "Use this as the default..." > Launch
+	             close the Welcome tab
+	             Package Explorer > Import Projects > General > Existing Projects into Workspace > Next > Select Archive File > Browse > select the zip file > Open > uncheck the first project > Finish
+	             Project Explorer > Telemetry Viewer > src > (default package) > double-click "Main.java"
+	             Run > Run Configurations > double-click "Java Application" > Arguments tab > VM arguments =
+	                 ~~enable-native-access=ALL-UNNAMED
+	                 ~~add-opens java.desktop/sun.awt=ALL-UNNAMED
+	                 ~~add-opens java.desktop/sun.awt.windows=ALL-UNNAMED
+	                 ~~add-opens java.desktop/sun.java2d=ALL-UNNAMED
+	             (Replace ~~ with two hyphens.)
+	             Click "Run", Telemetry Viewer should appear, do whatever you want, then close it.
+	             Window > Show View > Ant
+	                 Click the "Add Buildfiles" toolbar icon in the Ant tab > choose "Telemetry Viewer > build.xml" > OK
+	                 Click the ">" icon next to the build file to expand it and see all of the targets.
+	     8.  Run the "download tools" target, then run the "build windows-x64" target. The EXE will appear in your project folder.
+	     
+	     The remaining steps are all optional:
+	     
+	     9.  Install the "jsch" Ant library (SCP/SSH support) if you want to call any of the "run" or "terminate" targets.
+	             Download: https://repo1.maven.org/maven2/com/github/mwiede/jsch/2.27.7/jsch-2.27.7.jar
+	             (More info here: https://github.com/mwiede/jsch)
+	             Tell Eclipse: Window > Preferences > Ant > Runtime > Ant Home Entries > Add External JARs > select the jar > Open > Yes > Apply and Close
+	     10. Install WSL1 if you want to call any of the "build linux" targets.
+	         Important: Don't use WSL2 because it uses Hyper-V, which causes VMware Workstation to randomly hang up with 100% CPU usage.
+	             $ wsl ~~install
+	             Restart when done, then Start > Ubuntu
+	                 Set username and password as desired, then close it with $ exit
+	             $ wsl ~~set-version Ubuntu 1
+	             Start > "hyper-v" > Turn Windows Features On or Off > uncheck "Virtual Machine Platform" > OK > Restart Now
+	     11. Install Visual Studio 2022 if you want to modify the webcam library code.
+	             I like to change the debug keyboard shortcuts to match how Eclipse does things:
+	                 Tools > Options > Environment > Keyboard > Debug.StepInto = F5 > Assign
+	                                                            Debug.StepOver = F6 > Assign
+	                                                            Debug.Start    = F8 > Assign
+	     12. Install VMware Workstation if you want to easily test the code on other operating systems.
+	             There seems to be a bug in VMware when graphics acceleration is enabled.
+	             Glitches appear in the charts region, and font rendering is broken.
+	             This affects both Windows and Linux guests in VMware, but only when antialiasing is enabled in Telemetry Viewer.
+	             Disabling VMware graphics acceleration will cause the guest OS to use basic drivers, which seem to work perfectly:
+	                 VMware > VM > Settings > Hardware > Display > uncheck "Accelerate 3D graphics"
+	-->
+	
+	<!-- Adjust these variables as needed: -->
+	<property name="filename"          value="Telemetry Viewer v0.9" /> <!-- without arch or file extension -->
+	<property name="sshPrivateKeyPath" value="C:\Users\FarrellF\Documents\SSH\id_rsa" />
+	<property name="windowsVmHostname" value="FarrellF-Win11VM" />
+	<property name="windowsVmUsername" value="FarrellF" />
+	<property name="linuxVmHostname"   value="FarrellF-LM22VM" />
+	<property name="linuxVmUsername"   value="farrellf" />
+	<property name="piHostname"        value="FarrellF-Pi4" />
+	<property name="piUsername"        value="farrellf" />
+	
+	<!-- Download all of the tools: JDKs, Jextract, 7zr, 7zSFX, Makeself, and ResourceHacker. (This only needs to be run once.) -->
+	<target name="01 download tools">
+		<mkdir dir="tools" />
+		<get usetimestamp="true" src="https://download.oracle.com/java/25/archive/jdk-25.0.1_windows-x64_bin.zip" dest="tools/" />
+		<get usetimestamp="true" src="https://download.oracle.com/java/25/archive/jdk-25.0.1_linux-x64_bin.tar.gz" dest="tools/" />
+		<get usetimestamp="true" src="https://download.oracle.com/java/25/archive/jdk-25.0.1_linux-aarch64_bin.tar.gz" dest="tools/" />
+		<get usetimestamp="true" src="https://download.java.net/java/early_access/jextract/25/2/openjdk-25-jextract+2-4_windows-x64_bin.tar.gz" dest="tools/" />
+		<get usetimestamp="true" src="https://www.7-zip.org/a/7zr.exe" dest="tools/" />
+		<get usetimestamp="true" src="https://raw.githubusercontent.com/OlegScherbakov/7zSFX/master/files/7zsd_extra_162_3888.7z" dest="tools/" />
+		<get usetimestamp="true" src="https://github.com/megastep/makeself/archive/refs/tags/release-2.7.1.zip" dest="tools/makeself-2.7.1.zip" />
+		<get usetimestamp="true" src="https://www.angusj.com/resourcehacker/resource_hacker.zip" dest="tools/" />
+	</target>
+	
+	<!-- Build a self-expanding EXE for Windows x64 that contains everything. -->
+	<target name="02 build windows-x64">
+
+		<!-- Create a temperory folder. -->
+		<delete dir="build" />
+		<mkdir dir="build" />
+		
+		<!-- Compile Telemetry Viewer into a fat JAR. -->
+		<antcall target="build jar" />
+		
+		<!-- Determine which JDK modules are used by the java code and java libraries. -->
+		<!-- Then create a stripped-down *uncompressed* JRE that only contains those required modules. -->
+		<!-- Don't compress it here, because the EXE will be smaller *and* faster if things are only compressed once (at the end.) -->
+		<exec executable="jdeps" failonerror="true" outputproperty="requiredModules">
+			<arg line="--print-module-deps --ignore-missing-deps --multi-release 25 build\*.class lib\*.jar" />
+		</exec>
+		<echo>Telemetry Viewer uses the following JDK modules: ${requiredModules}</echo>
+		<unzip src="tools/jdk-25.0.1_windows-x64_bin.zip" dest="build/" />
+		<exec executable="jlink" failonerror="true">
+			<arg line="--no-header-files --no-man-pages --strip-debug --compress=zip-0 --module-path build/jdk-25.0.1/jmods --output build/jre --add-modules ${requiredModules}" />
+		</exec>
+		<echo>JRE creation succeeded.</echo>
+		
+		<!-- Package the JRE, fat JAR and any DLLs into a .7z archive. -->
+		<!-- Use "-m0=lzma" to compress, or "-m0=copy" to not compress. -->
+		<exec executable="tools/7zr" failonerror="true">
+			<arg line="a -t7z -m0=lzma build/TelemetryViewer.7z ./build/jre ./TelemetryViewer.jar -spf2 lib/*.dll" />
+		</exec>
+		<echo>7-Zip archive creation succeeded.</echo>
+		
+		<!-- Create the configuration file for 7zSFX -->
+		<!-- 7zSFX documentation: https://olegscherbakov.github.io/7zSFX/ -->
+		<!-- Configuing it to open cmd.exe, cd to the location of the EXE, then run Java from there (so the EXE directory is the working directory.) -->
+		<!-- Important: use "cd /d" because without /d it will only cd correctly if the EXE is located in the C: drive. -->
+		<!-- Important: Some files are still locked when java exists, but get unlocked a fraction of a second later, so sleep for a few seconds before ending the script, so 7zSFX can remove all files. -->
+		<echo file="build/7z-config.txt">
+			;!@Install@!UTF-8!
+			RunProgram="hidcon:cmd /c cd /d \"%%S\" &amp;&amp; \"%%T/jre/bin/java.exe\" --enable-native-access=ALL-UNNAMED -jar \"%%T/TelemetryViewer.jar\""
+			RunProgram="hidcon:timeout 3"
+			GUIMode="1"
+			;!@InstallEnd@!
+		</echo>
+		
+		<!-- Create the EXE by concatenating 7zsd_LZMA_x64.sfx, the configuration file, and the .7z archive. -->
+		<exec executable="tools/7zr" failonerror="true">
+			<arg line="e -obuild tools/7zsd_extra_162_3888.7z 7zsd_LZMA_x64.sfx" />
+		</exec>
+		<exec executable="cmd" failonerror="true">
+			<arg line="/c copy /b build\7zsd_LZMA_x64.sfx + build\7z-config.txt + build\TelemetryViewer.7z '${filename} (Windows x64).exe'" />
+		</exec>
+		<echo>EXE creation succeeded.</echo>
+		
+		<!-- Remove the EXE's icon and version information. -->
+		<unzip src="tools/resource_hacker.zip" dest="build/">
+			<patternset><include name="ResourceHacker.exe" /></patternset>
+		</unzip>
+		<exec executable="cmd" failonerror="true">
+			<arg line="/c build\ResourceHacker.exe -open '${filename} (Windows x64).exe' -save '${filename} (Windows x64).exe' -action delete -mask ICONGROUP,," />
+		</exec>
+		<exec executable="cmd" failonerror="true">
+			<arg line="/c build\ResourceHacker.exe -open '${filename} (Windows x64).exe' -save '${filename} (Windows x64).exe' -action delete -mask VERSIONINFO,," />
+		</exec>
+		<echo>EXE icon and details change succeeded.</echo>
+		
+		<!-- Remove the tempory files. -->
+		<delete dir="build" />
+		<delete file="TelemetryViewer.jar" />
+		
+	</target>
+	
+	<!-- Build a self-expanding RUN file for Linux x64 that contains everything. -->
+	<target name="03 build linux-x64">
+
+		<!-- Create a temperory directory. -->
+		<delete dir="build" />
+		<mkdir dir="build" />
+		
+		<!-- Compile Telemetry Viewer into a fat JAR. -->
+		<antcall target="build jar" />
+		<move file="TelemetryViewer.jar" tofile="build/TelemetryViewer.jar" />
+		
+		<!-- Determine which JDK modules are used by the java code and java libraries. -->
+		<!-- Then create a stripped-down *uncompressed* JRE that only contains those required modules. -->
+		<!-- Don't compress it here, because the RUN file will be smaller *and* faster if things are only compressed once (at the end.) -->
+		<exec executable="jdeps" failonerror="true" outputproperty="requiredModules">
+			<arg line="--print-module-deps --ignore-missing-deps --multi-release 25 build\*.class lib\*.jar" />
+		</exec>
+		<echo>Telemetry Viewer uses the following JDK modules: ${requiredModules}</echo>
+		<untar compression="gzip" src="tools/jdk-25.0.1_linux-x64_bin.tar.gz" dest="build" />
+		<exec executable="jlink" failonerror="true">
+			<arg line="--no-header-files --no-man-pages --strip-debug --compress=zip-0 --module-path build/jdk-25.0.1/jmods --output build/jre --add-modules ${requiredModules}" />
+		</exec>
+		<echo>JRE creation succeeded.</echo>
+
+		<!-- Delete build/*.class and build/jdk-25.0.1 so they don't get achrived by Makeself below. -->
+		<delete>
+			<fileset dir="build" includes="**/*.class" />
+		</delete>
+		<delete dir="build/jdk-25.0.1" />
+		
+		<!-- Copy libs/*-x64.so to build/libs/ -->
+		<mkdir dir="build/lib" />
+		<copy todir="build/lib">
+			<fileset dir="lib">
+				<include name="**/*-x64.so" />
+			</fileset>
+		</copy>
+		
+		<!-- Create the Makeself launch script. -->
+		<!-- Makeself documentation: https://makeself.io/ -->
+		<echo file="build/run.sh">
+			TEMP="`pwd`"
+			cd $USER_PWD
+			"$TEMP/jre/bin/java" --enable-native-access=ALL-UNNAMED -jar "$TEMP/TelemetryViewer.jar"
+		</echo>
+		
+		<!-- Use WSL and Makeself to package the JRE, JAR and SOs into a RUN file. -->
+		<!-- Disabling hashing to speed up decompression. Disabling the use of an X11 terminal because that causes problems on some distros. -->
+		<unzip src="tools/makeself-2.7.1.zip" dest="">
+			<patternset>
+				<include name="makeself-release-2.7.1/makeself.sh" />
+				<include name="makeself-release-2.7.1/makeself-header.sh" />
+			</patternset>
+			<mapper type="flatten" />
+		</unzip>
+		<exec executable="wsl" failonerror="true">
+			<arg line="./makeself.sh --nox11 --nomd5 --nocrc build '${filename} (Linux x64).run' &quot;Telemetry Viewer&quot; ./run.sh" />
+			<!-- Can use "~~nocomp" to disable compression. -->
+		</exec>
+		<echo>RUN file creation succeeded.</echo>
+		
+		<!-- Remove the tempory files. -->
+		<delete dir="build" />
+		<delete file="makeself.sh" />
+		<delete file="makeself-header.sh" />
+		
+	</target>
+	
+	<!-- Build a self-expanding RUN file for Linux aarch64 that contains everything. -->
+	<target name="04 build linux-aarch64">
+
+		<!-- Create a temperory directory. -->
+		<delete dir="build" />
+		<mkdir dir="build" />
+		
+		<!-- Compile Telemetry Viewer into a fat JAR. -->
+		<antcall target="build jar" />
+		<move file="TelemetryViewer.jar" tofile="build/TelemetryViewer.jar" />
+		
+		<!-- Determine which JDK modules are used by the java code and java libraries. -->
+		<!-- Then create a stripped-down *uncompressed* JRE that only contains those required modules. -->
+		<!-- Don't compress it here, because the EXE will be smaller *and* faster if things are only compressed once (at the end.) -->
+		<exec executable="jdeps" failonerror="true" outputproperty="requiredModules">
+			<arg line="--print-module-deps --ignore-missing-deps --multi-release 25 build\*.class lib\*.jar" />
+		</exec>
+		<echo>Telemetry Viewer uses the following JDK modules: ${requiredModules}</echo>
+		<untar compression="gzip" src="tools/jdk-25.0.1_linux-aarch64_bin.tar.gz" dest="build" />
+		<exec executable="jlink" failonerror="true">
+			<arg line="--no-header-files --no-man-pages --strip-debug --compress=zip-0 --module-path build/jdk-25.0.1/jmods --output build/jre --add-modules ${requiredModules}" />
+		</exec>
+		<echo>JRE creation succeeded.</echo>
+
+		<!-- Delete build/*.class and build/jdk-25.0.1 so they don't get achrived by Makeself below. -->
+		<delete>
+			<fileset dir="build" includes="**/*.class" />
+		</delete>
+		<delete dir="build/jdk-25.0.1" />
+		
+		<!-- Copy libs/*-aarch64.so to build/libs/ -->
+		<mkdir dir="build/lib" />
+		<copy todir="build/lib">
+			<fileset dir="lib">
+				<include name="**/*-aarch64.so" />
+			</fileset>
+		</copy>
+		
+		<!-- Create the Makeself launch script. -->
+		<!-- Makeself documentation: https://makeself.io/ -->
+		<echo file="build/run.sh">
+			TEMP="`pwd`"
+			cd $USER_PWD
+			"$TEMP/jre/bin/java" --enable-native-access=ALL-UNNAMED -jar "$TEMP/TelemetryViewer.jar"
+		</echo>
+		
+		<!-- Use WSL and Makeself to package the JRE, JAR and SOs into a RUN file. -->
+		<!-- Disabling hashing to speed up decompression. Disabling the use of an X11 terminal because that causes problems on some distros. -->
+		<unzip src="tools/makeself-2.7.1.zip" dest="">
+			<patternset>
+				<include name="makeself-release-2.7.1/makeself.sh" />
+				<include name="makeself-release-2.7.1/makeself-header.sh" />
+			</patternset>
+			<mapper type="flatten" />
+		</unzip>
+		<exec executable="wsl" failonerror="true">
+			<arg line="./makeself.sh --nox11 --nomd5 --nocrc build '${filename} (Linux aarch64).run' &quot;Telemetry Viewer&quot; ./run.sh" />
+			<!-- Can use "~~nocomp" to disable compression. -->
+		</exec>
+		<echo>RUN file creation succeeded.</echo>
+		
+		<!-- Remove the tempory files. -->
+		<delete dir="build" />
+		<delete file="makeself.sh" />
+		<delete file="makeself-header.sh" />
+		
+	</target>
+	
+	<!-- Run Telemetry Viewer in a VM with a fresh install of Windows.
+	     Note: Microsoft's SSH server can't run GUIs, but schedulating a task and immediately running that task works around this limit.
+	     
+	     I prepared a Windows VM as follows:
+	         Install Windows 11 and all updates: https://www.microsoft.com/en-us/software-download/windows11
+	         Settings > System > Power > Screen and Sleep Timeouts > Turn My Screen Off After = Never, Make My Device Sleep After = Never
+	         Settings > System > About > Rename this PC > "FarrellF-Win11VM" (use whatever hostname you like.)
+	         Settings > System > Optional Features > View Features > Yes > See Available Features > check "OpenSSH Server" > Add
+	         Settings > Network and Internet > Properties > select "Private Network" and "Metered connection"
+	         Go to: C:\ProgramData\ssh
+	             Paste your *public* key file into this folder, then rename that file to "administrators_authorized_keys"
+	         Start > "services" > OpenSSH SSH Server > right-click > Start
+	                                                 > right-click > Properties > Start-up Type = Automatic
+	         Save a VM snapshot so you can easily return to this fresh install later on.
+	 -->
+	<target name="05 run windows-x64">
+		<scp localFile="${filename} (Windows x64).exe"
+		     toDir="${windowsVmUsername}@${windowsVmHostname}:Desktop/"
+		     keyfile="${sshPrivateKeyPath}"
+		     trust="yes" />
+		<sshexec username="${windowsVmUsername}"
+		         host="${windowsVmHostname}"
+		         keyfile="${sshPrivateKeyPath}"
+		         trust="yes"
+		         command="schtasks /tn TV /create /sc ONCE /st 00:00 /tr &quot;cmd.exe /c 'C:\Users\${windowsVmUsername}\Desktop\${filename} (Windows x64).exe'&quot; &amp;&amp;
+		                  schtasks /tn TV /run &amp;&amp;
+		                  schtasks /tn TV /delete /f" />
+	</target>
+	
+	<!-- Run Telemetry Viewer in a VM with a fresh install of Linux.
+	
+	     I prepared a Linux VM as follows:
+	         Install LinuxMint MATE 22.2 and all updates: https://linuxmint.com/download.php
+	         Control Center > Screensaver > uncheck "activate screensaver...", uncheck "lock screen..." > Close
+	         Control Center > Power Management > Put display to sleep when inactive for = "never" > Close
+	         Install SSH and configure it to use keys:
+	         $ sudo apt install openssh-server
+	         $ mkdir ~/.ssh
+	         $ nano ~/.ssh/authorized_keys    ... paste in your *public* key
+	         $ sudo nano /etc/ssh/sshd_config ... edit to "PasswordAuthentication no" and add "PubkeyAcceptedAlgorithms +ssh-rsa"
+	         $ sudo systemctl restart ssh
+	         Save a VM snapshot so you can easily return to this fresh install later on.
+	-->
+	<target name="06 run linux-x64">
+		<scp localFile="${filename} (Linux x64).run"
+		     toDir="${linuxVmUsername}@${linuxVmHostname}:~/Desktop/"
+		     keyfile="${sshPrivateKeyPath}"
+		     trust="yes" />
+		<sshexec username="${linuxVmUsername}"
+		         host="${linuxVmHostname}"
+		         keyfile="${sshPrivateKeyPath}"
+		         trust="yes"
+		         command="export DISPLAY=:0 &amp;&amp;
+		                  cd ~/Desktop &amp;&amp;
+		                  chmod +x &quot;${filename} (Linux x64).run&quot; &amp;&amp;
+		                  &quot;./${filename} (Linux x64).run&quot;" />
+	</target>
+	
+	<!-- Run Telemetry Viewer on a Raspberry Pi 4 with a fresh install of Raspberry Pi OS.
+	
+	     I prepared a Pi 4 as follows:
+	         Download, install and run Raspberry Pi Imager: https://downloads.raspberrypi.com/imager/imager_latest.exe
+	             Device = Raspberry Pi 4
+	             OS = Raspberry Pi OS 64-bit
+	             Enable SSH, allow public-key only, select your *public* key
+	         Install the micro SD card, then power on the Pi.
+	         Java/Swing doesn't work properly on Wayland for aarch64, so you must switch to X11:
+	            $ sudo raspi-config
+	                "6 Advanced Options" > "A7 Wayland" > "W1 X11" > OK > Finish > Yes
+	         Disable sleep: Start > Preferences > Control Center > Display > uncheck "Screen Blanking" > Close
+	-->
+	<target name="07 run linux-aarch64">
+		<scp localFile="${filename} (Linux aarch64).run"
+		     toDir="${piUsername}@${piHostname}:~/Desktop/"
+		     keyfile="${sshPrivateKeyPath}"
+		     trust="yes" />
+		<sshexec username="${piUsername}"
+		         host="${piHostname}"
+		         keyfile="${sshPrivateKeyPath}"
+		         trust="yes"
+		         command="export DISPLAY=:0;
+		                  cd ~/Desktop;
+		                  chmod +x &quot;${filename} (Linux aarch64).run&quot;;
+		                  &quot;./${filename} (Linux aarch64).run&quot;" />
+	</target>
+	
+	<!-- Kill Telemetry Viewer on Windows and remove all traces of it. -->
+	<target name="08 terminate windows-x64">
+		<sshexec username="${windowsVmUsername}"
+		         host="${windowsVmHostname}"
+		         keyfile="${sshPrivateKeyPath}"
+		         trust="yes"
+		         command="cmd /c &quot;
+		                      taskkill /f /im java.exe &amp;
+		                      start /wait timeout 3 &amp;
+		                      del &quot;Desktop\${filename} (Windows x64).exe&quot; &amp;
+		                      rmdir /s /q Desktop\cache
+		                  &quot;"
+		         failonerror="false" />
+	</target>
+	
+	<!-- Kill Telemetry Viewer on Linux and remove all traces of it. -->
+	<target name="09 terminate linux-x64">
+		<sshexec username="${linuxVmUsername}"
+		         host="${linuxVmHostname}"
+		         keyfile="${sshPrivateKeyPath}"
+		         trust="yes"
+		         command="killall -9 java;
+		                  rm ~/Desktop/&quot;${filename} (Linux x64).run&quot;;
+		                  rm -rf ~/Desktop/cache" />
+	</target>
+	
+	<!-- Kill Telemetry Viewer on the Pi 4 and remove all traces of it. -->
+	<target name="10 terminate linux-aarch64">
+		<sshexec username="${piUsername}"
+		         host="${piHostname}"
+		         keyfile="${sshPrivateKeyPath}"
+		         trust="yes"
+		         command="killall -9 java;
+		                  rm ~/Desktop/&quot;${filename} (Linux aarch64).run&quot;;
+		                  rm -rf ~/Desktop/cache" />
+	</target>
+		
+	<!-- Shut down the Pi 4. -->
+	<target name="11 shutdown linux-aarch64">
+		<sshexec username="${piUsername}"
+		         host="${piHostname}"
+		         keyfile="${sshPrivateKeyPath}"
+		         trust="yes"
+		         command="sudo shutdown -h now" />
+	</target>
+	
+	<!-- Compile Telemetry Viewer into a fat JAR. Run it with: "java ~~enable-native-access=ALL-UNNAMED -jar TelemetryViewer.jar" -->
+	<target name="build jar">
+		
+		<!-- Create a temperory directory. -->
+		<delete dir="build" />
+		<mkdir dir="build" />
+		
+		<!-- Compile the java code and tell the compiler where to find the java libraries. -->
+		<javac srcDir="src" destDir="build" includeAntRuntime="false">
+			<classpath>
+				<fileset dir="lib" includes="**/*.jar" excludes="**/*javadoc* **/*sources*" />
+			</classpath>
+		</javac>
+		
+		<!-- Package it into an *uncompressed* JAR file. The JAR will contain the compiled java code, java libraries, and resources. -->
+		<!-- Don't compress it here, because if the JAR will be packaged inside an EXE or RUN file, it will be smaller *and* faster if things are only compressed once (at the end.) -->
+		<jar destFile="TelemetryViewer.jar" baseDir="build" compress="false">
+			<manifest>
+				<attribute name="Main-Class" value="Main" />
+				<attribute name="Add-Opens" value="java.base/java.lang java.desktop/sun.awt java.desktop/sun.java2d" /> <!-- for JOGL -->
+			</manifest>
+			<zipgroupfileset dir="lib" includes="**/*.jar" excludes="**/*javadoc* **/*sources*" />
+			<fileset dir="resources" />
+		</jar>
+		
+	</target>
+	
+	<!-- This target only needs to be run if the webcam library source code (lib/WebcamDLL/...) has been modified. -->
+	<!-- It is assumed that Visual Studio 2022 Community Edition is already installed. -->
+	<target name="compile webcam library and generate bindings">
+		
+		<!-- Compile the visual studio project in release mode. -->
+		<exec executable="cmd" failonerror="true">
+			<arg value="/c &quot;&quot;C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\Current\Bin\MSBuild.exe&quot; &quot;lib\WebcamDLL\WebcamDLL.sln&quot; /p:Configuration=Release&quot;" />
+		</exec>
+		
+		<!-- Move the DLL into the lib folder. -->
+		<move file="lib\WebcamDLL\x64\Release\WebcamDLL.dll" tofile="lib/webcam-x64.dll" />
+		
+		<!-- Create a temperory folder. -->
+		<delete dir="build" />
+		<mkdir dir="build" />
+		
+		<!-- Run jextract, but only generate bindings for my code, not all the stuff in stdint/stdbool. -->
+		<untar compression="gzip" src="tools/openjdk-25-jextract+2-4_windows-x64_bin.tar.gz" dest="build" />
+		<exec executable="cmd" failonerror="true">
+			<arg line="/c" />
+			<arg line="build\jextract-25\bin\jextract" />
+			<arg line="lib\WebcamDLL\webcam.h" />
+			<arg line="--include-function  getCameras" />
+			<arg line="--include-function  connectCamera" />
+			<arg line="--include-function  disconnectCamera" />
+			<arg line="--include-function  checkForCameraEvent" />
+			<arg line="--include-function  setCameraSetting" />
+			<arg line="--include-function  getCameraSetting" />
+			<arg line="--include-struct    camera" />
+			<arg line="--header-class-name WebcamDLL" />
+		</exec>
+		
+		<!-- Move the generated files into the src folder. -->
+		<move file="WebcamDLL.java"             tofile="src/WebcamDLL.java" />
+		<move file="WebcamDLL$shared.java"      tofile="src/WebcamDLL$shared.java" />
+		<move file="camera.java"                tofile="src/camera.java" />
+		<move file="connectCamera$handler.java" tofile="src/connectCamera$handler.java" />
+		
+		<!-- Remove the tempory folder. -->
+		<delete dir="build" />
+		
+	</target>
+	
+</project>
