@@ -425,12 +425,39 @@ public class OpenGLCharts extends JPanel {
 					
 					// draw empty tiles
 					if(removing || maximizing || demaximizing || maximizedChart == null) {
-						for(int column = 0; column < tileColumns; column++) {
-							for(int row = 0; row < tileRows; row++) {
-								int lowerLeftX = tileWidth * column;
-								int lowerLeftY = tileHeight * row + tilesYoffset;
-								drawTile(gl, lowerLeftX, lowerLeftY, tileWidth, tileHeight);
+						float width = tileWidth - 2*Theme.tilePadding;
+						float height = tileHeight - 2*Theme.tilePadding;
+						if(width >= 4 && height >= 4) {
+							// draw tile drop shadows
+							OpenGL.buffer.rewind();
+							for(int column = 0; column < tileColumns; column++) {
+								for(int row = 0; row < tileRows; row++) {
+									float xLeft   = (tileWidth * column)              + Theme.tilePadding + Theme.tileShadowOffset;
+									float yBottom = (tileHeight * row + tilesYoffset) + Theme.tilePadding - Theme.tileShadowOffset;
+									OpenGL.buffer.put(xLeft);         OpenGL.buffer.put(yBottom + height);
+									OpenGL.buffer.put(xLeft);         OpenGL.buffer.put(yBottom);
+									OpenGL.buffer.put(xLeft + width); OpenGL.buffer.put(yBottom + height);
+									OpenGL.buffer.put(xLeft + width); OpenGL.buffer.put(yBottom + height);
+									OpenGL.buffer.put(xLeft + width); OpenGL.buffer.put(yBottom);
+									OpenGL.buffer.put(xLeft);         OpenGL.buffer.put(yBottom);
+								}
 							}
+							OpenGL.drawTrianglesXY(gl, GL3.GL_TRIANGLES, Theme.tileShadowColor, OpenGL.buffer.rewind(), 6*tileColumns*tileRows);
+							// draw tiles
+							OpenGL.buffer.rewind();
+							for(int column = 0; column < tileColumns; column++) {
+								for(int row = 0; row < tileRows; row++) {
+									float xLeft   = (tileWidth * column)              + Theme.tilePadding;
+									float yBottom = (tileHeight * row + tilesYoffset) + Theme.tilePadding;
+									OpenGL.buffer.put(xLeft);         OpenGL.buffer.put(yBottom + height);
+									OpenGL.buffer.put(xLeft);         OpenGL.buffer.put(yBottom);
+									OpenGL.buffer.put(xLeft + width); OpenGL.buffer.put(yBottom + height);
+									OpenGL.buffer.put(xLeft + width); OpenGL.buffer.put(yBottom + height);
+									OpenGL.buffer.put(xLeft + width); OpenGL.buffer.put(yBottom);
+									OpenGL.buffer.put(xLeft);         OpenGL.buffer.put(yBottom);
+								}
+							}
+							OpenGL.drawTrianglesXY(gl, GL3.GL_TRIANGLES, Theme.tileColor, OpenGL.buffer.rewind(), 6*tileColumns*tileRows);
 						}
 					}
 					

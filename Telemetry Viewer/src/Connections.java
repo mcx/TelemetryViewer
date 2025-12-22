@@ -372,7 +372,7 @@ public class Connections {
 			} else if(filepath.endsWith(".mkv")) {
 				for(int connectionN = 0; connectionN < allConnections.size(); connectionN++) {
 					Connection connection = allConnections.get(connectionN);
-					if(filepath.endsWith(" - connection " + connectionN + " - " + connection.name.get().replaceAll(filenameSanitizer, "_") + ".mkv"))
+					if(filepath.endsWith(" - connection " + connectionN + " - " + connection.name.get().replaceAll(filenameSanitizer, "") + ".mkv"))
 						imports.put(connection, filepath);
 				}
 			}
@@ -497,18 +497,15 @@ public class Connections {
 				exportSettingsFile(filepath + ".txt");
 				completedSampleCount.incrementAndGet();
 			}
-	
-			for(ConnectionTelemetry connection : telemetryToExport) {
-				int connectionN = allConnections.indexOf(connection);
-				String filename = filepath + " - connection " + connectionN + " - " + connection.name.get().replaceAll(filenameSanitizer, "");
-				connection.exportDataFile(filename, completedSampleCount);
-			}
-	
-			for(ConnectionCamera connection : camerasToExport) {
-				int connectionN = allConnections.indexOf(connection);
-				String filename = filepath + " - connection " + connectionN + " - " + connection.name.get().replaceAll(filenameSanitizer, "_");
-				connection.exportDataFile(filename, completedSampleCount);
-			}
+			
+			List<Connection> connections = Collections.synchronizedList(allConnections); // not sure if needed, maybe List.indexOf() isn't thread-safe
+			Stream.concat(telemetryToExport.stream(), camerasToExport.stream())
+			      .parallel()
+			      .forEach(connection -> {
+			           int connectionN = connections.indexOf(connection);
+			           String filename = filepath + " - connection " + connectionN + " - " + connection.name.get().replaceAll(filenameSanitizer, "");
+			           connection.exportDataFile(filename, completedSampleCount);
+			      });
 			
 			completedSampleCount.addAndGet(totalSampleCount); // ensure it gets marked done
 			

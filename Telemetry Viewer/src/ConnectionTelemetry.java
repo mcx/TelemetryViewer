@@ -175,11 +175,11 @@ public final class ConnectionTelemetry extends Connection {
 				return;
 			} else if(previousSampleCountTimestamp == 0) {
 				// initialize automatic sample rate mode
-				previousSampleCountTimestamp = Connections.importing ? Connections.getFirstTimestamp() : System.currentTimeMillis();
+				previousSampleCountTimestamp = Connections.importing ? getFirstTimestamp() : System.currentTimeMillis();
 				previousSampleCount = getSampleCount();
 			} else {
 				// calculate the sample rate
-				long currentTimestamp = Connections.importing ? Connections.getLastTimestamp() : System.currentTimeMillis();
+				long currentTimestamp = Connections.importing ? getLastTimestamp() : System.currentTimeMillis();
 				int  currentSampleCount = getSampleCount();
 				long millisecondsDelta = currentTimestamp - previousSampleCountTimestamp;
 				int sampleCountDelta = currentSampleCount - previousSampleCount;
