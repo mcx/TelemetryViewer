@@ -584,7 +584,7 @@ public class OpenGLCharts extends JPanel {
 						
 						// only give this chart the mouse location if an event doesn't already exist, or if the existing event belongs to this chart
 						// this ensures a chart doesn't draw a tooltip if another chart's drag event is in progress
-						boolean provideMouse = (eventHandler == null) || (eventHandler != null && eventHandler.chart == chart);
+						boolean provideMouse = startX == -1 && endX == -1 && ((eventHandler == null) || (eventHandler != null && eventHandler.chart == chart));
 						int chartMouseX = provideMouse ? mouseX - xOffset : -1;
 						int chartMouseY = provideMouse ? mouseY - yOffset : -1;
 						boolean mouseOverButtons = chartMouseX >= width + Theme.tileShadowOffset - 46.5f * Theme.lineWidth && chartMouseY >= height - 15.5f * Theme.lineWidth;
@@ -604,7 +604,7 @@ public class OpenGLCharts extends JPanel {
 							chartUnderMouse = chart;
 							if(eventHandler == null && chartEventHandler != null)
 								eventHandler = chartEventHandler;
-							if(eventHandler == null || !eventHandler.dragInProgress)
+							if(startX == -1 && endX == -1 && (eventHandler == null || !eventHandler.dragInProgress))
 								drawChartButtons(gl, width, height, chartMouseX, chartMouseY);
 						}
 						
@@ -686,16 +686,16 @@ public class OpenGLCharts extends JPanel {
 		
 		glCanvas.addMouseListener(new MouseListener() {
 			
-			// the mouse was pressed, attempting to start a new chart region, or to interact with an existing chart
 			@Override public void mousePressed(MouseEvent me) {
 				
+				// if an event handler exists, call it
 				if(eventHandler != null && eventHandler.forPressEvent) {
 					eventHandler.handleDragStarted();
 					eventHandler.handleMouseLocation(mouseXYtoChartXY(eventHandler.chart, me.getX(), me.getY()));
 					return;
 				}
 				
-				// if there are no connections and no charts, ignore the event
+				// if there are no connections and no charts, ignore this event
 				if(!Charts.exist() && !Connections.exist())
 					return;
 				
@@ -703,111 +703,105 @@ public class OpenGLCharts extends JPanel {
 				if(maximizedChart != null)
 					return;
 				
+				// convert mouseXY to tileXY
 				int x = (int) (me.getX() * Theme.osDpiScalingFactor);
-				int y = (int) (me.getY() * Theme.osDpiScalingFactor);
-				y -= notificationsHeight;
-				if(x < 0 || y < 0)
-					return;
-				int proposedStartX = x * tileColumns / canvasWidth;
-				int proposedStartY = y * tileRows / (canvasHeight - notificationsHeight);
+				int y = (int) (me.getY() * Theme.osDpiScalingFactor) - notificationsHeight;
+				int proposedStartX = Math.clamp(x * tileColumns / canvasWidth,                       0, tileColumns - 1);
+				int proposedStartY = Math.clamp(y * tileRows / (canvasHeight - notificationsHeight), 0, tileRows - 1);
 				
-				if(proposedStartX < tileColumns && proposedStartY < tileRows && Charts.stream().noneMatch(chart -> chart.intersects(proposedStartX, proposedStartY, proposedStartX, proposedStartY))) {
+				// if an empty tile was clicked, start a new chart region
+				if(Charts.stream().noneMatch(chart -> chart.intersects(proposedStartX, proposedStartY, proposedStartX, proposedStartY))) {
 					startX = endX = proposedStartX;
 					startY = endY = proposedStartY;
 				}
 				
 			}
 			
-			// the mouse was released, attempting to create a new chart
 			@Override public void mouseReleased(MouseEvent me) {
 				
+				// if an event handler exists, call it
 				if(eventHandler != null)
 					eventHandler.handleDragEnded();
 				
-				// if there are no connections and no charts, ignore the event
+				// if there are no connections and no charts, ignore this event
 				if(!Charts.exist() && !Connections.exist())
 					return;
 
+				// if the mouse press was ignored, also ignore this mouse release
 				if(endX == -1 || endY == -1)
 					return;
-			
-				int x = (int) (me.getX() * Theme.osDpiScalingFactor);
-				int y = (int) (me.getY() * Theme.osDpiScalingFactor);
-				y -= notificationsHeight;
-				if(x < 0 || y < 0)
-					return;
-				int proposedEndX = x * tileColumns / canvasWidth;
-				int proposedEndY = y * tileRows / (canvasHeight - notificationsHeight);
 				
-				if(proposedEndX < tileColumns && proposedEndY < tileRows && Charts.stream().noneMatch(chart -> chart.intersects(startX, startY, proposedEndX, proposedEndY))) {
+				// convert mouseXY to tileXY
+				int x = (int) (me.getX() * Theme.osDpiScalingFactor);
+				int y = (int) (me.getY() * Theme.osDpiScalingFactor) - notificationsHeight;
+				int proposedEndX = Math.clamp(x * tileColumns / canvasWidth,                       0, tileColumns - 1);
+				int proposedEndY = Math.clamp(y * tileRows / (canvasHeight - notificationsHeight), 0, tileRows - 1);
+				
+				// if the proposed chart region is available, use it
+				if(Charts.stream().noneMatch(chart -> chart.intersects(startX, startY, proposedEndX, proposedEndY))) {
 					endX = proposedEndX;
 					endY = proposedEndY;
 				}
 				
-				int x1 = startX;
-				int y1 = startY;
-				int x2 = endX;
-				int y2 = endY;
-				
+				// create the new chart
+				Configure.GUI.forNewChart(Charts.Type.TIME_DOMAIN.createAt(startX, startY, endX, endY));
 				startX = startY = -1;
 				endX   = endY   = -1;
 				
-				Configure.GUI.forNewChart(Charts.Type.TIME_DOMAIN.createAt(x1, y1, x2, y2));
-				
 			}
 
-			// the mouse left the canvas, no longer need to show the chart close icon
 			@Override public void mouseExited (MouseEvent me) {
 				
+				// the mouse left the canvas, no longer need to show the chart close icon
 				mouseX = -1;
 				mouseY = -1;
 				
 			}
 			
 			@Override public void mouseClicked(MouseEvent me) { }
-			
 			@Override public void mouseEntered(MouseEvent me) { }
 			
 		});
 		
 		glCanvas.addMouseMotionListener(new MouseMotionListener() {
 			
-			// the mouse was dragged while attempting to create a new chart
 			@Override public void mouseDragged(MouseEvent me) {
 				
-				// if there are no connections and no charts, ignore the event
-				if(!Charts.exist() && !Connections.exist())
-					return;
-				
+				// log the mouse position so the charts can see the mouse location
 				mouseX = (int) (me.getX() * Theme.osDpiScalingFactor);
 				mouseY = (int) ((glCanvas.getHeight() - me.getY()) * Theme.osDpiScalingFactor);
 				
+				// if an event handler exists, call it
 				if(eventHandler != null && eventHandler.forDragEvent) {
 					eventHandler.handleMouseLocation(mouseXYtoChartXY(eventHandler.chart, me.getX(), me.getY()));
 					return;
 				}
 				
+				// if there are no connections and no charts, ignore this event
+				if(!Charts.exist() && !Connections.exist())
+					return;
+				
+				// if the mouse press was ignored, also ignore this mouse drag
 				if(endX == -1 || endY == -1)
 					return;
 				
+				// convert mouseXY to tileXY
 				int x = (int) (me.getX() * Theme.osDpiScalingFactor);
-				int y = (int) (me.getY() * Theme.osDpiScalingFactor);
-				y -= notificationsHeight;
-				if(x < 0 || y < 0)
-					return;
-				int proposedEndX = x * tileColumns / canvasWidth;
-				int proposedEndY = y * tileRows / (canvasHeight - notificationsHeight);
+				int y = (int) (me.getY() * Theme.osDpiScalingFactor) - notificationsHeight;
+				int proposedEndX = Math.clamp(x * tileColumns / canvasWidth,                       0, tileColumns - 1);
+				int proposedEndY = Math.clamp(y * tileRows / (canvasHeight - notificationsHeight), 0, tileRows - 1);
 				
-				if(proposedEndX < tileColumns && proposedEndY < tileRows && Charts.stream().noneMatch(chart -> chart.intersects(startX, startY, proposedEndX, proposedEndY))) {
+				// if the proposed chart region is available, use it
+				if(Charts.stream().noneMatch(chart -> chart.intersects(startX, startY, proposedEndX, proposedEndY))) {
 					endX = proposedEndX;
 					endY = proposedEndY;
 				}
 				
 			}
 			
-			// log the mouse position so the chart close/maximize/configure icons can be drawn correctly
 			@Override public void mouseMoved(MouseEvent me) {
 				
+				// log the mouse position so the charts can see the mouse location
 				mouseX = (int) (me.getX() * Theme.osDpiScalingFactor);
 				mouseY = (int) ((glCanvas.getHeight() - me.getY()) * Theme.osDpiScalingFactor);
 				
