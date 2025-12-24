@@ -22,8 +22,8 @@ import javax.swing.UIManager;
 
 public class Main {
 
-	static final String versionString = "Telemetry Viewer v0.8";
-	static final String versionDate   = "2021-07-24";
+	static final String versionString = "Telemetry Viewer v0.9";
+	static final String versionDate   = "2025-12-23";
 	
 	static JFrame window = new JFrame(versionString) {
 		
@@ -83,7 +83,7 @@ public class Main {
 			window.setSize(window.getPreferredSize());
 			window.setMinimumSize(window.getMinimumSize());
 			window.setLocationRelativeTo(null);
-	//		window.setExtendedState(JFrame.MAXIMIZED_BOTH);
+			window.setExtendedState(JFrame.MAXIMIZED_BOTH);
 			
 			// allow the user to drag-n-drop settings/CSV/camera files
 			window.setDropTarget(new DropTarget() {			

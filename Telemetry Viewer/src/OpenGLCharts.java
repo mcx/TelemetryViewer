@@ -1079,12 +1079,14 @@ public class OpenGLCharts extends JPanel {
 				Main.window.remove(GUI);
 			
 			Chart maximizedChart = GUI.maximizedChart;
+			long oldPreviousFrameTimestamp = GUI.previousFrameTimestamp;
 	
 			// regenerate
 			GUI.animator.stop();
 			GUI.animator.remove(GUI.glCanvas);
 			GUI = new OpenGLCharts();
 			GUI.maximizedChart = maximizedChart;
+			GUI.previousFrameTimestamp = oldPreviousFrameTimestamp;
 			
 			if(isOnScreen) {
 				Main.window.add(GUI, BorderLayout.CENTER);
